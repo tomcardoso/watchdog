@@ -51,6 +51,7 @@ LEFT_OUT = (
     "version history (.watchdog/history/) and backups (.watchdog/backups/)",
     "saved answers and threads (queries/, wiki/)",
     "search indexes (.embeddings/, .fulltext/) and Claude setup (.claude/)",
+    "saved model reasoning (.watchdog/reasoning/), which is saved one run at a time on its own",
 )
 MANIFEST_NAME = "manifest.json"
 FORMAT_VERSION = 1
@@ -214,3 +215,36 @@ def troubleshooting_copy(rep, vault: Path, *, output: str, originals: bool = Fal
     else:
         rep.log("The original documents are not included, but the notes and extractions quote them.")
     return {"output": str(target), "bytes": size, "files": len(entries), "originals": originals}
+
+
+# ── saved model reasoning (D368) ─────────────────────────────────────────────────────────────
+
+@op("reasoning-export")
+def reasoning_export(rep, vault: Path, *, output: str, run: str) -> dict:
+    """Write one run's saved model reasoning, its usage record and the processing-log lines from
+    while it ran into one zip in the folder `output`, for sending to whoever is helping with a
+    problem. Nothing is uploaded and no model is used."""
+    from watchdog.pipeline import reasoning
+    require_vault(vault)
+    out_dir = Path(output).expanduser()
+    if not out_dir.is_dir():
+        sys.exit(f"Error: the folder {out_dir} does not exist.")
+    try:
+        target = reasoning.export(Path(vault), run, out_dir)
+    except FileNotFoundError as e:
+        sys.exit(f"Error: {e}.")
+    rep.log(f"Wrote {target.name} to {out_dir}. It can restate what your documents say: send it "
+            f"only to someone you would show them to.")
+    return {"output": str(target), "bytes": target.stat().st_size}
+
+
+@op("reasoning-clear", kind="action")
+def reasoning_clear(rep, vault: Path) -> dict:
+    """Delete every run's saved model reasoning from this investigation. Usage records and the
+    processing log are kept."""
+    from watchdog.pipeline import reasoning
+    require_vault(vault)
+    out = reasoning.clear(Path(vault))
+    rep.log(f"Cleared saved reasoning from {out['runs']} run{'s' if out['runs'] != 1 else ''} "
+            f"({_fmt_size(out['bytes'])})." if out["runs"] else "No saved reasoning to clear.")
+    return out

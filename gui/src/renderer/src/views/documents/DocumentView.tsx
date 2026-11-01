@@ -17,6 +17,7 @@ import { MediaViewer } from './MediaViewer'
 import { JumpTarget, PdfViewer } from './PdfViewer'
 import { positionsSource } from './positions'
 import { ImageViewer, TextReader } from './Readers'
+import { ThinExtractionNote } from './RetryExtraction'
 import './documents.css'
 
 const BROWSER_IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
@@ -152,6 +153,11 @@ export default function DocumentView() {
               {d.title && <><span className="dot">·</span><span className="mono truncate" style={{ maxWidth: 260 }}>{d.filename}</span></>}
               {d.near_duplicate_of && <Badge tone="warning" tip={d.near_duplicate_of}>{d.duplicate_verdict === 'copies' ? 'copy' : 'possible duplicate'}</Badge>}
             </div>
+            {d.thin_extraction && (
+              <div className="docv-thin">
+                <ThinExtractionNote sha={d.sha} filename={d.filename} thin={d.thin_extraction} />
+              </div>
+            )}
           </div>
           <div className="docv-actions">
             <Button size="sm" icon={ExternalLink} disabled={!abs} onClick={openOriginal}>Open original</Button>

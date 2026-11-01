@@ -3307,3 +3307,50 @@ def test_the_report_never_shows_recall_for_a_zero_document_arm(tmp_path):
     # An arm with an unrecorded count is scored as before.
     r2 = rb.ArmResult(arm_id="haiku", stage="extractor", vault=vault, ok=True)
     assert br.not_scored_reason(r2) is None
+
+
+# ── thin extractions and saved reasoning (D367, D368) ──────────────────────────────────────
+
+def test_write_run_names_thin_extractions_and_keeps_reasoning(tmp_path):
+    """A collapse (one fact from a long report) is kept as processed, so only post-flight's flag
+    shows it: the run names it in REPORT.md and errors.log without anyone counting facts, and
+    the arm's saved reasoning is copied into the run before its vault is reset."""
+    vault = tmp_path / "bench-ex-haiku-high"
+    ex = vault / ".watchdog" / "extracted"
+    ex.mkdir(parents=True)
+    (ex / "aaa.json").write_text(json.dumps({"document": {
+        "filename": "annual-report.pdf", "page_count": 70, "key_facts": [{"fact": "x"}],
+        "thin_extraction": {"facts": 1, "words": 26000, "expected_min": 26}}}))
+    (ex / "bbb.json").write_text(json.dumps({"document": {
+        "filename": "order.pdf", "page_count": 5, "key_facts": [{"fact": "y"}] * 15,
+        "thin_extraction": None}}))
+    rdir = vault / ".watchdog" / "reasoning" / "20261030T120000Z"
+    rdir.mkdir(parents=True)
+    (rdir / "0001-extract.json").write_text("{}")
+
+    assert [t["filename"] for t in br.thin_extractions(vault)] == ["annual-report.pdf"]
+    results = [_arm_result(arm_id="haiku-high", vault=str(vault))]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+              "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+
+    report = (run_dir / "REPORT.md").read_text()
+    assert "## Thin extractions" in report and "annual-report.pdf" in report
+    assert "order.pdf" not in report.split("## Thin extractions")[1]
+    log = (run_dir / "errors.log").read_text()
+    assert "extractor:haiku-high" in log and "thin extraction: annual-report.pdf" in log
+    run = json.loads((run_dir / "run.json").read_text())
+    assert run["arms"][0]["thin_extractions"] == ["annual-report.pdf"]
+    assert (run_dir / "artifacts" / vault.name / "reasoning" / "20261030T120000Z"
+            / "0001-extract.json").exists()
+
+
+def test_write_run_says_nothing_of_thin_extractions_when_there_are_none(tmp_path):
+    results = [_arm_result(arm_id="clean")]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+              "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    assert "Thin extractions" not in (run_dir / "REPORT.md").read_text()
+    assert not (run_dir / "errors.log").exists()

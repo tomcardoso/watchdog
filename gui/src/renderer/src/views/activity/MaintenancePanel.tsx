@@ -530,6 +530,84 @@ function TroubleshootingCard() {
   )
 }
 
+// Saved model reasoning (D368): with the setting on, each run keeps what the model wrote while
+// thinking. One run's reasoning, its usage record and its processing-log lines go into a zip the
+// reporter saves where they choose, to send to whoever is helping them. Nothing is uploaded.
+function ReasoningCard() {
+  const vault = useApp((s) => s.project!.path)
+  const jobs = useApp((s) => s.jobs)
+  const q = useRpc('vault.reasoningRuns', { vault })
+  const [run, setRun] = useState<string>('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const runs = q.data?.runs ?? []
+  const chosen = runs.find((r) => r.run_id === run) ?? runs[0]
+  const total = runs.reduce((n, r) => n + r.bytes, 0)
+  const zip = lastExportFolder(jobs, vault, ['reasoning-export'])
+  const save = async () => {
+    if (!chosen) return
+    const out = await window.watchdog.dialog.openFolder({ title: 'Save the run’s reasoning in…', grant: 'export destination' })
+    if (out) await launch('reasoning-export', { output: out, run: chosen.run_id }, 'Saved reasoning')
+  }
+  const clear = async () => {
+    setBusy(true)
+    try {
+      await runAction('reasoning-clear', {})
+      toast({ kind: 'success', title: 'Saved reasoning cleared' })
+      invalidate('vault.reasoningRuns')
+      setConfirmClear(false)
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not clear it', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const label = (r: (typeof runs)[number]) =>
+    `${r.started ? new Date(r.started).toLocaleString('en-CA') : r.run_id} · ${plural(r.calls, 'call')}${r.documents.length ? ` · ${r.documents.slice(0, 2).join(', ')}${r.documents.length > 2 ? ` and ${r.documents.length - 2} more` : ''}` : ''}`
+  return (
+    <MCard
+      icon={Telescope}
+      title="Saved model reasoning"
+      note={q.data ? <Badge tone={q.data.enabled ? 'warning' : undefined}>{q.data.enabled ? 'Saving' : 'Off'}</Badge> : undefined}
+      footer={
+        <div className="row wrap" style={{ gap: 8 }}>
+          <Button size="sm" icon={FolderOpen} disabled={!chosen} onClick={() => void save()}>Save a run’s reasoning…</Button>
+          {zip && <Button size="sm" variant="ghost" icon={Download} onClick={() => window.watchdog.shell.showItemInFolder(zip)}>Show in folder</Button>}
+          <Button size="sm" variant="ghost" disabled={!runs.length} onClick={() => setConfirmClear(true)}>Clear saved reasoning</Button>
+          {!q.data?.enabled && <Button size="sm" variant="ghost" onClick={() => navigate({ view: 'settings', tab: 'troubleshooting' })}>Turn on in Settings</Button>}
+        </div>
+      }
+      options={
+        runs.length > 0 ? (
+          <Row label="Run" hint="The zip holds this run’s reasoning, its usage record and its lines from the processing log.">
+            <select className="select" value={chosen?.run_id ?? ''} onChange={(e) => setRun(e.target.value)}>
+              {runs.map((r) => <option key={r.run_id} value={r.run_id}>{label(r)}</option>)}
+            </select>
+          </Row>
+        ) : undefined
+      }
+    >
+      To help diagnose a problem, turn on Save model reasoning in Settings → Troubleshooting, add or retry the documents that show it, then save that run’s reasoning here and send the file to whoever is helping you. The reasoning can restate what your documents say: send it only to someone you would show them to, never to a public issue.
+      {runs.length > 0 ? ` ${plural(runs.length, 'run')} saved, ${fmtBytes(total)}.` : ' Nothing is saved yet.'}
+      <Modal
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        title="Clear saved reasoning?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmClear(false)}>Cancel</Button>
+            <Button variant="danger" loading={busy} onClick={() => void clear()}>Clear</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>
+          Deletes the reasoning saved from {plural(runs.length, 'run')} ({fmtBytes(total)}) in this investigation. Usage and the processing log are kept. Zips you already saved elsewhere are not touched.
+        </p>
+      </Modal>
+    </MCard>
+  )
+}
+
 /** The cards that need the full engine: every control inside is disabled until setup has
  * finished (D272). `display: contents` keeps the grid layout untouched. */
 // Every fact citation in saved answers, threads, briefings and the current-state page, checked
@@ -716,6 +794,7 @@ export default function MaintenancePanel() {
         </MCard>
         <ExportCard />
         <TroubleshootingCard />
+        <ReasoningCard />
         <SimpleCard
           icon={BookOpen}
           title="Refresh Claude setup"

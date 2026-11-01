@@ -404,6 +404,49 @@ def _failed_line(r) -> str:
     return f"{len(r.doc_errors)} document(s) failed"
 
 
+def thin_extractions(vault) -> list[dict]:
+    """The documents in an arm's own `.watchdog/extracted/*.json` that post-flight flagged as a
+    thin extraction (D367): `{"filename", "facts", "words", "expected_min"}` each, by filename. A
+    collapse (one fact from a 70-page report) is a real failure that no recall figure shows on
+    its own, so a run names every one. Defensive like `_extracted_page_stats`."""
+    if not vault:
+        return []
+    d = Path(vault) / ".watchdog" / "extracted"
+    if not d.is_dir():
+        return []
+    out = []
+    for f in sorted(d.glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        doc = data.get("document") if isinstance(data, dict) else None
+        thin = doc.get("thin_extraction") if isinstance(doc, dict) else None
+        if isinstance(thin, dict):
+            out.append({"filename": doc.get("filename") or f.stem[:12], "facts": thin.get("facts"),
+                        "words": thin.get("words"), "expected_min": thin.get("expected_min")})
+    return sorted(out, key=lambda t: str(t["filename"]))
+
+
+def _thin_line(t: dict) -> str:
+    words = f"{t['words']:,}" if isinstance(t.get("words"), int) else "?"
+    return (f"thin extraction: {t['filename']} — {t.get('facts')} fact(s) from {words} words "
+            f"(at least {t.get('expected_min')} expected)")
+
+
+def thin_extractions_md(results: list) -> list[str]:
+    """REPORT.md's "Thin extractions" section, or nothing when no arm had one (D367)."""
+    rows = [(r, t) for r in results for t in thin_extractions(getattr(r, "vault", None))]
+    if not rows:
+        return []
+    out = ["## Thin extractions", "",
+           "Documents an arm kept but with implausibly few facts for their length (fewer than one "
+           "per 1,000 words of text by default). The arm's recall figure above includes them; a collapse "
+           "here is worth a repeat before reading the arm as weaker.", ""]
+    out += [f"- `{r.stage}:{r.arm_id}` — {_thin_line(t)}" for r, t in rows]
+    return out + [""]
+
+
 def _errors_log_text(results: list) -> str:
     """Full failure detail for every arm that had any — a hard failure (`error`, arm-level),
     per-document failures caught and tallied internally by processing and post-processing (`doc_errors`
@@ -438,6 +481,8 @@ def _errors_log_text(results: list) -> str:
                         f"this arm stopped.")
         if r.doc_errors:
             parts.append("\n".join(f"  {e}" for e in r.doc_errors))
+        for t in thin_extractions(getattr(r, "vault", None)):
+            parts.append(f"  {_thin_line(t)}")
         if parts:
             blocks.append(f"{r.stage}:{r.arm_id}\n" + "\n".join(parts))
     return "\n\n".join(blocks)
@@ -625,6 +670,8 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
             # cost column can't tell the two kinds of dollar figure apart.
             "notional_cost": _is_notional(r.usage),
             "coverage_gaps": coverage_gaps,
+            # Documents post-flight flagged as thin extractions (D367), by filename.
+            "thin_extractions": [t["filename"] for t in thin_extractions(r.vault)],
             # The `<ts>` stem of the `usage-<ts>.json` this arm's `r.usage` was loaded from
             # (`run_benchmark._latest_usage`) — the join key back to `telemetry_db`'s `calls.run_id`
             # column (D193 point 3), which uses that same stem, NOT this dict's own `run_id` above
@@ -718,6 +765,7 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
                    "extraction at all.", ""]
         report += [f"- `{r.stage}:{r.arm_id}` — " + _failed_line(r) for r in failed]
         report.append("")
+    report += thin_extractions_md(results)
     (run_dir / "REPORT.md").write_text("\n".join(report), encoding="utf-8")
     (run_dir / "docs-summary.md").write_text(docs_summary_md(results, scores), encoding="utf-8")
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
@@ -743,6 +791,11 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
         usage_src = vault / ".watchdog" / "registry" / "usage"
         if usage_src.is_dir():
             shutil.copytree(usage_src, dest / "usage", dirs_exist_ok=True)
+        # Every benchmark run saves each call's reasoning (D368); kept with the run, since the
+        # arm's vault is reset the next time it runs.
+        reasoning_src = vault / ".watchdog" / "reasoning"
+        if reasoning_src.is_dir():
+            shutil.copytree(reasoning_src, dest / "reasoning", dirs_exist_ok=True)
         registry_src = vault / ".watchdog" / "registry"
         if registry_src.is_dir():
             (dest / "registry").mkdir(parents=True, exist_ok=True)

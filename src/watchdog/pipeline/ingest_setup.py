@@ -41,6 +41,22 @@ def busy_message(holder: dict | None) -> str:
             "that run ends.")
 
 
+def _queue_entry(vault: Path, qf: Path) -> dict | None:
+    """One queue descriptor's metadata as `scan_queue` lists it; None if it can't be read."""
+    try:
+        data = json.loads(qf.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return {
+        "path": str(qf.relative_to(vault)),
+        "sha256": qf.stem,
+        "filename": data.get("filename", qf.stem),
+        "document_type": data.get("document_type"),
+        "page_count": data.get("page_count") or len(data.get("pages", [])),
+        "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
+    }
+
+
 def scan_queue(vault: Path) -> list[dict]:
     """Read every queued file's metadata (filename, type, page count, est_tokens) without
     touching the lock — shared by `run` (which then acquires the lock) and `cost_estimate`'s
@@ -49,19 +65,75 @@ def scan_queue(vault: Path) -> list[dict]:
     queue_files: list[dict] = []
     if queue_dir.exists():
         for qf in sorted(queue_dir.glob("*.json")):
-            try:
-                data = json.loads(qf.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            queue_files.append({
-                "path": str(qf.relative_to(vault)),
-                "sha256": qf.stem,
-                "filename": data.get("filename", qf.stem),
-                "document_type": data.get("document_type"),
-                "page_count": data.get("page_count") or len(data.get("pages", [])),
-                "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
-            })
+            entry = _queue_entry(vault, qf)
+            if entry is not None:
+                queue_files.append(entry)
     return queue_files
+
+
+# ── documents kept for a retry (D367) ─────────────────────────────────────────────────────────
+#
+# A queue descriptor is removed once its document is committed. One whose extraction came back
+# thin is copied here first, so Retry extraction can send the same text again without reading
+# the original a second time. A later commit that is not thin removes the copy.
+
+def kept_dir(vault: Path) -> Path:
+    return vault / ".watchdog" / "queue" / "_kept"
+
+
+def keep_for_retry(vault: Path, sha: str, thin: bool) -> None:
+    """At commit: keep a copy of the queue descriptor of a thin extraction, or drop the copy of
+    one that is no longer thin. Never fails the commit."""
+    queue_file = vault / ".watchdog" / "queue" / f"{sha}.json"
+    kept = kept_dir(vault) / f"{sha}.json"
+    try:
+        if thin and queue_file.exists():
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            tmp = kept.with_suffix(".json.part")
+            tmp.write_bytes(queue_file.read_bytes())
+            tmp.replace(kept)
+        elif not thin:
+            kept.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def reextract_queue(vault: Path, shas) -> list[dict]:
+    """The queue entries a re-extraction of `shas` would send, read from the queue when the
+    descriptor is still there, else from the copy kept for a retry. Read-only, so the app's
+    estimate and preflight can call it; a sha with neither is left out."""
+    out = []
+    for sha in dict.fromkeys(shas or []):
+        for qf in (vault / ".watchdog" / "queue" / f"{sha}.json", kept_dir(vault) / f"{sha}.json"):
+            if qf.exists():
+                entry = _queue_entry(vault, qf)
+                if entry is not None:
+                    out.append(entry)
+                break
+    return out
+
+
+def restore_for_reextract(vault: Path, shas) -> tuple[list[str], list[str]]:
+    """Put the kept descriptor of each of `shas` back in the queue where it is not already
+    there. Returns `(restored, missing)`: the shas copied back, and those with no descriptor
+    anywhere (their text has to be read again from the file). The kept copy stays until a
+    commit that is not thin removes it, so a re-extraction that fails can be retried again."""
+    queue_dir = vault / ".watchdog" / "queue"
+    restored, missing = [], []
+    for sha in dict.fromkeys(shas or []):
+        target = queue_dir / f"{sha}.json"
+        if target.exists():
+            continue
+        kept = kept_dir(vault) / f"{sha}.json"
+        if not kept.exists():
+            missing.append(sha)
+            continue
+        queue_dir.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{sha}.json.part")
+        tmp.write_bytes(kept.read_bytes())
+        tmp.replace(target)
+        restored.append(sha)
+    return restored, missing
 
 
 def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,

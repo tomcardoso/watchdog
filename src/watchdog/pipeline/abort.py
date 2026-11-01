@@ -38,6 +38,15 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _committed(vault: Path, sha256: str) -> bool:
+    import json
+    try:
+        docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(docs, dict) and sha256 in docs
+
+
 def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> dict:
     """`keep_section_checkpoints` (#498) skips the per-section extraction checkpoints
     (`section_ex_{sha256}_*.json`) — set by the automatic failure path (`orchestrate._fail`) so a
@@ -47,6 +56,10 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
     timeline = vault / ".watchdog" / "timeline"
     queue = vault / ".watchdog" / "queue"
     removed: list[str] = []
+    # A document already committed is being re-extracted (`force`, or Retry extraction, D367): its
+    # stored extraction and raw timeline files belong to the committed record, so a failed
+    # re-extraction leaves them alone and the document stays as it was.
+    committed = _committed(vault, sha256)
 
     # Per-document staging files in .watchdog/tmp/
     fixed = [
@@ -72,13 +85,13 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
     # extraction, so this goes too if present — in practice abort fires on extraction *failure*,
     # before post-flight ever writes it, so this is belt and braces, not a behaviour change.
     extracted_file = vault / ".watchdog" / "extracted" / f"{sha256}.json"
-    if extracted_file.exists():
+    if extracted_file.exists() and not committed:
         extracted_file.unlink()
         removed.append(str(extracted_file.relative_to(vault)))
 
     # Raw timeline files for this sha (named {date}_{sha[:7]}.ndjson). Canonical
     # files have no sha suffix, so they are never matched here.
-    if timeline.exists():
+    if timeline.exists() and not committed:
         for p in sorted(timeline.glob(f"*_{sha256[:7]}.ndjson")):
             p.unlink()
             removed.append(str(p.relative_to(vault)))
@@ -87,7 +100,10 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
     # preserved (re-ingestable) but not retried automatically.
     requeue_path = None
     queue_file = queue / f"{sha256}.json"
-    if queue_file.exists():
+    if queue_file.exists() and committed and (queue / "_kept" / queue_file.name).exists():
+        # A copy is kept for Retry extraction (D367): the document is not a failed one.
+        queue_file.unlink()
+    elif queue_file.exists():
         failed_dir = queue / "_failed"
         failed_dir.mkdir(parents=True, exist_ok=True)
         dest = failed_dir / queue_file.name

@@ -19,7 +19,7 @@ _OPTION_KEYS = (
     "extractor_model", "classifier_model", "finalizer_model", "finalizer_writing_model",
     "finalizer_housekeeping_model",
     "extractor_effort", "classifier_effort", "finalizer_effort", "concurrency", "classify_pages",
-    "skill", "limit", "verify", "force", "wait", "skip_briefing",
+    "skill", "limit", "verify", "force", "wait", "skip_briefing", "reextract",
 )
 
 
@@ -38,13 +38,22 @@ def run_options(options: dict | None) -> RunOptions:
         except (TypeError, ValueError):
             raise RpcError("The limit must be a whole number.", code="bad_params")
     values["force"] = bool(values.get("force"))
+    if "reextract" in values:
+        shas = values["reextract"]
+        if not isinstance(shas, list) or not all(isinstance(x, str) and x for x in shas):
+            raise RpcError("reextract must be a list of document ids.", code="bad_params")
+        values["reextract"] = shas or None
     return RunOptions(**values)
 
 
 def _queue(vault, opts: RunOptions) -> tuple[list, list]:
     """`(queue_files, to_send)` as a run counts them: the queue after the limit, then what is
-    neither staged nor committed (everything, when re-extracting)."""
-    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, scan_queue
+    neither staged nor committed (everything, when re-extracting). Retry extraction (D367)
+    counts just the documents it names, from their kept text."""
+    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, reextract_queue, scan_queue
+    if opts.reextract:
+        files = reextract_queue(vault, opts.reextract)
+        return files, files
     queue_files = limit_queue(vault, scan_queue(vault), opts.limit, force=opts.force)
     return queue_files, (queue_files if opts.force else needs_extraction(vault, queue_files))
 

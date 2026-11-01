@@ -201,14 +201,30 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    the resolved quote, else the best-matching sentence on the cited page found by code, else
    `unlocated`; no model call); explodes `key_facts` into per-entity fragments and timeline events
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
-   OCR'd scans); stages raw timeline NDJSON; and writes the validated extraction to
-   `.watchdog/extracted/<sha>.json` (D126). That artifact is kept as an audit record.
+   OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
+   `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
+   than one per `thin_extraction_words_per_fact` words of source text, default 1,000), both
+   advisory, stored on the record and logged as `WARN` lines; stages raw timeline NDJSON; and
+   writes the validated extraction to `.watchdog/extracted/<sha>.json` (D126). That artifact is
+   kept as an audit record.
 
 **Two "already done" questions (D126).** `already_staged` (an artifact exists: skip
 classify/extract) and `already_extracted` (the sha is committed: nothing to do).
 
 **`force` (D131).** A processing run with `force` re-extracts staged documents, overwriting the
-artifact. A committed document is not regenerated in place (D300).
+artifact. A committed document re-extracted while its queue descriptor is back in the queue is
+committed again by the next finalize (`_pending_commits` treats an artifact newer than its queued
+descriptor as pending, D367); a failed re-extraction of a committed document leaves its stored
+extraction and timeline files alone (`abort.run`).
+
+**Retry extraction (D367).** Zero facts from a substantial text is a post-flight failure (the
+empty-extraction guard, D153); a thin extraction is kept and only flagged. At commit, a thin
+extraction's queue descriptor is copied to `queue/_kept/<sha>.json` (`ingest_setup.keep_for_retry`);
+a later commit that is not thin removes the copy. The `add` operation's `reextract` (RunOptions)
+copies the kept descriptor back into the queue and runs a forced extraction limited to those shas
+(`only_shas`), then finishes the batch; the app's preflight and estimate count the same documents
+from the kept copy (`ingest_setup.reextract_queue`) without writing. A restored descriptor the run
+did not re-extract is taken back out. Nothing is retried automatically.
 
 **Large documents (D89, D196, D202).** A document over `section_token_threshold` is split into
 overlapping page-range sections, packed greedily by per-page token estimates, extracted one at a
@@ -625,6 +641,9 @@ queries/ wiki/               session-written findings and threads
 .claude/                     Claude Code settings and /watchdog-* commands (D245)
 .watchdog/
   queue/<sha>.json           chewed documents; removed after commit
+  queue/_failed/<sha>.json   documents whose extraction failed, until requeued
+  queue/_kept/<sha>.json     a committed thin extraction's descriptor, for Retry extraction (D367)
+  reasoning/<run>/NNNN-<task>.json  each model call's saved reasoning, stop reason and tokens, when `save_reasoning` is on or a benchmark runs (D368); named by the usage record's `reasoning_file`
   staging/<sha>/             chewed originals
   extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
   text-positions/<sha>.json  OCR'd lines' boxes per scanned page or image, written by pre-processing and kept (D289); none for pages with their own text layer
@@ -706,6 +725,18 @@ through `vault_paths.py` helpers.
 
 **Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
 helpers for every path under them.
+
+**Saved reasoning (D368).** With the `save_reasoning` setting on (off by default), or in any
+benchmark run, `orchestrate._call_model` asks `model_client.acomplete_json` for the model's
+reasoning (`capture_reasoning`, a context variable the backends read, so nothing sent changes when
+it is off) and writes one file per call under `.watchdog/reasoning/<run>/` (`pipeline/reasoning.py`).
+Claude (Messages API and Agent SDK) is asked for `thinking.display: "summarized"`, which current
+models otherwise return empty, at no extra cost; DeepSeek's `reasoning_content` is kept as it
+comes; OpenAI and Gemini Chat Completions return none, so their files hold the call's details
+only. Every usage record carries the call's own `stop_reason` whatever the setting. The
+`reasoning-export` operation zips one run's files, its usage record and its processing-log lines
+into a folder the reporter chose; `reasoning-clear` deletes the folder. The troubleshooting copy
+leaves it out.
 
 Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with the `telemetry` setting; deleting an investigation with its folder removes its rows

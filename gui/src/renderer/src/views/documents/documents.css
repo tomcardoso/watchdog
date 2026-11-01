@@ -202,6 +202,15 @@
 .docs-card-meta .sep {
   opacity: 0.6;
 }
+/* A thin extraction (D367): few facts for the document's length. */
+.docs-card-meta .thin,
+.docs-list-title .thin {
+  color: var(--warning);
+  font-weight: 560;
+}
+.docv-thin {
+  margin-top: 12px;
+}
 
 /* List */
 .docs-list {
