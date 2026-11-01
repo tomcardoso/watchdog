@@ -41,10 +41,12 @@ _EMPTY_EXTRACTION_MIN_WORDS = 500
 # document is kept as processed, the warning is logged and stored on its record, and the reporter
 # can retry its extraction in one click (no automatic retry, no automatic spend). Same basis as
 # that guard: words of source text (`page_texts`), never page citations, which a quarter of facts
-# lack. A healthy extraction on the benchmark corpus keeps about one fact per 220–280 words; the
-# collapses this was written for kept one fact from a 34-page report, a 70-page report and a
-# 5-page, roughly 1,200-word order. Flag fewer than one fact per this many words: about four times
-# sparser than healthy, and low enough that a 1,200-word document with a single fact is flagged.
+# lack. On the 2026-10-31 benchmark pilot (36 extractions), the sparsest healthy extraction kept
+# one fact per 654 words (a 70-page financial statement; most documents ran far denser), while the
+# collapses this was written for kept one fact from a 34-page report (11,500 words), a 70-page
+# report (35,301) and a 5-page order (1,215), and a partly thin run kept 25 facts from 35,301
+# words (1,412 per fact). 1,000 words per fact flags exactly those four and no healthy one, but
+# the margin on dense financial statements is only about 1.5x: refit it on the next run.
 # There is no separate floor: a document under this many words is never flagged, and nor is one
 # with zero facts, which is the guard's case. Configurable (`thin_extraction_words_per_fact`, 0
 # turns the warning off) since it was chosen by judgement on one benchmark run.
