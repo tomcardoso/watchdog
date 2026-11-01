@@ -12,6 +12,10 @@ verification ("here it is — is it material?").
 Deterministic harvesting (`harvest`) is pure regex, no I/O. `harvest_entities` additionally
 loads the optional local GLiNER NER model — import-guarded and wrapped so a missing package or
 any model failure degrades to an empty list rather than breaking ingest.
+
+Since D365 the harvest runs in pre-processing: `harvest_pages` harvests every page once and the
+result is kept in the document's queue descriptor; extraction calls `candidates`, which reads the
+pages its text covers from that store and only harvests live what the store lacks.
 """
 
 import contextlib
@@ -22,6 +26,7 @@ import threading
 import warnings
 
 # ── deterministic patterns ────────────────────────────────────────────────────────────────
+# A change to what these find for a page must bump `_REGEX_VERSION` below (D365).
 
 _PAGE_MARKER_RE = re.compile(r"<!-- PAGE (\d+) -->")
 
@@ -93,6 +98,15 @@ def _split_marked(text: str) -> list[tuple[int | None, str]]:
     for i in range(1, len(parts), 2):
         pages.append((int(parts[i]), parts[i + 1] if i + 1 < len(parts) else ""))
     return pages
+
+
+def pages_text(pages: list[dict]) -> str:
+    """A document's extraction-ready text: each page's markdown under its `<!-- PAGE N -->`
+    marker, pages joined by a `---` separator. The whole-document prompt carries exactly this, and
+    the stored harvest (`harvest_pages`) is computed from it."""
+    return "\n\n---\n\n".join(
+        f"<!-- PAGE {pg['page']} -->\n\n{pg.get('markdown', '')}" for pg in pages
+    )
 
 
 def split_pages(text: str) -> dict[int, str]:
@@ -215,6 +229,7 @@ def harvest(text: str) -> list[dict]:
 
 # ── GLiNER (optional local NER) ───────────────────────────────────────────────────────────
 
+_GLINER_MODEL = "urchade/gliner_multi-v2.1"
 _GLINER_LABELS = ["person", "organization", "location"]
 _GLINER_THRESHOLD = 0.4
 # Approximate word-count window standing in for GLiNER's ~384-token input limit, with overlap
@@ -287,7 +302,7 @@ def _load_gliner():
                 # this block (as it was before), redirect_stderr/_quiet_stderr aren't active yet
                 # and the warning writes straight to the real terminal.
                 from gliner import GLiNER
-                _gliner_model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+                _gliner_model = GLiNER.from_pretrained(_GLINER_MODEL)
         finally:
             truststore.extract_from_ssl()
     return _gliner_model
@@ -301,30 +316,147 @@ def _chunk_words(text: str) -> list[str]:
     return [" ".join(words[i:i + _GLINER_WINDOW_WORDS]) for i in range(0, len(words), step)]
 
 
+def _entity_predictions(text_by_page: dict[int, str]) -> dict[int, list[dict]] | None:
+    """GLiNER's raw predictions for each page, in reading order, before any dedupe or cap; None
+    when the model fails to load or run (a failure on any page loses every page, as it always
+    has for `harvest_entities`)."""
+    try:
+        model = _load_gliner()
+    except Exception:
+        return None
+    try:
+        out: dict[int, list[dict]] = {}
+        # gliner warns on stderr when a window still exceeds its token limit — truncation is
+        # already mitigated by the conservative window size above; the permanent filter set in
+        # _load_gliner keeps it out of the run's output without a per-call context manager
+        # (concurrent documents call this from worker threads, see _load_gliner).
+        for page, text in text_by_page.items():
+            out[page] = [{"page": page, "kind": ent["label"], "value": ent["text"]}
+                         for chunk in _chunk_words(text)
+                         for ent in model.predict_entities(chunk, _GLINER_LABELS,
+                                                           threshold=_GLINER_THRESHOLD)]
+        return out
+    except Exception:
+        return None
+
+
 def harvest_entities(text_by_page: dict[int, str]) -> list[dict]:
     """Person/organization/location candidates via the local GLiNER model (mandatory dependency
     since D223). Returns `[]` silently if the model fails to load or run for any reason — an
     uncatalogued install (an editable checkout missing this dependency, a corrupted model cache)
     degrades to the deterministic-only harvest rather than failing ingest."""
-    try:
-        model = _load_gliner()
-    except Exception:
+    preds = _entity_predictions(text_by_page)
+    if preds is None:
         return []
+    return _dedupe_and_cap([c for cands in preds.values() for c in cands])
 
-    try:
-        candidates = []
-        # gliner warns on stderr when a window still exceeds its token limit — truncation is
-        # already mitigated by the conservative window size above; the permanent filter set in
-        # _load_gliner keeps it out of ingest's terminal output without a per-call context
-        # manager (concurrent documents call this via asyncio.to_thread, see _load_gliner).
-        for page, text in text_by_page.items():
-            for chunk in _chunk_words(text):
-                for ent in model.predict_entities(chunk, _GLINER_LABELS,
-                                                   threshold=_GLINER_THRESHOLD):
-                    candidates.append({"page": page, "kind": ent["label"], "value": ent["text"]})
-        return _dedupe_and_cap(candidates)
-    except Exception:
-        return []
+
+# ── stored harvest (D365) ─────────────────────────────────────────────────────────────────
+#
+# Pre-processing harvests each page once and keeps the result in the document's queue
+# descriptor (`harvest` key); extraction then only merges the pages its text covers and formats
+# the checklist. What is stored per page is that page's candidates deduplicated within the page,
+# first occurrence first: exactly what `_dedupe_and_cap`'s first step would keep, so running
+# `_dedupe_and_cap` over the covered pages afterwards (the cross-page repeat cap and the per-page
+# cap) gives the same list as harvesting the text live.
+
+# Bump when the regexes, `_harvest_page` or `_harvest_table_figures` change what they find for a
+# page: a stored harvest with an older value is ignored and that half is harvested live.
+_REGEX_VERSION = 1
+STORE_FORMAT = 1
+
+
+def regex_stamp() -> dict:
+    return {"version": _REGEX_VERSION}
+
+
+def names_stamp() -> dict:
+    """Everything GLiNER's per-page output depends on besides the page text."""
+    return {"model": _GLINER_MODEL, "labels": list(_GLINER_LABELS),
+            "threshold": _GLINER_THRESHOLD, "window": _GLINER_WINDOW_WORDS,
+            "overlap": _GLINER_WINDOW_OVERLAP}
+
+
+def _page_unique(cands: list[dict]) -> list[list[str]]:
+    seen: set[tuple[str, str]] = set()
+    out = []
+    for c in cands:
+        key = (c["kind"], _normalize(c["kind"], c["value"]))
+        if key not in seen:
+            seen.add(key)
+            out.append([c["kind"], c["value"]])
+    return out
+
+
+def harvest_pages(pages: list[dict]) -> dict:
+    """The stored harvest for a document's pages (D365): per page, the regex candidates and
+    GLiNER's names, each deduplicated within the page. Page text is the page's body as it sits in
+    the whole-document text (`pages_text`), so the whole-document checklist is unchanged.
+
+    If GLiNER fails, `names` is None and extraction finds names live instead (and degrades to
+    none, as before, if the model fails there too); pre-processing never fails over it."""
+    bodies = split_pages(pages_text(pages))
+    regex = {str(p): _page_unique(_harvest_page(body, p)) for p, body in bodies.items()}
+    preds = _entity_predictions(bodies)
+    names = None if preds is None else {str(p): _page_unique(c) for p, c in preds.items()}
+    return {"format": STORE_FORMAT, "regex_stamp": regex_stamp(), "regex": regex,
+            "names_stamp": names_stamp(), "names": names}
+
+
+def _stored_half(stored, half: str, stamp: dict) -> dict | None:
+    if not isinstance(stored, dict) or stored.get("format") != STORE_FORMAT:
+        return None
+    if stored.get(f"{half}_stamp") != stamp:
+        return None
+    pages = stored.get(half)
+    return pages if isinstance(pages, dict) else None
+
+
+def candidates(text: str, stored: dict | None = None, *, before_live_names=None) -> list[dict]:
+    """The candidate list for extraction-ready `text` (a whole document's or one section's):
+    regex candidates then names, as `harvest(text) + harvest_entities(split_pages(text))` returns
+    them. Pages found in `stored` (a `harvest_pages` result whose stamp matches this code) are
+    read from it; anything else is harvested live from `text`, page by page.
+
+    `before_live_names`, if given, is called once just before GLiNER is run live, so a caller can
+    say on its progress row that the slow step is happening."""
+    chunks = _split_marked(text)
+    page_nums = [p for p, _ in chunks]
+    if not chunks or None in page_nums or len(set(page_nums)) != len(page_nums):
+        # Text not made of numbered pages (a character-split section) or an unexpected shape:
+        # today's live harvest. With no numbered page there are no names to find.
+        names_live = split_pages(text)
+        if names_live and before_live_names is not None:
+            before_live_names()
+        return harvest(text) + (harvest_entities(names_live) if names_live else [])
+
+    bodies = dict(chunks)
+    regex_store = _stored_half(stored, "regex", regex_stamp()) or {}
+    reg_raw = []
+    for p in page_nums:
+        kept = regex_store.get(str(p))
+        if isinstance(kept, list):
+            reg_raw.extend({"page": p, "kind": k, "value": v} for k, v in kept)
+        else:
+            reg_raw.extend(_harvest_page(bodies[p], p))
+
+    names_store = _stored_half(stored, "names", names_stamp()) or {}
+    missing = {p: bodies[p] for p in page_nums if not isinstance(names_store.get(str(p)), list)}
+    live = {}
+    if missing:
+        if before_live_names is not None:
+            before_live_names()
+        live = _entity_predictions(missing)
+        if live is None:
+            # The model failed: no names for any page, as `harvest_entities` has always done.
+            return _dedupe_and_cap(reg_raw)
+    names_raw = []
+    for p in page_nums:
+        if p in live:
+            names_raw.extend(live[p])
+        else:
+            names_raw.extend({"page": p, "kind": k, "value": v} for k, v in names_store[str(p)])
+    return _dedupe_and_cap(reg_raw) + _dedupe_and_cap(names_raw)
 
 
 def format_checklist(candidates: list[dict]) -> str:

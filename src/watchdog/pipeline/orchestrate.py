@@ -629,33 +629,34 @@ def _read_brief(vault: Path) -> str | None:
 
 
 def _pages_text(pages: list[dict]) -> str:
-    return "\n\n---\n\n".join(
-        f"<!-- PAGE {pg['page']} -->\n\n{pg.get('markdown', '')}" for pg in pages
-    )
+    return harvest.pages_text(pages)
 
 
-def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | None = None,
-                          filename: str | None = None, flow: str = "") -> str:
+def _candidates_checklist(text: str, *, stored: dict | None = None, vault: Path | None = None,
+                          sha: str | None = None, filename: str | None = None,
+                          flow: str = "") -> str:
     """Tier 0 candidate harvest (#361/D123): deterministic spans (money, figure, percent,
-    date, docket) plus optional local-NER entities, rendered as the per-page checklist injected
-    into the extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
+    date, docket) plus local-NER names, rendered as the per-page checklist injected into the
+    extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
     output (whole-document or one section's), so this works for both extraction paths.
 
-    `vault`/`sha`/`filename`/`flow`, when given, mark this step on the document's live in-flight
-    row before it runs and log its result to ingest.log after (#411) — GLiNER's local model load
-    + inference (`harvest_entities`) is the one step that can silently run for minutes on a long
-    document; without this the row just sat on "extracting…" the whole time, with no sign
-    anything was happening. Callers pass these only from the two hot, per-document extraction
-    paths (`_simple_extract`, `_extract_sectioned`) — the rarer batch-repair/submit paths omit
-    them and get the old silent behaviour, since they have no live per-document row today."""
-    if sha is not None:
+    `stored` is the document's harvest from pre-processing (the queue descriptor's `harvest`,
+    D365): the pages `text` covers are read from it, so no local model runs here. A page it lacks,
+    or a stored half whose stamp no longer matches this code, is harvested live, as before D365.
+
+    `vault`/`sha`/`filename`/`flow`, when given, log the result to processing.log and, only when
+    GLiNER has to run live (#411: it can run for minutes on a long document), mark the step on
+    the document's live in-flight row first. The rarer batch-repair/submit paths omit them."""
+    def before_live_names():
+        if sha is None:
+            return
         tty = f"→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…"
         plain = f"→  {filename}  harvesting candidates…"
         if _run.board is not None:
             _run.board.update(sha, f"  {tty}", f"  {plain}")
         else:
             _say(plain)
-    candidates = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
+    candidates = harvest.candidates(text, stored, before_live_names=before_live_names)
     if sha is not None and vault is not None:
         n = len(candidates)
         _log(vault, f"HARVEST {filename}: {n} candidate{'s' if n != 1 else ''}")
@@ -918,10 +919,11 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     page_count = pf.get("page_count") or len(pf["pages"])
     filename = pf["filename"]
     flow = f"{page_count}p · {skill_label}"
-    # GLiNER inference over every page can take minutes on a long document — run it off the
-    # event loop so it doesn't stall every other concurrent document.
+    # Normally read from pre-processing's stored harvest (D365), but a document without one runs
+    # GLiNER live, which can take minutes on a long document — so off the event loop either way.
     candidates = await asyncio.to_thread(
-        _candidates_checklist, text, vault=vault, sha=sha, filename=filename, flow=flow)
+        _candidates_checklist, text, stored=pf.get("harvest"), vault=vault, sha=sha,
+        filename=filename, flow=flow)
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
         _run.board.update(sha, f"  →  {filename}  {flow} · extracting…",
@@ -1064,8 +1066,8 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
     # Off the event loop — see the comment in `_simple_extract`.
     candidates = await asyncio.to_thread(
-        _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
-        flow=sec["label"])
+        _candidates_checklist, sec_text, stored=pf.get("harvest"), vault=vault, sha=sha,
+        filename=pf["filename"], flow=sec["label"])
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
         _run.board.update(sha, f"  →  {pf['filename']}  {sec['label']} · extracting…",
@@ -1665,7 +1667,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(_candidates_checklist, text)
+        candidates = await asyncio.to_thread(_candidates_checklist, text, stored=pf.get("harvest"))
         is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
         repair_backend = "claude-api" if is_anthropic else "openai"
         # The batch's own model and effort — a repair on a different model would also stamp the
@@ -1876,7 +1878,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     for (sha, pf), (skill_text, skill_label) in zip(whole_docs, resolved):
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(_candidates_checklist, text)
+        candidates = await asyncio.to_thread(_candidates_checklist, text, stored=pf.get("harvest"))
         prompt = prompts.build_extract_prompt(
             pages_text=text,
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,

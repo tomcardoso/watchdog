@@ -67,7 +67,7 @@ entities:
     role: affiant (the Haché Affidavit)
     page: 3
   - name: Ontario Ministry of Colleges and Universities
-    type: organization
+    type: public-body
     aliases: ["MCU"]
     role: participated in a call with LU and the Monitor
     page: 5

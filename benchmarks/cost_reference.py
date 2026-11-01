@@ -80,21 +80,22 @@ def reference_usage_files(benchmarks_root: Path, model: str, effort: str | None,
     return candidates[-max_runs:]
 
 
-def fallback_estimate(est_tokens: int, model: str, effort: str | None) -> dict | None:
+def fallback_estimate(est_tokens: int, model: str, effort: str | None,
+                      long_share: float = 0.0) -> dict | None:
     """Catalog-list-price point estimate for a model/effort with no archived usage anywhere yet
     (issue #478's suggested item 2) — priced directly against `model_catalog.yaml`'s own
     published rate rather than any run-derived $/token ratio, scaled by
-    `DEFAULT_OUTPUT_RATIO_BY_EFFORT`'s rough per-effort ratio. Returns `None` for a model not in
-    the catalog, so a caller never fabricates a number from nothing.
+    `DEFAULT_OUTPUT_RATIO_BY_EFFORT`'s rough per-effort ratio. `model` may be a catalog id or a
+    tier alias (`haiku-5.5`). `long_share` is the part of the tokens in calls over the model's
+    long-prompt line (`ingest_setup.long_prompt_plan`), priced at that card (D366). Returns `None`
+    for a model not in the catalog, so a caller never fabricates a number from nothing.
     """
-    from watchdog.model_catalog import all_models, price_multiplier
-    row = next((m for m in all_models() if m["id"] == model), None)
-    if row is None:
-        return None
+    from watchdog.model_catalog import list_price, resolve_model_id
     ratio = DEFAULT_OUTPUT_RATIO_BY_EFFORT.get(effort, DEFAULT_OUTPUT_RATIO_BY_EFFORT[None])
     # Priced at the rate in force now, for a model whose rates vary by the clock (D217) — a
     # pre-flight figure for an arm about to run. An arm that runs long enough to cross a peak
     # boundary is billed on both sides of it; only the archived per-call costs show that.
-    cost = ((est_tokens * row["input"] + est_tokens * ratio * row["output"])
-            * price_multiplier(model))
+    cost = list_price(resolve_model_id(model), est_tokens, est_tokens * ratio, long_share)
+    if cost is None:
+        return None
     return {"cost_low": cost, "cost_high": cost, "runs_used": 0, "projected": True}

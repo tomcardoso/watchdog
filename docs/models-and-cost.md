@@ -52,7 +52,7 @@ When you add your first key for a provider, any step still on its default that h
 
 | Value | Runs on |
 |---|---|
-| `haiku` | Claude Haiku 5.5, the default for every step. US$0.10 in and US$0.50 out per million tokens for requests up to 100,000 tokens, which Watchdog keeps each request under. |
+| `haiku` | Claude Haiku 5.5, the default for every step. US$0.10 in and US$0.50 out per million tokens for requests up to 100,000 tokens, five times that for a longer one ([long prompts](#long-prompts)). |
 | `sonnet` | Claude Sonnet 5.5: US$2 in and US$10 out per million tokens. |
 | `haiku-5.5` / `sonnet-5.5` | The same models pinned by name, in case the bare tier ever moves. |
 | `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's high-volume model: US$0.10 in, US$0.50 out. `openai:gpt-5.6-luna` is the previous generation. |
@@ -105,6 +105,15 @@ The main levers, roughly in order of effect:
 - **Documents at once** does not change total cost, but lowering it is the fix when a run keeps hitting a rate limit. On a subscription it defaults to 3, since every extraction shares one usage limit.
 
 On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates, marked as not billed.
+
+<a id="long-prompts"></a>
+### Long prompts cost more on some models
+
+A token is a piece of a word, about four characters of English; it is how providers count and bill text. A few models charge by how long each request's prompt is. On Claude Haiku 5.5, a request whose prompt is over 100,000 tokens is billed entirely at US$0.50 in and US$2.50 out per million, five times the usual rate. On GPT-6 Luna and GPT-5.6 Luna the line is 272,000 tokens, above which input costs twice as much and output one and a half times as much. The prompt counts everything sent, including the part the provider had stored from an earlier request. Gemini, DeepSeek and Claude Sonnet 5.5 cost the same at any length.
+
+Watchdog splits long documents into sections partly to stay under these lines, but a document just short of being split can still go over once the instructions are added. Such a call is recorded in **Activity → Usage** at the higher rate, as the provider bills it. **Estimate cost** prices it the same way and says how many documents it expects to go over; **Compare all models** notes each model's calls over its own line. Calls recorded by earlier versions were priced at the lower rate; [Bring this investigation up to date](using-watchdog.md#bringing-an-investigation-up-to-date) corrects them.
+
+Watchdog works out each call's cost itself, from the token counts the provider returns and the provider's published prices, because providers do not send a price back. If **Activity → Usage** and your provider's bill disagree, the bill is right.
 
 <a id="spending-limit"></a>
 <a id="key-limits"></a>

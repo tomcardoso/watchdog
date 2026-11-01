@@ -282,7 +282,61 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
     return sum(ratios) / len(ratios) if ratios else None
 
 
-def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> list[dict]:
+# The part of an extraction prompt that is not the document's own text — instructions, schema,
+# record skill and candidate checklist — in est tokens (chars/4): a fixed part plus a part that
+# grows with the pages the call carries, mostly the checklist. Fitted to the two ends of one
+# benchmark run on 2026-10-31 (about 13,600 real tokens for a 5-page document and 27,800 for a
+# 70-page one, on Claude Haiku 5.5's 1.21 tokenizer ratio), so a judgement, not a measurement of
+# every corpus: see the CLAUDE.md Standing Follow-ups (D366).
+_PROMPT_OVERHEAD_EST = 10_300
+_PROMPT_OVERHEAD_EST_PER_PAGE = 180
+
+
+def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
+                     vault: Path | None = None) -> dict:
+    """Which of the queue's planned extraction calls will be billed at `model`'s long-prompt card
+    (D366). Each document is planned as `section.run` plans it — one call at or under the
+    sectioning threshold, else even sections of the budget — and each call's prompt is its text
+    plus the fixed overhead above, converted to real tokens with the model's tokenizer ratio.
+
+    Returns ``{"share", "calls", "documents", "threshold"}``: `share` is the fraction of the
+    queue's prompt tokens in calls over the line, which the estimates price at the upper card.
+    All zero for a model that prices flat, an uncatalogued one, or a subscription."""
+    from watchdog import model_catalog, model_client
+    from watchdog.pipeline import section
+    out = {"share": 0.0, "calls": 0, "documents": 0, "threshold": None}
+    if backend in ("claude-agent-sdk", "local") or not queue_files:
+        return out
+    tier = model_catalog.long_context_card(model_client.resolve_model_id(model or model_client.DEFAULT_TIER))
+    if tier is None:
+        return out
+    out["threshold"] = tier[0]
+    default_threshold, default_budget = section.model_defaults(model, backend, vault)
+    threshold = section._resolve_override("section_token_threshold", default_threshold)
+    budget = max(1, section._resolve_override("section_token_budget", default_budget))
+    ratio = model_client.tokenizer_ratio(model, backend, vault)
+    total = over = 0.0
+    for f in queue_files:
+        text = f.get("est_tokens") or 0
+        pages = f.get("page_count") or 1
+        n = 1 if text <= threshold else -(-text // budget)
+        crossed = False
+        for _ in range(n):
+            prompt = (text / n + _PROMPT_OVERHEAD_EST
+                      + _PROMPT_OVERHEAD_EST_PER_PAGE * pages / n) * ratio
+            total += prompt
+            if prompt > tier[0]:
+                over += prompt
+                out["calls"] += 1
+                crossed = True
+        out["documents"] += crossed
+    out["share"] = over / total if total else 0.0
+    return out
+
+
+def _catalog_cost_projection(est_tokens: int, output_ratio: float | None,
+                             queue_files: list[dict] | None = None,
+                             vault: Path | None = None) -> list[dict]:
     """Price `est_tokens` against every model in `model_catalog.yaml` at that model's own list
     price (#469), scaled by `output_ratio` for the output side — unlike `cost_estimate`'s $/token
     ratio (drawn from this vault's history of a model that actually ran), a model with no run
@@ -292,31 +346,41 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> lis
     projection. Returns `[]` with no usage history to derive `output_ratio` from — no dollar
     figure is invented. Each row's own `tokenizer_ratio` scales `est_tokens` so a new-tokenizer
     model (Sonnet 5.5) prices against its real token count rather than the old-tokenizer
-    figure verbatim (#574, D135)."""
+    figure verbatim (#574, D135).
+
+    With `queue_files` (an extraction queue), each model's planned calls that will cross its
+    long-prompt line are priced at that card (`long_prompt_plan`, D366), and the row says how many
+    calls that is. Post-processing passes no queue: its calls are packed well under the line
+    (`chunking.prompt_budget_chars`)."""
     if output_ratio is None:
         return []
-    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, price_multiplier
+    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, list_price, price_multiplier
     rows = []
     for m in all_models():
         model_tokens = est_tokens * (catalog_tokenizer_ratio(m["id"]) or 1.0)
         model_output = model_tokens * output_ratio
+        plan = (long_prompt_plan(queue_files, m["id"], None, vault) if queue_files
+                else {"share": 0.0, "calls": 0})
         # Priced at the rate in force right now (D217): a model with a time-of-day schedule costs
         # what it would cost to start the run at this moment, and carries the multiplier so the
         # caller can say so — a row silently 2x its neighbours' rate reads as a catalog error.
         multiplier = price_multiplier(m["id"])
         rows.append({"id": m["id"], "name": m["name"], "provider": m["provider"],
-                      "price_multiplier": multiplier,
-                      "cost": (model_tokens * m["input"] + model_output * m["output"]) * multiplier})
+                      "price_multiplier": multiplier, "long_prompt_calls": plan["calls"],
+                      "cost": list_price(m["id"], model_tokens, model_output, plan["share"])})
     rows.sort(key=lambda r: r["cost"])
     return rows
 
 
-def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
+def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3,
+                             queue_files: list[dict] | None = None) -> list[dict]:
     """`cost_estimate`'s queue projection, extended across every catalog model (#469) — a cost
     comparison across providers before committing to one. `est_tokens` should be `cost_estimate`'s
     own already-calibrated figure, so this projection starts from the same 'tokens in' number the
-    single-model estimate already shows."""
-    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs))
+    single-model estimate already shows. `queue_files` lets each model's row price the calls that
+    will cross its long-prompt line at that card (D366)."""
+    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs),
+                                    queue_files, vault)
 
 
 def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
@@ -327,8 +391,24 @@ def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: in
     return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs, finalize_only=True))
 
 
+def _long_prompt_factor(model: str | None, output_ratio: float | None) -> float:
+    """How many times dearer a call at `model`'s long-prompt card is than the same call at its
+    ordinary card, for a call writing `output_ratio` output tokens per input token (D366): 5 on
+    Claude Haiku 5.5 whatever the mix, between 1.5 and 2 on the OpenAI entries. 1.0 for a model
+    that prices flat."""
+    from watchdog import model_catalog, model_client
+    model_id = model_client.resolve_model_id(model or model_client.DEFAULT_TIER)
+    if model_catalog.long_context_card(model_id) is None:
+        return 1.0
+    r = output_ratio if output_ratio is not None else 0.24
+    low = model_catalog.list_price(model_id, 1.0, r)
+    high = model_catalog.list_price(model_id, 1.0, r, long_share=1.0)
+    return high / low if low else 1.0
+
+
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
-                   max_runs: int = 3, usage_files: list[Path] | None = None) -> dict:
+                   max_runs: int = 3, usage_files: list[Path] | None = None,
+                   model: str | None = None) -> dict:
     """Pre-flight token/cost estimate for a queue (#269): the queue's calibrated `est_tokens`
     (`scan_queue`, `_tokens_calibration`, #417) times this vault's own $/token history, read
     fresh from the last `max_runs` usage files rather than averaged, so the result is a range —
@@ -340,7 +420,13 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     ``usage_files``, when given, replaces this vault's own history as the $/token ratio source
     (#478) — for a vault guaranteed to have none yet by design (every benchmark arm is a freshly
     seeded vault, `BENCHMARKING.md`), the caller can supply usage files archived from a prior run
-    of the same model/effort/backend combination elsewhere."""
+    of the same model/effort/backend combination elsewhere.
+
+    ``model``, the extraction model, makes the figure tier-aware (D366): the queue's calls that
+    will cross the model's long-prompt line (`long_prompt_plan`) have their share of the cost
+    scaled by `_long_prompt_factor`, and `long_prompt_calls`/`long_prompt_documents` say how many.
+    The history ratio is taken as the ordinary card's, since sectioning keeps most calls under the
+    line; a history that itself crossed it makes the high end a little high, the safe side."""
     documents = len(queue_files)
     pages = sum(f.get("page_count") or 0 for f in queue_files)
     raw_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
@@ -348,9 +434,18 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
               "cost_low": None, "cost_high": None, "runs_used": 0,
-              "subscription": backend == "claude-agent-sdk"}
+              "subscription": backend == "claude-agent-sdk",
+              "long_prompt_calls": 0, "long_prompt_documents": 0}
     if backend == "claude-agent-sdk" or not documents:
         return result
+    plan = (long_prompt_plan(queue_files, model, backend, vault) if model is not None
+            else {"share": 0.0, "calls": 0, "documents": 0})
+    result["long_prompt_calls"] = plan["calls"]
+    result["long_prompt_documents"] = plan["documents"]
+    scale = 1.0
+    if plan["share"]:
+        factor = _long_prompt_factor(model, _output_token_ratio(vault, max_runs))
+        scale = (1 - plan["share"]) + plan["share"] * factor
 
     from watchdog.pipeline import orchestrate
     files = orchestrate.usage_files(vault) if usage_files is None else usage_files
@@ -365,8 +460,8 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
             ratios.append(cost_usd / input_tokens)
 
     if ratios:
-        result["cost_low"] = est_tokens * min(ratios)
-        result["cost_high"] = est_tokens * max(ratios)
+        result["cost_low"] = est_tokens * min(ratios) * scale
+        result["cost_high"] = est_tokens * max(ratios) * scale
         result["runs_used"] = len(ratios)
     return result
 
