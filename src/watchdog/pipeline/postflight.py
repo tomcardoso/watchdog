@@ -57,29 +57,62 @@ def _config_get(key: str, default):
     return user_config.get(key, default)
 
 
+# An extraction of this many facts or fewer that carries a placeholder quote locator ended early
+# (D376). In #804's collapses the answer stopped after a fact or two with `"x"` or `"[]"` as a
+# locator, and none of 2,780 facts in full extractions carried one.
+_ENDED_EARLY_MAX_FACTS = 3
+
+
+def _placeholder_locator(facts: list) -> bool:
+    """A fact's `quote_locator` is a placeholder rather than words from the page: not a string, or
+    fewer than three letters and digits (`"x"`, `"[]"`, `"..."`). An omitted locator is not one."""
+    for f in facts:
+        if not isinstance(f, dict) or "quote_locator" not in f or f["quote_locator"] is None:
+            continue
+        loc = f["quote_locator"]
+        if not isinstance(loc, str) or sum(c.isalnum() for c in loc) < 3:
+            return True
+    return False
+
+
 def find_thin_extraction(extraction: dict, page_texts: dict[int, str] | None) -> dict | None:
-    """Whether an extraction kept implausibly few facts for the length of its source (D367):
-    ``{"facts", "words", "expected_min"}`` when it did, None when it did not, when it kept none
-    (the empty-extraction guard's case) or when there is no source text to weigh. `expected_min`
-    is the fewest facts that would not have been flagged."""
+    """Whether an extraction stopped short (D367, D376): ``{"facts", "words", "expected_min"}``,
+    with ``"ended_early": True`` when the answer ended with a placeholder quote locator, or None.
+
+    Two signals. Too few facts for the length of the source: fewer than one per
+    `thin_extraction_words_per_fact` words (`expected_min` is the fewest that would pass; 0 turns
+    this signal off). And an answer that ended early: at most `_ENDED_EARLY_MAX_FACTS` facts, one
+    of them with a placeholder locator, which also catches a short document the first signal never
+    flags. None when the extraction kept no facts (the empty-extraction guard's case)."""
     try:
         per_fact = int(_config_get("thin_extraction_words_per_fact", _THIN_WORDS_PER_FACT))
     except (TypeError, ValueError):
         per_fact = _THIN_WORDS_PER_FACT
-    if per_fact <= 0:
-        return None
     words = sum(len(t.split()) for t in (page_texts or {}).values())
-    facts = len((extraction.get("document") or {}).get("key_facts") or [])
-    if facts == 0 or facts * per_fact >= words:
+    key_facts = (extraction.get("document") or {}).get("key_facts") or []
+    facts = len(key_facts)
+    if facts == 0:
         return None
-    return {"facts": facts, "words": words, "expected_min": -(-words // per_fact)}
+    too_few = per_fact > 0 and facts * per_fact < words
+    ended_early = facts <= _ENDED_EARLY_MAX_FACTS and _placeholder_locator(key_facts)
+    if not too_few and not ended_early:
+        return None
+    out = {"facts": facts, "words": words,
+           "expected_min": -(-words // per_fact) if too_few else None}
+    if ended_early:
+        out["ended_early"] = True
+    return out
 
 
 def render_thin_warning(thin: dict) -> str:
     """The thin-extraction warning as processing.log and the run's output show it."""
-    return (f"thin extraction: {thin['facts']} fact{'s' if thin['facts'] != 1 else ''} from "
-            f"{thin['words']:,} words of text (at least {thin['expected_min']} expected) — the "
-            f"model may have stopped early; retry this document's extraction")
+    facts = f"{thin['facts']} fact{'s' if thin['facts'] != 1 else ''}"
+    if thin.get("expected_min") is None:
+        return (f"extraction ended early: {facts}, the last with a placeholder in place of a quote "
+                f"— the model stopped mid-answer; retry this document's extraction")
+    return (f"thin extraction: {facts} from {thin['words']:,} words of text (at least "
+            f"{thin['expected_min']} expected) — the model may have stopped early; retry this "
+            f"document's extraction")
 
 
 def _fact_page(f: dict) -> int | None:

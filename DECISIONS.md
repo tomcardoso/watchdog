@@ -3177,3 +3177,11 @@ A benchmark run's cost preview was about a third of the bill for Haiku 5.5 at `h
 Anthropic's free token counter (`benchmarks/tokenizer_ratio.py --count`) over a fresh corpus-v1 chew gives Haiku 5.5 and Sonnet 5.5 identical counts, a ratio of 1.235 (per document 1.205 to 1.666), replacing Haiku's derived 1.21 and Sonnet's copied 1.28. Sections size by it: Sonnet's whole-document threshold rises from 93,750 to 97,165 est tokens and Haiku's from 74,380 to 72,874.
 
 Tradeoff: the 0.68 output ratio stays, as it serves every model and one model's measurement is no basis to change it; with history matching again, a model run once no longer depends on it. The previews checked here were priced from the same runs they are compared with, which checks the arithmetic, not a forecast. No migration (I19): nothing stored changes.
+
+### D376 — An answer that ended early is flagged, and incomplete documents are offered for retry together
+
+Haiku 5.5 at `high` sometimes ends its extraction part-way (#804): about one call in ten on a fixed request, three of eighteen documents a run. The model knows the facts it left out (asked, it lists them), the cause looks like answer generation under enforced JSON at long reasoning, out of our reach, and three changes to the prompt and schema did not move it. Each collapse ended with a placeholder `quote_locator` (`"x"`, `"[]"`), which none of 2,780 facts in full extractions carried. `postflight.find_thin_extraction` now also flags an extraction of at most three facts carrying a placeholder locator (`ended_early`), which catches short documents the words-per-fact rule (D367) never flags. The Documents screen names the incomplete documents at the top with Retry all, the same retry with its estimate and acknowledgement, over several documents.
+
+Rejected: an automatic retry, which would spend money the reporter had not approved; switching enforced JSON off, since 4 of 10 answers without it were invalid JSON and would need a repair step; further prompt changes.
+
+Tradeoff: the three-fact limit and the placeholder test are fitted on three collapses. A placeholder in a full answer is left alone, as a bad locator rather than an answer that stopped. Recovery stays the reporter's call and costs a retry. No migration (I19): records gain the flag only on their next extraction.

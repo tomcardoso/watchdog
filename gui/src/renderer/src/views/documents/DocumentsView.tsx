@@ -3,10 +3,10 @@
 
 import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, Copy, FileText, LayoutGrid, List as ListIcon, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, FileText, LayoutGrid, List as ListIcon, RotateCw, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
-import { Button, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@renderer/components/ui'
+import { Button, Callout, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@renderer/components/ui'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
@@ -14,6 +14,7 @@ import { useJobRunningIn } from '@renderer/lib/jobs'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentRow } from '@shared/api'
 import { PipelineStrip } from './PipelineStrip'
+import { RetryExtractionModal } from './RetryExtraction'
 import './documents.css'
 
 type Layout = 'grid' | 'list'
@@ -161,6 +162,10 @@ export default function DocumentsView() {
   }
 
   const docs = docsQ.data
+  // Documents whose extraction stopped short and can be sent again (D367, D376), offered together
+  // at the top of the page so a run's incomplete documents are seen without opening each one.
+  const retryable = useMemo(() => (docs ?? []).filter((d) => d.thin_extraction?.retry), [docs])
+  const [retryOpen, setRetryOpen] = useState(false)
   const facets = useMemo(() => {
     const uniq = (f: (d: DocumentRow) => string | null) =>
       [...new Set((docs ?? []).map(f).filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b))
@@ -244,6 +249,23 @@ export default function DocumentsView() {
         </div>
 
         {pipe && pipeHasWork && <PipelineStrip pipeline={pipe} />}
+
+        {!running && retryable.length > 0 && (
+          <Callout
+            tone="warning"
+            title={`${plural(retryable.length, 'document')} look${retryable.length === 1 ? 's' : ''} incomplete`}
+            action={<Button size="sm" icon={RotateCw} onClick={() => setRetryOpen(true)}>{retryable.length === 1 ? 'Retry…' : 'Retry all…'}</Button>}
+            style={{ marginBottom: 16 }}
+          >
+            The extraction model stopped early or kept very few facts for {retryable.length === 1 ? 'it' : 'them'}. This usually comes right on a second try. Retrying shows the cost first, and nothing is sent until you confirm.
+          </Callout>
+        )}
+        <RetryExtractionModal
+          open={retryOpen}
+          onClose={() => setRetryOpen(false)}
+          shas={retryable.map((d) => d.sha)}
+          label={retryable.length === 1 ? retryable[0].filename : plural(retryable.length, 'document')}
+        />
 
         {docsQ.isError ? (
           <ErrorNote error={docsQ.error} retry={() => docsQ.refetch()} />
