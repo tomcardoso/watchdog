@@ -91,6 +91,16 @@ export interface DocumentRow {
   /** "audio" or "video" for a recording, else null (D273). */
   media_kind?: 'audio' | 'video' | null
   duration_seconds?: number | null
+  /** Set when the extraction kept implausibly few facts for the document's length (D367);
+   * `retry` is whether Retry extraction can send its text again. */
+  thin_extraction?: ThinExtraction | null
+}
+
+export interface ThinExtraction {
+  facts: number | null
+  words: number | null
+  expected_min: number | null
+  retry: boolean
 }
 
 export interface EntityRef { id: string; name: string; type: EntityType | string }
@@ -485,6 +495,8 @@ export interface RunOptions {
   skip_briefing?: boolean
   chew_workers?: number
   chunk_workers?: number
+  /** Retry extraction (D367): re-extract only these documents, by sha, though already added. */
+  reextract?: string[]
 }
 
 export interface Preflight {
@@ -674,6 +686,8 @@ export interface OpParams {
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }
+  'reasoning-export': { output: string; run: string }
+  'reasoning-clear': NoParams
   'diagnostics-report': { output: string }
   'merge-entities': { keep: string; merge: string }
   'merge-entity-pairs': { keep: string[]; merge: string[] }
@@ -701,6 +715,16 @@ export interface OpParams {
   'sample-create': { dir?: string; rebuild?: boolean }
 }
 export type OpName = keyof OpParams
+/** One run whose model reasoning was saved (D368). */
+export interface ReasoningRun {
+  run_id: string
+  calls: number
+  with_reasoning: number
+  bytes: number
+  started: string | null
+  documents: string[]
+}
+export interface ReasoningRuns { enabled: boolean; folder: string; runs: ReasoningRun[] }
 /** What a copy for troubleshooting would hold, before compression (D323). */
 export interface TroubleshootingSize { files: number; bytes: number; originals_files: number; originals_bytes: number }
 export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
@@ -995,6 +1019,7 @@ export interface Methods {
   'vault.checkCitations': [{ vault: string }, CitationReport]
   'vault.troubleshootingSize': [{ vault: string }, TroubleshootingSize]
   'vault.diagnosticsReport': [{ vault: string }, { text: string }]
+  'vault.reasoningRuns': [{ vault: string }, ReasoningRuns]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]

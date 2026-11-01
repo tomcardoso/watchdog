@@ -17,6 +17,8 @@ const LABELS: Record<string, string> = {
   extract_concurrency: 'Extraction concurrency',
   extract_token_budget: 'Extraction token budget',
   empty_extraction_min_words: 'Empty-extraction minimum words',
+  thin_extraction_words_per_fact: 'Thin-extraction words per fact',
+  save_reasoning: 'Save model reasoning',
   local_base_url: 'Local model URL',
   openrouter_base_url: 'OpenRouter URL',
   dup_threshold: 'Duplicate threshold',

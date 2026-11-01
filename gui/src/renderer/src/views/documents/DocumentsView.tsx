@@ -82,6 +82,7 @@ function Card({ d }: { d: DocumentRow }) {
         {d.document_type && <span className="type">{d.document_type}</span>}
         {d.date_of_document && <span>{fmtDate(d.date_of_document)}</span>}
         {d.entity_count > 0 && <span>{plural(d.entity_count, 'entity', 'entities')}</span>}
+        {d.thin_extraction && <span className="thin" data-tip="Few facts were extracted for a document this long. Open it to retry the extraction.">Few facts</span>}
       </div>
     </button>
   )
@@ -96,6 +97,7 @@ function ListRow({ d }: { d: DocumentRow }) {
         <span className="f truncate">
           {d.title ? d.filename : d.ext.toUpperCase()}
           {d.near_duplicate_of ? (d.duplicate_verdict === 'copies' ? ' · copy' : ' · possible duplicate') : ''}
+          {d.thin_extraction && <span className="thin"> · few facts extracted</span>}
         </span>
       </div>
       <span className="cell truncate">{d.document_type ?? ''}</span>

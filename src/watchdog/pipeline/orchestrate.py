@@ -82,6 +82,10 @@ class _RunState:
     # run began, keyed by the reset time it was counted from (D324). None outside a run.
     vault: "Path | None" = None
     spend_baseline: "tuple[str | None, float] | None" = None
+    # Saving each call's reasoning (D368): on for the run when the `save_reasoning` setting is on
+    # or a benchmark arm is running; `reasoning_seq` numbers the run's reasoning files.
+    save_reasoning: bool = False
+    reasoning_seq: int = 0
 
 
 _run = _RunState()
@@ -167,7 +171,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
                   vault: Path | None = None, prompt_hash: str | None = None,
-                  key_label: str | None = None) -> None:
+                  key_label: str | None = None, stop_reason: str | None = None,
+                  reasoning_file: str | None = None) -> None:
     """Append one call's usage record to `_run.usage` (and the run's partial file), if a run is active.
 
     Takes explicit fields rather than a `ModelResult` so batch-collected items can be recorded too.
@@ -214,8 +219,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
     if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
         record["reasoning_tokens"] = reasoning_tokens
-    if u.get("stop_reason"):
-        record["stop_reason"] = u["stop_reason"]
+    # The call's own stop reason (D368): from the model client for a live call, from the usage
+    # dict for a batch-collected item (`batch_extract` puts it there).
+    if stop_reason or u.get("stop_reason"):
+        record["stop_reason"] = stop_reason or u["stop_reason"]
+    if reasoning_file:
+        record["reasoning_file"] = reasoning_file
     if pruned:
         record["pruned"] = pruned
     if failed:
@@ -265,22 +274,43 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     prompt_text = prompt if isinstance(prompt, str) else json.dumps(prompt, sort_keys=True)
     prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     est_prompt_tokens = section.est_tokens(prompt_text)
+    # Saving reasoning (D368) is asked for only while it is on: off, the call is made exactly as
+    # before, with no new argument.
+    capture = _run.save_reasoning and _run.vault is not None and _run.run_id is not None
+    extra = {"capture_reasoning": True} if capture else {}
+
+    def save(res, failed: bool = False) -> str | None:
+        if not capture:
+            return None
+        from watchdog.pipeline import reasoning
+        _run.reasoning_seq += 1
+        return reasoning.write_call(
+            _run.vault, _run.run_id, _run.reasoning_seq, task=task,
+            model=getattr(res, "model", None), backend=getattr(res, "backend", None),
+            effort=effort, filename=filename, detail=detail,
+            stop_reason=getattr(res, "stop_reason", None), usage=getattr(res, "usage", None),
+            reasoning=getattr(res, "reasoning", None), failed=failed)
+
     try:
         r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
-                                              backend=backend, max_retries=max_retries, effort=effort)
+                                              backend=backend, max_retries=max_retries, effort=effort,
+                                              **extra)
     except model_client.ModelError as e:
         if e.usage is not None or e.cost_usd is not None:
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
                          est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None))
+                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None),
+                         stop_reason=getattr(e, "stop_reason", None),
+                         reasoning_file=save(e, failed=True))
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
                  est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None))
+                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None),
+                 stop_reason=getattr(r, "stop_reason", None), reasoning_file=save(r))
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -525,6 +555,10 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     _run.run_id = ts
     _run.benchmark_arm_id = benchmark_arm_id
     _run.config_snapshot = config_snapshot
+    # Every benchmark run keeps its reasoning (D368); otherwise the setting decides.
+    from watchdog.pipeline import reasoning
+    _run.save_reasoning = benchmark_arm_id is not None or reasoning.enabled()
+    _run.reasoning_seq = 0
 
 
 def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[str | None, dict | None]:
@@ -553,6 +587,8 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     _run.run_id = None
     _run.benchmark_arm_id = None
     _run.config_snapshot = None
+    _run.save_reasoning = False
+    _run.reasoning_seq = 0
     return path, totals
 
 
@@ -3097,13 +3133,26 @@ def stage_identity_log(artifact: dict, entry: dict) -> None:
 def _pending_commits(vault: Path) -> list[str]:
     """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
     not yet a key in `registry/documents.json` — sorted, so the commit pass that consumes this
-    runs in a fixed order regardless of which document happened to extract first."""
+    runs in a fixed order regardless of which document happened to extract first.
+
+    A committed document re-extracted since its queue descriptor was put back (`force`, or Retry
+    extraction, D367) is pending again: its descriptor is still queued, and its artifact is newer
+    than it. The commit removes the descriptor, so it is committed once."""
     extracted_dir = vault / ".watchdog" / "extracted"
     if not extracted_dir.exists():
         return []
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
     committed = set(_read_json_or(documents_path, []))
-    return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
+    queue_dir = vault / ".watchdog" / "queue"
+
+    def re_extracted(p: Path) -> bool:
+        try:
+            return p.stat().st_mtime >= (queue_dir / p.name).stat().st_mtime
+        except OSError:
+            return False
+
+    return sorted(p.stem for p in extracted_dir.glob("*.json")
+                  if p.stem not in committed or re_extracted(p))
 
 
 def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
@@ -3135,6 +3184,11 @@ def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
         _say(f"⚠  commit failed for {sha[:12]}… — {e}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
+    # A thin extraction keeps its queue descriptor for Retry extraction (D367); one that is not
+    # thin drops any copy an earlier, thin extraction of it left.
+    from watchdog.pipeline.ingest_setup import keep_for_retry
+    staged_doc = _read_json_or(extracted_path, {}).get("document") or {}
+    keep_for_retry(vault, sha, bool(staged_doc.get("thin_extraction")))
     if batch is not None:
         batch.committed(after_flush=lambda: queue_file.unlink(missing_ok=True))
     else:

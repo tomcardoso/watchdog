@@ -84,6 +84,12 @@ Open a document to read it: the original on the left, with page navigation and z
 
 A recording opens in a player with its transcript below; the passage being spoken is highlighted as it plays. Some formats (`.avi` and some `.mkv` files) cannot be played inside Watchdog; **Open original** plays them in another app.
 
+### Few facts and Retry extraction
+
+Now and then a model stops early and keeps only one or two facts from a long document, while its summary and entities look normal. Watchdog checks every extraction against the length of the document's text. When there are far fewer facts than usual, about one for every 1,000 words or fewer where one per 250 is typical, the document is still added, but it is marked **Few facts** in the list and its page shows a warning with **Retry extraction**. The [processing log](#activity-and-maintenance) records it too.
+
+**Retry extraction** sends that one document to the extraction model again, with your current models and effort, then runs the finishing step. It shows the estimated cost and, where it applies, the public-records warning first, and nothing is sent until you confirm. Anything else waiting to be added stays where it is. The earlier facts stay until the new extraction has been checked and saved; if the new one still has few facts, the warning stays. A short document with few facts is never flagged, and you can change when the warning appears under [Settings → Processing](models-and-cost.md#thin-extraction-words-per-fact).
+
 ## Checking facts
 
 Every fact Watchdog extracts is a claim to check, not a finding. The app gives you what you need to check it, and a place to record that you did.
@@ -304,6 +310,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Rebuild the search index** | Rebuilds search from what Watchdog has already read, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
 | **Export a copy for troubleshooting** | Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog's records and notes for this investigation, for your own use, never for an issue. The dialog shows the report in full before it is saved. The original documents go in the zip only if you include them. See [sending a copy of the investigation](troubleshooting.md#sending-a-copy-of-the-investigation). |
+| **Saved model reasoning** | Saves one run's model reasoning to a zip, or clears what was saved, when [Save model reasoning](models-and-cost.md#save-model-reasoning) is on. See [sharing debugging information](troubleshooting.md#sharing-debugging-information). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude. Watchdog does this by itself whenever a conversation starts; use it to do it now, for example before opening the folder in Claude Code. |
 
 ### Bringing an investigation up to date
