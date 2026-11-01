@@ -554,7 +554,71 @@ async def _housekeeping_apply(ctx: Context) -> dict:
     return out
 
 
+# ── long-prompt costs (D366) ─────────────────────────────────────────────────────────────
+
+def _long_prompt_scan(ctx: Context, write: bool) -> dict:
+    """Every stored call over its model's long-prompt line, repriced at that card
+    (`model_client.reprice_long_prompt_record`). A repriced call keeps what was first recorded as
+    `cost_usd_recorded`, which also marks it done, so a second run changes nothing; the file's
+    totals are summed again. Usage files are app-owned and in no history version."""
+    from watchdog import model_client
+    from watchdog.pipeline import orchestrate
+    out = {"calls": 0, "files": 0, "before": 0.0, "after": 0.0}
+    for uf in orchestrate.usage_files(ctx.vault):
+        data = _read_json_or(uf, None)
+        if not isinstance(data, dict) or not isinstance(data.get("calls"), list):
+            continue
+        changed = False
+        for rec in data["calls"]:
+            if not isinstance(rec, dict) or "cost_usd_recorded" in rec:
+                continue
+            new = model_client.reprice_long_prompt_record(rec)
+            old = rec.get("cost_usd") or 0.0
+            if new is None or abs(new - old) < 1e-9:
+                continue
+            out["calls"] += 1
+            out["before"] += old
+            out["after"] += new
+            if write:
+                rec["cost_usd_recorded"] = rec.get("cost_usd")
+                rec["cost_usd"] = round(new, 6)
+                changed = True
+        if changed:
+            out["files"] += 1
+            totals = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+            totals["cost_usd"] = round(sum(c.get("cost_usd") or 0.0 for c in data["calls"]
+                                           if isinstance(c, dict)), 6)
+            data["totals"] = totals
+            tmp = uf.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, uf)
+    return out
+
+
+def _long_prompt_estimate(ctx: Context) -> dict:
+    t = _long_prompt_scan(ctx, write=False)
+    return {"items": t["calls"], "calls": 0, "est_tokens": 0,
+            "detail": f"{_plural(t['calls'], 'recorded model call')} to price at the long-prompt rate"}
+
+
+async def _long_prompt_apply(ctx: Context) -> dict:
+    t = _long_prompt_scan(ctx, write=True)
+    if t["calls"]:
+        summary = (f"Repriced {_plural(t['calls'], 'past model call')} at the long-prompt rate they "
+                   f"were billed at: ${t['before']:,.2f} as first recorded, ${t['after']:,.2f} now.")
+    else:
+        summary = "No past model call was over a long-prompt line; spending unchanged."
+    return {"complete": True, "summary": summary, **t}
+
+
 MIGRATIONS: list[Migration] = [
+    Migration("2026-10-long-prompt-cost", "Cost of past long prompts",
+              "In earlier versions a model call whose prompt was over the model's long-prompt line "
+              "(100,000 tokens on Claude Haiku 5.5, 272,000 on GPT-6 Luna and GPT-5.6 Luna) was "
+              "recorded at the lower rate, though the provider billed all of it at the higher one. "
+              "Prices those calls again from their stored token counts, so Usage matches the bill; "
+              "a key's spending limit keeps the amount it had counted. No AI model is used.",
+              False, None, _long_prompt_estimate, _long_prompt_apply),
     Migration("2026-10-free-fixes", "Free fixes to saved extractions",
               "Points fact tags that are near misses at the entity their document meant, and moves "
               "the citations of one-page texts to page 1, with their quotes and passages found again. "

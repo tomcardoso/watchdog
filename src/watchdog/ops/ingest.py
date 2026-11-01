@@ -129,6 +129,12 @@ def _format_cost_estimate(est: dict) -> str:
         runs = est["runs_used"]
         run_label = "last run" if runs == 1 else f"last {runs} runs"
         line += f" (~{cost} based on your {run_label})"
+    long_docs = est.get("long_prompt_documents") or 0
+    if long_docs and not est.get("subscription"):
+        # D366: a call over the model's long-prompt line is billed in full at the higher rate.
+        line += (f"\n  {long_docs} document{'s are' if long_docs != 1 else ' is'} long enough that "
+                 "a call will cross this model's long-prompt line and be billed at its higher rate; "
+                 "the figure above includes that.")
     return line
 
 
@@ -174,6 +180,10 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
             note = "  (peak rate — this model is cheaper outside peak hours)"
         elif rate < 1:
             note = "  (off-peak rate — this model costs more during peak hours)"
+        long_calls = r.get("long_prompt_calls") or 0
+        if long_calls:
+            note += (f"  ({long_calls} call{'s' if long_calls != 1 else ''} over its long-prompt "
+                     "line, at the higher rate)")
         lines.append(f"    {r['name']:<{name_w}}  {r['provider']:<10}  {cost_s}{note}")
     return "\n".join(lines)
 
@@ -993,7 +1003,8 @@ def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool =
         say(f"Prepared answers: {q} example document{'s' if q != 1 else ''}, no model, no cost.")
     elif q:
         from watchdog.pipeline.ingest_setup import cost_estimate
-        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
+        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]),
+                            model=extract_model)
         say(_format_cost_estimate(est))
         say(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                 post_backend, post_model, plan.classify_effort, plan.extract_effort,
