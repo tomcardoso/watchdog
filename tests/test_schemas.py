@@ -194,3 +194,13 @@ def test_key_fact_rejects_quote():
     key_fact = {"fact": "something happened", "quote": "A full verbatim sentence."}
     errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
     assert errors
+
+
+def test_extraction_writes_entities_then_facts_then_summary():
+    """Decode order follows declaration order (D208): entities before the document (D216), and
+    within it key_facts before summary (D374), in both the whole-document and section schemas."""
+    assert list(schemas.EXTRACTION["properties"])[:2] == ["entities", "document"]
+    for doc in (schemas.EXTRACTION["properties"]["document"], schemas.SECTION["properties"]["document"]):
+        order = list(doc["properties"])
+        assert order.index("key_facts") < order.index("summary")
+        assert order.index("plan") < order.index("key_facts")

@@ -100,7 +100,6 @@ _DOCUMENT = _obj(
         "title": {"type": "string"},
         "document_type": {"type": "string"},
         "date_of_document": _NULLABLE_STR,
-        "summary": {"type": "string"},
         # Visible scratch space, read by nothing downstream (#570). Ordered ahead of key_facts
         # because structured-output decoding fills an object's properties in schema-declaration
         # order — a model with no private reasoning channel (extract_instructions.md's scaffold
@@ -110,6 +109,10 @@ _DOCUMENT = _obj(
         # optional, so leaving it empty costs nothing.
         "plan": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
+        # `summary` after `key_facts` (D374): in the collapses of #804 the model wrote full
+        # entities and a full summary, then only the first two or three facts. Facts first means
+        # the summary is written from facts already in the answer, as its rules require.
+        "summary": {"type": "string"},
     },
     ["title", "document_type", "summary", "key_facts"],
 )
