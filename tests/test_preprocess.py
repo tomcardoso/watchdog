@@ -1182,3 +1182,38 @@ def test_auto_passes_over_tesseract_without_language_data_but_the_tesseract_sett
     monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("./", [])))
     assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
     assert isinstance(preprocess._make_tesseract_opts(False, required=True), TesseractOcrOptions)
+
+
+# ── auto's engine off macOS (D373) ───────────────────────────────────────────
+
+def _auto_engine(monkeypatch, *, rapid: bool, tesseract_ready: bool, platform: str = "linux"):
+    pytest.importorskip("docling")
+    from docling.datamodel.base_models import InputFormat
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "auto" if key == "ocr_engine" else default)
+    monkeypatch.setattr(preprocess.sys, "platform", platform)
+    monkeypatch.setattr(preprocess, "_rapidocr_installed", lambda: rapid)
+    monkeypatch.setattr(preprocess, "_tesseract_ready", lambda: tesseract_ready)
+    import types
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace())
+    conv = preprocess.build_converter(False, load_models=False)
+    return type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__
+
+
+def test_auto_uses_rapidocr_off_macos_even_with_tesseract_ready(monkeypatch):
+    assert _auto_engine(monkeypatch, rapid=True, tesseract_ready=True) == "RapidOcrOptions"
+
+
+def test_auto_falls_back_to_tesseract_then_doclings_pick_without_rapidocr(monkeypatch):
+    assert _auto_engine(monkeypatch, rapid=False, tesseract_ready=True) == "TesseractOcrOptions"
+    assert _auto_engine(monkeypatch, rapid=False, tesseract_ready=False) == "OcrAutoOptions"
+
+
+def test_the_tesseract_setting_still_uses_tesseract(monkeypatch):
+    pytest.importorskip("docling")
+    import types
+    from docling.datamodel.base_models import InputFormat
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "tesseract" if key == "ocr_engine" else default)
+    monkeypatch.setattr(preprocess, "_rapidocr_installed", lambda: True)
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace())
+    conv = preprocess.build_converter(False, load_models=False)
+    assert type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__ == "TesseractOcrOptions"

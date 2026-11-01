@@ -109,8 +109,9 @@ process (§14.5); there is no command line (D300). A failed document is set asid
 - **What read the text (D372).** The queue descriptor's `metadata` names the OCR engine a
   conversion actually used (`ocr_engine`, read from the OCR model Docling built, so `auto` is
   resolved; `none` for a file's own text; joined with `+` when slices differed), the setting as
-  written, the engine's and Docling's versions and the platform. Under `auto`, Tesseract is
-  passed over when it finds no language data.
+  written, the engine's and Docling's versions and the platform. `auto` is Apple Vision on
+  macOS and RapidOCR elsewhere (D373); Tesseract is its fallback only where RapidOCR is missing,
+  and then only when it finds language data.
 
 ---
 

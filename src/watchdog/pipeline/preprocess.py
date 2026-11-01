@@ -416,6 +416,14 @@ def _tesseract_ready() -> bool:
     return any(lang != "osd" for lang in langs)
 
 
+def _rapidocr_installed() -> bool:
+    """RapidOCR is importable: `auto`'s engine off macOS (D373). It read the corpus's scanned
+    pages slightly closer to the answer keys than Tesseract did, kept headings and image text
+    Tesseract dropped, and needs no system install or language data."""
+    from importlib.util import find_spec
+    return any(find_spec(m) is not None for m in ("rapidocr", "rapidocr_onnxruntime"))
+
+
 def _make_tesseract_opts(force_ocr: bool, *, required: bool = False):
     """TesseractOcrOptions when Tesseract is ready, else OcrAutoOptions. With `required` (the
     `tesseract` setting rather than `auto`), Tesseract is used whenever tesserocr imports, so a
@@ -453,10 +461,11 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
     `ocr_scale` sets a forced-OCR conversion's OCR (and render) scale, in pixels per point; unset,
     Docling's default (3) stands.
 
-    Engine selection (auto mode):
+    Engine selection (auto mode, D373):
       1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
-      2. Tesseract (if system binary found) — accurate on document text
-      3. EasyOCR (OcrAutoOptions) — universal fallback, no system deps
+      2. RapidOCR, everywhere else — ships with the engine, no system install
+      3. Tesseract, when RapidOCR is missing and Tesseract finds language data
+      4. Docling's own pick (OcrAutoOptions) — the last resort
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.pipeline_options import (
@@ -483,10 +492,10 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
     if ocr_opts is None:
         if engine == "easyocr":
             ocr_opts = OcrAutoOptions(force_full_page_ocr=force_ocr)
-        elif engine == "rapidocr":
+        elif engine == "rapidocr" or (engine == "auto" and _rapidocr_installed()):
             from docling.datamodel.pipeline_options import RapidOcrOptions
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
-        else:  # auto or tesseract
+        else:  # tesseract, or auto without RapidOCR
             ocr_opts = _make_tesseract_opts(force_ocr, required=engine == "tesseract")
     if force_ocr and ocr_scale:
         ocr_opts.scale = ocr_scale

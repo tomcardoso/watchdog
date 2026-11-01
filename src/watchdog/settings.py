@@ -36,8 +36,8 @@ SETTINGS = {
         "short": "OCR engine for scanned documents (default: auto)",
         "help": (
             "OCR engine used when processing scanned documents.\n"
-            "  auto:         Apple Vision on macOS (if ocrmac installed); elsewhere Tesseract when\n"
-            "                it is installed with its language data, otherwise RapidOCR or EasyOCR.\n"
+            "  auto:         Apple Vision on macOS (if ocrmac installed); RapidOCR elsewhere, or\n"
+            "                Tesseract (with its language data) where RapidOCR is not installed.\n"
             "  apple_vision: Apple Vision only — macOS with ocrmac required.\n"
             "  tesseract:    Tesseract — requires system install (brew or apt install tesseract-ocr).\n"
             "  easyocr:      EasyOCR — pure pip install, no system deps, less accurate on forms.\n"
