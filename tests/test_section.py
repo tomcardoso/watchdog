@@ -229,9 +229,9 @@ def flat_openai(catalog_entry):
 def test_model_defaults_scale_with_context_window():
     # 0.6 / 0.3 of the model's context window, then divided by the model's tokenizer_ratio
     # (#617). Claude's 200K window gives the historical 120K/60K before that division; the new
-    # Claude tokenizer's 1.28 shrinks it to 93,750/46,875.
-    assert section.model_defaults("sonnet") == (int(120_000 / 1.28), int(60_000 / 1.28))
-    assert section.model_defaults(None) == (93_750, 46_875)              # default tier
+    # Claude tokenizer's 1.235 (measured, D375) shrinks it to 97,165/48,582.
+    assert section.model_defaults("sonnet") == (int(120_000 / 1.235), int(60_000 / 1.235))
+    assert section.model_defaults(None) == (97_165, 48_582)              # default tier
     assert section.model_defaults("deepseek-flash") == (740_740, 370_370)   # 1M window / 0.81
     # `gpt-5-mini` is NOT in the catalog, so it declares no
     # ratio and its window fractions pass through undivided — the uncorrected control.
@@ -240,7 +240,7 @@ def test_model_defaults_scale_with_context_window():
 
 def test_section_token_threshold_model_aware(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    assert section.section_token_threshold("sonnet") == 93_750         # 120K / 1.28 (#617)
+    assert section.section_token_threshold("sonnet") == 97_165         # 120K / 1.235 (D375)
     assert section.section_token_threshold("deepseek-flash") == 740_740  # 600K / 0.81 (#617)
 
 
@@ -255,7 +255,7 @@ def test_section_token_threshold_auto_uses_model_default(monkeypatch):
     # The 'auto' sentinel (or an unset key) falls back to the model-aware default.
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: "auto" if k == "section_token_threshold" else d)
-    assert section.section_token_threshold("sonnet") == 93_750         # 120K / 1.28 (#617)
+    assert section.section_token_threshold("sonnet") == 97_165         # 120K / 1.235 (D375)
     assert section.section_token_threshold("deepseek-flash") == 740_740  # 600K / 0.81 (#617)
 
 
@@ -296,9 +296,9 @@ def test_model_defaults_clamped_below_a_long_context_pricing_tier():
     for model in _OPENAI_TIERED:
         threshold, budget = section.model_defaults(model, backend="openai")
         assert (threshold, budget) == (306_000, 306_000), model
-    # Haiku 5.5 carries its own, lower boundary (100,000) at its own 1.21 ratio. With its real 1M
+    # Haiku 5.5 carries its own, lower boundary (100,000) at its own 1.235 ratio. With its real 1M
     # window (D370) both bind; `plan_calls` then holds the whole prompt under the line.
-    assert section.model_defaults("haiku") == (int(90_000 / 1.21), int(90_000 / 1.21))
+    assert section.model_defaults("haiku") == (int(90_000 / 1.235), int(90_000 / 1.235))
 
 
 def test_long_context_clamp_keeps_real_tokens_under_the_boundary():
@@ -332,7 +332,7 @@ def test_model_defaults_unclamped_for_flat_priced_models(flat_openai):
         assert section.model_defaults(model, backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-flash", backend="deepseek") == (740_740, 370_370)
     for model in ("sonnet",):
-        assert section.model_defaults(model) == (93_750, 46_875)
+        assert section.model_defaults(model) == (97_165, 48_582)
 
 
 def test_long_context_clamp_binds_the_threshold_not_just_the_budget():
@@ -421,10 +421,10 @@ def test_run_no_longer_accepts_an_effort_argument(tmp_path):
 
 def test_model_defaults_shrinks_for_new_tokenizer_claude_model():
     # Claude 4.7+ share a newer tokenizer that produces more real tokens for the same text than the
-    # chars/4 est_tokens heuristic assumes — measured at 1.28 against corpus-v1 (#617) on models
+    # chars/4 est_tokens heuristic assumes — measured at 1.235 against corpus-v1 (D375) on models
     # since removed, and copied to Sonnet 5.5. Threshold/budget
     # shrink by that ratio so the real tokens a call sends still respect the 200K context window.
-    assert section.model_defaults("sonnet") == (int(120_000 / 1.28), int(60_000 / 1.28))
+    assert section.model_defaults("sonnet") == (int(120_000 / 1.235), int(60_000 / 1.235))
 
 
 def test_model_defaults_widen_for_over_estimating_tokenizers(flat_openai):
@@ -438,8 +438,8 @@ def test_model_defaults_widen_for_over_estimating_tokenizers(flat_openai):
     # to clamp against, so the widening is visible rather than masked by the clamp. 400K window:
     # 240_000/0.80.
     assert section.model_defaults(flat_openai, backend="claude-api") == (300_000, 150_000)
-    # Shrinking is the exception — only the Claude 4.7+ tokenizer, at 1.28.
-    assert section.model_defaults("sonnet") == (int(120_000 / 1.28), int(60_000 / 1.28))
+    # Shrinking is the exception — only the Claude 4.7+ tokenizer, at 1.235.
+    assert section.model_defaults("sonnet") == (int(120_000 / 1.235), int(60_000 / 1.235))
     # An uncatalogued id still declares nothing and is the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)
 

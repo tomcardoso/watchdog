@@ -2112,9 +2112,23 @@ def test_preview_extractor_arm_borrows_reference_usage_when_vault_is_fresh(tmp_p
 
     est = rb.preview_extractor_arm(vault, "deepseek:deepseek-flash", None, tmp_path)
 
-    assert est["cost_low"] == est["cost_high"] == 1.5
+    # $1.5 per 1,000 billed prompt tokens, priced on the document's whole planned prompt (the
+    # instructions and checklist ride on every call), not its 1,000 est tokens of text alone.
+    assert est["prompt_tokens"] > est["est_tokens"] == 1000
+    assert est["cost_low"] == est["cost_high"] == pytest.approx(1.5 * est["prompt_tokens"] / 1000)
     assert est["runs_used"] == 1
     assert not est.get("projected")
+
+
+def test_a_runs_digest_call_does_not_stop_it_being_a_reference(tmp_path):
+    """Every run makes a `digest` call with no effort set. Requiring every call to match made
+    every extraction run unusable as history, so previews always fell back to the projection."""
+    digest = _call(task="digest")                      # effort None, as the run records it
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash", "20260101T000000Z",
+                          [_call(effort="high"), _call(effort="high", task="extract-section"), digest],
+                          cost_usd=1.5, input_tokens=1000)
+    assert len(cr.reference_usage_files(tmp_path, "deepseek-flash", "high", "deepseek")) == 1
+    assert cr.reference_usage_files(tmp_path, "deepseek-flash", "low", "deepseek") == []
 
 
 def test_preview_extractor_arm_falls_back_to_catalog_projection_when_nothing_matches(tmp_path):

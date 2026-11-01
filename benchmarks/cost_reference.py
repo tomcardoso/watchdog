@@ -36,15 +36,22 @@ DEFAULT_OUTPUT_RATIO_BY_EFFORT: dict[str | None, float] = {
 
 def _matches(data: dict, model: str, effort: str | None, backend: str | None,
             finalize_only: bool) -> bool:
+    """A usage file is a reference when every call of the stage being priced ran on this model,
+    effort and backend. For extraction that is the `extract`/`extract-section` calls only: a run
+    also makes each sectioned document's `digest` call, with no effort set, and requiring every
+    call to match made every extraction run's history unusable, so the preview always fell back
+    to its rough projection."""
     calls = data.get("calls") or []
-    if not calls:
+    if finalize_only:
+        if not calls or any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
+            return False
+        staged = calls
+    else:
+        staged = [c for c in calls if str(c.get("task") or "").startswith("extract")]
+    if not staged:
         return False
-    if any(c.get("model") != model or c.get("effort") != effort or c.get("backend") != backend
-          for c in calls):
-        return False
-    if finalize_only and any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
-        return False
-    return True
+    return all(c.get("model") == model and c.get("effort") == effort
+               and c.get("backend") == backend for c in staged)
 
 
 def reference_usage_files(benchmarks_root: Path, model: str, effort: str | None,

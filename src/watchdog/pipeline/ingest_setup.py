@@ -282,22 +282,39 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
     return sum(ratios) / len(ratios) if ratios else None
 
 
+def planned_prompts(queue_files: list[dict], model: str | None, backend: str | None,
+                    vault: Path) -> list[list[float]]:
+    """Each queued document's planned extraction calls, as each call's whole prompt in the model's
+    real tokens: `section.plan_document`, the function the run itself sections with (D370), from the
+    queue file, with the vault's brief and the largest record skill (the skill is chosen only when
+    the document is extracted, so a call can be over-counted, never under-counted). A document
+    preflight cannot read is left out."""
+    from watchdog.pipeline import preflight, section
+    registry = preflight.registry_context(vault)
+    skill_text = section.largest_skill_text()
+    brief_path = vault / "context.md"
+    brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else None
+    out = []
+    for f in queue_files:
+        pf = preflight.run(vault, f.get("sha256") or "", registry)
+        if pf.get("error"):
+            continue
+        plan = section.plan_document(pf, model, backend, vault, skill_text=skill_text, brief=brief)
+        out.append([est * plan["ratio"] for est in plan["prompts"]])
+    return out
+
+
 def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
                      vault: Path | None = None) -> dict:
-    """Which of the queue's planned extraction calls will be billed at `model`'s long-prompt card
-    (D366). Each document is planned by `section.plan_document`, the same function the run itself
-    sections with (D370), from its queue file: the whole prompt measured with the real prompt
-    builders, the vault's brief, and the largest record skill (the skill is chosen only when the
-    document is extracted, so the estimate can over-count a call, never under-count it). Planning
-    holds every call under the line, so a call counted here is one that a single page too large
-    for the line forces over it.
+    """Which of the queue's planned extraction calls (`planned_prompts`) will be billed at
+    `model`'s long-prompt card (D366). Planning holds every call under the line, so a call counted
+    here is one that a single page too large for the line forces over it.
 
     Returns ``{"share", "calls", "documents", "threshold"}``: `share` is the fraction of the
     queue's planned prompt tokens in calls over the line, which the estimates price at the upper
     card. All zero for a model that prices flat, an uncatalogued one, a subscription, or no vault
     to read the queue from."""
     from watchdog import model_catalog, model_client
-    from watchdog.pipeline import preflight, section
     out = {"share": 0.0, "calls": 0, "documents": 0, "threshold": None}
     if backend in ("claude-agent-sdk", "local") or not queue_files or vault is None:
         return out
@@ -305,19 +322,10 @@ def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | 
     if tier is None:
         return out
     out["threshold"] = tier[0]
-    registry = preflight.registry_context(vault)
-    skill_text = section.largest_skill_text()
-    brief_path = vault / "context.md"
-    brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else None
     total = over = 0.0
-    for f in queue_files:
-        pf = preflight.run(vault, f.get("sha256") or "", registry)
-        if pf.get("error"):
-            continue
-        plan = section.plan_document(pf, model, backend, vault, skill_text=skill_text, brief=brief)
+    for prompts in planned_prompts(queue_files, model, backend, vault):
         crossed = False
-        for est in plan["prompts"]:
-            prompt = est * plan["ratio"]
+        for prompt in prompts:
             total += prompt
             if prompt > tier[0]:
                 over += prompt

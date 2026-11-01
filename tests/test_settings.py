@@ -75,13 +75,13 @@ def test_every_key_is_in_one_section():
 # ── how a value is shown ─────────────────────────────────────────────────────────
 
 def test_section_auto_shows_the_resolved_number():
-    # 93750 is sonnet's 120K window fraction over its 1.28 tokenizer_ratio (#617).
+    # 97165 is sonnet's 120K window fraction over its 1.235 tokenizer_ratio (D375).
     assert settings.display_value("section_token_threshold", "auto", {"extractor_model": "sonnet"}) \
-        == "auto (93750 — sonnet)"
+        == "auto (97165 — sonnet)"
     assert settings.display_value("section_token_threshold", None, {"extractor_model": "sonnet"}) \
-        == "auto (93750 — sonnet)"
+        == "auto (97165 — sonnet)"
     assert settings.display_value("section_token_budget", None, {"extractor_model": "sonnet"}) \
-        == "auto (46875 — sonnet)"
+        == "auto (48582 — sonnet)"
 
 
 def test_section_auto_resolves_the_default_extractor_when_unset():
@@ -92,7 +92,7 @@ def test_section_auto_resolves_the_default_extractor_when_unset():
 def test_section_auto_names_a_non_claude_backend_only():
     # A Claude backend prefix is inert for the number; a non-Claude one selects the model id.
     assert settings.display_value("section_token_threshold", "auto",
-                                  {"extractor_model": "claude-api:sonnet"}) == "auto (93750 — sonnet)"
+                                  {"extractor_model": "claude-api:sonnet"}) == "auto (97165 — sonnet)"
     assert settings.display_value("section_token_threshold", "auto",
                                   {"extractor_model": "openai:gpt-5-mini"}) == "auto (240000 — openai:gpt-5-mini)"
     assert settings.display_value("section_token_threshold", "auto",
