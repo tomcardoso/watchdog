@@ -30,14 +30,17 @@ class MockAPI:
         self._server.server_close()
 
     def tool_results(self) -> list[dict]:
-        """Every tool_result block the CLI sent back, in order (the last request holds them all)."""
-        out = []
+        """Every tool_result block the CLI sent back, one per tool call, in order. Each request
+        repeats the conversation so far, and the CLI moves its cache breakpoint (`cache_control`)
+        onto the newest block, so the same result can arrive with and without that marker: a
+        result is identified by its `tool_use_id`, and the latest copy is kept."""
+        out: dict[str, dict] = {}
         for body in self.bodies:
             for m in body.get("messages") or []:
                 for c in m.get("content") if isinstance(m.get("content"), list) else []:
-                    if c.get("type") == "tool_result" and c not in out:
-                        out.append(c)
-        return out
+                    if c.get("type") == "tool_result":
+                        out[c.get("tool_use_id")] = c
+        return list(out.values())
 
     def offered_tools(self) -> set[str]:
         """The tool names the main conversation was offered."""
