@@ -484,7 +484,8 @@ def test_claude_catalog_entries_match_the_vendor_figures(model_id, pricing, batc
     assert mc._PRICING[model_id] == pricing
     assert mc._effort_levels("anthropic", model_id) == {"low", "medium", "high", "xhigh", "max"}
     assert mc.catalog_max_output_tokens(model_id) == 128_000
-    assert mc.catalog_context_window(model_id) == 200_000     # 1M listed, pinned per D89
+    # 1M listed for both; Sonnet 5.5 pinned to 200K per D89, Haiku 5.5 the real figure (D370).
+    assert mc.catalog_context_window(model_id) == (1_000_000 if "haiku" in model_id else 200_000)
     assert model_catalog._entry(model_id).get("max_output_tokens_batch") == batch_cap
     assert mc.catalog_needs_thinking_param(model_id) is False  # thinking on by default on all
 
@@ -599,7 +600,7 @@ def test_deepseek_rejects_xhigh(monkeypatch):
 
 @pytest.mark.parametrize("model, window", [
     ("sonnet", 200_000),                        # tier → claude
-    ("haiku", 200_000),
+    ("haiku", 1_000_000),                       # the real window: its price line sizes calls (D370)
     (None, 200_000),                            # default tier (sonnet)
     ("deepseek-flash", 1_000_000),
     ("deepseek-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4

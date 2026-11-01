@@ -134,8 +134,10 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   recent $/token, as a range; for post-processing it prices the staged batch from
   standalone-finalize history. The all-models view prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
   gets token counts, never dollars. For a model priced by prompt length, each document's planned
-  extraction calls (sectioning plus a fixed prompt overhead, `ingest_setup.long_prompt_plan`) decide
-  what share of the queue is priced at the long-prompt card (D366).
+  extraction calls decide what share of the queue is priced at the long-prompt card (D366); they are
+  planned by the same function the run sections with (`section.plan_document`, called from
+  `ingest_setup.long_prompt_plan`, D370), measuring the largest record skill since the skill is
+  chosen only at extraction.
 - **Rate limits (D71, D184).** A `RateLimitError` stops the batch cleanly; unfinished documents
   stay queued and the next `dig` resumes. With `wait` (`RunOptions.wait`) the run sleeps until the
   reported reset and loops, refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
@@ -210,14 +212,22 @@ classify/extract) and `already_extracted` (the sha is committed: nothing to do).
 **`force` (D131).** A processing run with `force` re-extracts staged documents, overwriting the
 artifact. A committed document is not regenerated in place (D300).
 
-**Large documents (D89, D196, D202).** A document over `section_token_threshold` is split into
+**Large documents (D89, D196, D202, D370).** A document over `section_token_threshold` is split into
 overlapping page-range sections, packed greedily by per-page token estimates, extracted one at a
 time with a carry-forward block (entity map plus the previous section's observations), and merged
 (`merge.merge_extractions`). Threshold and budget default to 0.6 and 0.3 of the extractor's context
-window, clamped below any long-context pricing tier (`long_context_threshold`, in real tokens),
-then divided by the model's `tokenizer_ratio` (catalogue value, or the vault's own calibration,
-D180, D190, D198). Each section's result is checkpointed (D157) so a retry replays finished
-sections. A sectioned document's `document.summary` is composed afterwards by one small
+window, measured on the document text, then divided by the model's `tokenizer_ratio` (catalogue
+value, or the vault's own calibration, D180, D190, D198). On a model priced by prompt length
+(`long_context_threshold`) the whole prompt is planned under the line, less 5% for estimate error
+(D370): `section.plan_calls` counts the fixed part rendered with the real prompt builders for the
+document's skill and brief (system prompt and schema included), each page's candidate-checklist
+line (regex half counted live, names from the stored harvest or a per-page reserve; GLiNER is not
+run to plan), and a carry-forward reserve on later sections. A document goes whole only if its
+whole prompt fits; otherwise each section's text and checklist fit the line less that overhead,
+evened out over the fewest sections. Only a single page too large for the line is planned over it,
+and logged. After every model call, a prompt the provider reports over the line that was planned
+under it is logged as a WARN (`orchestrate._warn_if_over_line`); nothing is retried. Each
+section's result is checkpointed (D157) so a retry replays finished sections. A sectioned document's `document.summary` is composed afterwards by one small
 extractor-tier call over the merged facts (`_compose_digest`), with a deterministic fallback;
 whole documents write it inline.
 

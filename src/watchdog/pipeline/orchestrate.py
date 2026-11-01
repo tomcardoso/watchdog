@@ -284,7 +284,38 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
+    _warn_if_over_line(vault, model_id=r.model, backend=r.backend, usage=r.usage,
+                       attempts=r.attempts, est_prompt_tokens=est_prompt_tokens,
+                       filename=filename or task, detail=detail)
     return r
+
+
+def _warn_if_over_line(vault: Path | None, *, model_id: str, backend: str | None, usage,
+                       attempts: int, est_prompt_tokens: int, filename: str,
+                       detail: str | None) -> None:
+    """After a call, compare the prompt size the provider reported with the model's long-prompt
+    line (D370). A call whose estimate put it under the line but which went over anyway is billed
+    at the dearer card; this says so in processing.log, with both sizes, so a planning error is
+    seen rather than found later in Usage. Nothing is retried. A call planned over the line (a
+    single page too large for it, said when it was planned) is not repeated here, and a
+    subscription call, billed by Claude Code rather than per token, is skipped."""
+    from watchdog import model_catalog
+    if vault is None or not usage or backend in ("claude-agent-sdk", "local"):
+        return
+    tier = model_catalog.long_context_card(model_id)
+    if tier is None:
+        return
+    line = tier[0]
+    prompt = model_client.prompt_tokens(model_id, usage) // max(1, attempts or 1)
+    if prompt <= line:
+        return
+    planned = round(est_prompt_tokens * model_client.tokenizer_ratio(model_id, backend, vault))
+    if planned > line:
+        return
+    where = f" [{detail}]" if detail else ""
+    _log(vault, f"WARN {filename}{where}: prompt was {prompt:,} tokens, over {model_id}'s "
+                f"{line:,}-token long-prompt line, though planned at about {planned:,}; "
+                f"billed at the higher rate")
 
 
 def _recent_token_rate(records: list[dict], window_s: float = 60.0, now: float | None = None) -> int:
@@ -1410,6 +1441,20 @@ async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classi
     return (text, skill.removesuffix(".md"))
 
 
+def _log_planned_over_line(vault: Path, filename: str, plan: dict) -> None:
+    """Say in processing.log when a planned call cannot stay under the model's long-prompt line
+    (D370): only a single page too large for it on its own does that, since pages are not cut."""
+    line = plan.get("line")
+    if not line:
+        return
+    labels = [s["label"] for s in plan.get("sections") or []] or ["whole document"]
+    for label, est in zip(labels, plan.get("prompts") or []):
+        if est > line:
+            _log(vault, f"WARN {filename} [{label}]: planned prompt of about {est:,} est tokens is "
+                        f"more than fits under the long-prompt line ({line:,} est tokens); a "
+                        f"single page is not split, so this call will be billed at the higher rate")
+
+
 async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_model: str, classify_model: str,
                             classify_pages: int = DEFAULT_CLASSIFY_PAGES,
@@ -1488,7 +1533,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # The spending limit is checked again between classifying and extracting (D324): another
     # document's calls may have reached it while this one was being classified.
     _check_spend()
-    plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
+    plan = section.run(vault, sha, model=extract_model, backend=extract_backend, pf=pf,
+                       skill_text=skill_text, brief=brief)
+    _log_planned_over_line(vault, filename, plan)
     progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
@@ -1820,7 +1867,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             _say(f"–  {pf.get('filename')}  already extracted — pending commit")
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
-        if section.run(vault, sha, model=extract_model).get("sectioned"):
+        if section.run(vault, sha, model=extract_model, pf=pf, brief=brief).get("sectioned"):
             sectioned_shas.append(sha)
         else:
             whole_docs.append((sha, pf))

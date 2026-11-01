@@ -250,8 +250,9 @@ SETTINGS = {
             "  it), adjusted for how that model's tokenizer counts — so a 1M-window model like\n"
             "  DeepSeek V4 reads far more of a document in one call than a 200K Claude window\n"
             "  (which resolves to 129032). Set a fixed number to pin it as an advanced override —\n"
-            "  e.g. lower it if extraction quality drops on long documents, or to hold a call under\n"
-            "  a provider's long-context pricing tier.\n"
+            "  e.g. lower it if extraction quality drops on long documents. On a model that charges\n"
+            "  more past a prompt length, each request's whole prompt (instructions, skill, brief,\n"
+            "  candidate list and text) is kept under that line as well, whatever this is set to.\n"
             "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
             "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),

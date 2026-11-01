@@ -96,10 +96,11 @@ def long_context_input_cap(model: str | None, backend: str | None = None) -> int
     """Max real input tokens a single call to `model` may plan for before it crosses into a higher
     pricing tier, or None when the model prices flat at every length (#555).
 
-    `section.py` clamps both the sectioning threshold and the per-section budget to this, so a
-    section's document text is never planned past the boundary. It is a cost control, not the
-    pricing: the prompt's fixed overhead rides on top of that text and can still carry a call over
-    the line, and such a call is priced at the upper card (`rate_card`, D366). Returns None for an uncatalogued id: we
+    `section.model_defaults` caps its text-sized threshold and budget at this, and
+    `chunking.prompt_budget_chars` a post-processing chunk's data, the 10% left over covering the
+    instructions that ride on top. Extraction plans the whole prompt under the line itself
+    (`section.long_prompt_line`, D370). It is a cost control, not the pricing: a call that crosses
+    the line anyway is priced at the upper card (`rate_card`, D366). Returns None for an uncatalogued id: we
     can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
     its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
     pricing tiers vary within a family (Haiku 5.5 is the only Claude model with one), so a
@@ -798,6 +799,17 @@ def _anthropic_prompt_tokens(usage) -> int:
     including cache reads and cache writes" — `input_tokens` alone is only the uncached part."""
     return sum(_usage_get(usage, k) or 0 for k in
                ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+
+
+def prompt_tokens(model_id: str, usage) -> int:
+    """One call's prompt length as its provider prices it (D366): a Claude call's uncached input
+    plus cache writes and reads, anyone else's `prompt_tokens` (which already includes the cached
+    part). What the long-prompt guard after an extraction call compares with the line (D370)."""
+    if not usage:
+        return 0
+    if model_id in _PRICING:
+        return _anthropic_prompt_tokens(usage)
+    return _usage_get(usage, "prompt_tokens") or _usage_get(usage, "input_tokens") or 0
 
 
 # A 1-hour cache write costs 2x the input rate of whichever card applies, where a 5-minute write

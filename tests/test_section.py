@@ -296,9 +296,9 @@ def test_model_defaults_clamped_below_a_long_context_pricing_tier():
     for model in _OPENAI_TIERED:
         threshold, budget = section.model_defaults(model, backend="openai")
         assert (threshold, budget) == (306_000, 306_000), model
-    # Haiku 5.5 carries its own, lower boundary (100,000) at its own 1.21 ratio. Only the
-    # threshold binds there: the budget's window fraction (60K real) is already under 90K.
-    assert section.model_defaults("haiku") == (int(90_000 / 1.21), int(60_000 / 1.21))
+    # Haiku 5.5 carries its own, lower boundary (100,000) at its own 1.21 ratio. With its real 1M
+    # window (D370) both bind; `plan_calls` then holds the whole prompt under the line.
+    assert section.model_defaults("haiku") == (int(90_000 / 1.21), int(90_000 / 1.21))
 
 
 def test_long_context_clamp_keeps_real_tokens_under_the_boundary():
