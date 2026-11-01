@@ -266,9 +266,12 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
                     if failed else "The queue is empty — nothing to estimate.")
             return {"text": text, "estimate": None, "all_models": None}
         mode = resolve_auth()["mode"] if backend is None else None
-        est = ingest_setup.cost_estimate(v, queue_files, _effective_extract_backend(backend, mode))
+        est = ingest_setup.cost_estimate(v, queue_files, _effective_extract_backend(backend, mode),
+                                         model=plan.extract[1])
         text = strip_ansi(_format_cost_estimate(est)).strip()
-        rows_fn = ingest_setup.cost_estimate_all_models
+
+        def rows_fn(vault, est_tokens):
+            return ingest_setup.cost_estimate_all_models(vault, est_tokens, queue_files=queue_files)
     else:
         backend = plan.post[0]
         if not orchestrate.has_pending_finalization(v):

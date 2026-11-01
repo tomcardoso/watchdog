@@ -444,6 +444,15 @@ def _resolve(model_str: str | None, default: str):
     return resolve_stage(model_str, None, default=default)
 
 
+def _model_id(model_str: str | None, default: str) -> str:
+    """The catalog id an arm's model runs as: `_resolve` hands a Claude tier alias back as
+    written (`(None, 'haiku-5.5')`), and both the archived usage records and the catalog key on
+    the id (`claude-haiku-5-5`), so a preview looking up the alias found neither (D365)."""
+    from watchdog.model_catalog import resolve_model_id
+    _, model = _resolve(model_str, default=default)
+    return resolve_model_id(model)
+
+
 def _effective_backend(backend: str | None) -> str:
     from watchdog.auth import resolve_auth
     from watchdog.ops.ingest import _effective_extract_backend
@@ -474,15 +483,17 @@ def preview_extractor_arm(vault: Path, extractor_model: str, extractor_effort: s
     none exists anywhere yet falls back to a rough catalog-list-price projection, clearly marked
     as such rather than presented as a calibrated figure."""
     import cost_reference
-    from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+    from watchdog.pipeline.ingest_setup import cost_estimate, long_prompt_plan, scan_queue
     queue_files = scan_queue(vault)
     backend = arm_backend(extractor_model, default="sonnet")
-    _, model = _resolve(extractor_model, default="sonnet")
+    model = _model_id(extractor_model, default="sonnet")
     ref_files = (cost_reference.reference_usage_files(benchmarks_root, model, extractor_effort,
                                                       backend) if benchmarks_root else [])
-    est = cost_estimate(vault, queue_files, backend, usage_files=ref_files)
+    est = cost_estimate(vault, queue_files, backend, usage_files=ref_files, model=model)
     if est["cost_low"] is None and backend != "claude-agent-sdk" and est["documents"]:
-        fallback = cost_reference.fallback_estimate(est["est_tokens"], model, extractor_effort)
+        share = long_prompt_plan(queue_files, model, backend, vault)["share"]
+        fallback = cost_reference.fallback_estimate(est["est_tokens"], model, extractor_effort,
+                                                    long_share=share)
         if fallback:
             est.update(fallback)
     return est
@@ -496,7 +507,7 @@ def preview_finalizer_arm(vault: Path, finalizer_model: str, finalizer_effort: s
     import cost_reference
     from watchdog.pipeline.ingest_setup import finalize_cost_estimate
     backend = arm_backend(finalizer_model, default="haiku")
-    _, model = _resolve(finalizer_model, default="haiku")
+    model = _model_id(finalizer_model, default="haiku")
     ref_files = (cost_reference.reference_usage_files(benchmarks_root, model, finalizer_effort,
                                                       backend, finalize_only=True)
                 if benchmarks_root else [])

@@ -54,7 +54,9 @@ from watchdog.model_catalog import (
     fallback_is_reasoning,
     _split_deepseek_thinking,
     fallback_max_output_tokens,
+    long_context_card,
     price_multiplier,
+    rate_card,
     resolve_model_id,
 )
 from watchdog import config as user_config
@@ -94,9 +96,10 @@ def long_context_input_cap(model: str | None, backend: str | None = None) -> int
     """Max real input tokens a single call to `model` may plan for before it crosses into a higher
     pricing tier, or None when the model prices flat at every length (#555).
 
-    `section.py` clamps both the sectioning threshold and the per-section budget to this, so no
-    extraction call is ever *planned* past the boundary — which is also what keeps `--estimate-all`
-    honest, since it prices every model at one flat rate. Returns None for an uncatalogued id: we
+    `section.py` clamps both the sectioning threshold and the per-section budget to this, so a
+    section's document text is never planned past the boundary. It is a cost control, not the
+    pricing: the prompt's fixed overhead rides on top of that text and can still carry a call over
+    the line, and such a call is priced at the upper card (`rate_card`, D365). Returns None for an uncatalogued id: we
     can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
     its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
     pricing tiers vary within a family (Haiku 5.5 is the only Claude model with one), so a
@@ -783,26 +786,55 @@ def _rate_limit_headers(headers, mapping: dict) -> dict | None:
     return out or None
 
 
+def _usage_get(usage, name: str):
+    """A field of a usage report that may be the SDK's object or its dict form."""
+    if isinstance(usage, dict):
+        return usage.get(name)
+    return getattr(usage, name, None)
+
+
+def _anthropic_prompt_tokens(usage) -> int:
+    """A Claude request's prompt length as Anthropic prices it (D365): "all of its input tokens,
+    including cache reads and cache writes" — `input_tokens` alone is only the uncached part."""
+    return sum(_usage_get(usage, k) or 0 for k in
+               ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+
+
+# A 1-hour cache write costs 2x the input rate of whichever card applies, where a 5-minute write
+# costs the card's `cache_write` (1.25x) — Anthropic's pricing page, "Prompt caching", fetched
+# 2026-10-31. Watchdog only writes 5-minute entries; the split is read from `cache_creation` so a
+# 1-hour write is never billed at the cheaper rate if one ever appears.
+_ANTHROPIC_1H_WRITE = 2.0
+
+
 def _api_cost(model_id: str, usage) -> float | None:
-    rates = _PRICING.get(model_id)
-    if not rates:
+    """Cost of one Claude Messages API call (D365). The rate card is chosen by the request's whole
+    prompt length (`_anthropic_prompt_tokens`), so a Haiku 5.5 request over 100,000 tokens is billed
+    entirely at the long-prompt card, cache reads and writes included. Thinking tokens are already
+    inside `output_tokens` and billed as output. `usage` is the SDK's `Usage` or its dict form."""
+    rates = rate_card(model_id, _anthropic_prompt_tokens(usage))
+    if not rates or model_id not in _PRICING:
         return None
     inp, outp, cw, cr = rates
 
     def g(name):
-        return getattr(usage, name, 0) or 0
+        return _usage_get(usage, name) or 0
 
+    written = g("cache_creation_input_tokens")
+    hour = min(_usage_get(_usage_get(usage, "cache_creation") or {}, "ephemeral_1h_input_tokens")
+               or 0, written)
     # `price_multiplier` is 1.0 for every Claude tier (no Anthropic model prices by the clock) —
     # applied here anyway so the two cost functions stay one implementation of D217's rule rather
     # than one that models it and one that would have to be found and fixed later.
     return (g("input_tokens") * inp + g("output_tokens") * outp
-            + g("cache_creation_input_tokens") * cw
+            + (written - hour) * cw + hour * inp * _ANTHROPIC_1H_WRITE
             + g("cache_read_input_tokens") * cr) * price_multiplier(model_id)
 
 
 def _batch_cost(model_id: str, usage) -> float | None:
-    """Message Batches pricing is a flat 50% off every standard per-token rate, including
-    cache read/write (#214) — so batch cost is just the normal API cost at half price."""
+    """Message Batches pricing is a flat 50% off every per-token rate of whichever card the
+    request's prompt length selects, cache read/write included (#214, D365) — so batch cost is
+    the normal API cost at half price."""
     cost = _api_cost(model_id, usage)
     return cost * 0.5 if cost is not None else None
 
@@ -998,12 +1030,16 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     The whole figure is then scaled by `price_multiplier` (D217) — 1.0 for every model that
     prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
     finished cost rather than each rate because the multiplier applies to every column equally,
-    which is how DeepSeek states it and the only shape `price_periods` allows."""
-    rates = _OPENAI_PRICING.get(model_id)
-    if not rates or not usage:
+    which is how DeepSeek states it and the only shape `price_periods` allows.
+
+    The rate card is chosen by `prompt_tokens`, which on this API already includes the cached
+    part (D365): a GPT-6 Luna or GPT-5.6 Luna request over 272,000 prompt tokens is billed
+    entirely at the long-prompt card. Reasoning tokens are inside `completion_tokens` (Gemini's
+    are folded in first by `_fold_in_hidden_reasoning`) and billed as output."""
+    if not usage or model_id not in _OPENAI_PRICING:
         return None
-    inp, outp, cached_rate, write_rate = rates
     prompt = usage.get("prompt_tokens", 0) or 0
+    inp, outp, cached_rate, write_rate = rate_card(model_id, prompt)
     cached = min(_cached_input_tokens(usage), prompt)   # cache hits are a subset of prompt tokens
     written = min(cache_write_tokens(usage), prompt - cached) if write_rate else 0
     return ((prompt - cached - written) * inp
@@ -1018,6 +1054,45 @@ def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
     cache-token modelling beyond what `_openai_cost` already does for a live call."""
     cost = _openai_cost(model_id, usage)
     return cost * 0.5 if cost is not None else None
+
+
+def reprice_long_prompt_record(record: dict) -> float | None:
+    """What a stored usage record (`orchestrate._record_usage`'s shape) costs under D365's
+    long-prompt card, or None when the record is not one D365 reprices: an uncatalogued model, a
+    model priced flat at every length, a subscription call (its figure is Claude Code's, not
+    ours), or a call whose prompt stayed at or under the line.
+
+    A record sums its attempts' tokens (`acomplete_json` merges usage across retries), so the
+    prompt length is judged per attempt, `attempts` copies of an even share — exact when each
+    retry sent the same prompt, which a retry does. Continuation pages cannot be told apart in a
+    record and are judged the same way. Batch calls (`-batch` backends) are priced at half."""
+    model_id, backend = record.get("model") or "", record.get("backend") or ""
+    tier = long_context_card(model_id)
+    if tier is None or backend == "claude-agent-sdk" or record.get("auth_mode") == "subscription":
+        return None
+    attempts = max(1, int(record.get("attempts") or 1))
+    inp = record.get("input_tokens") or 0
+    read = record.get("cache_read_tokens") or 0
+    write = record.get("cache_write_tokens") or 0
+    out = record.get("output_tokens") or 0
+    anthropic = model_id in _PRICING
+    prompt = (inp + read + write) if anthropic else inp
+    if prompt / attempts <= tier[0]:
+        return None
+    if anthropic:
+        usage = {"input_tokens": inp / attempts, "output_tokens": out / attempts,
+                 "cache_creation_input_tokens": write / attempts,
+                 "cache_read_input_tokens": read / attempts}
+        one = _api_cost(model_id, usage)
+    else:
+        usage = {"prompt_tokens": inp / attempts, "completion_tokens": out / attempts,
+                 "prompt_tokens_details": {"cached_tokens": read / attempts,
+                                           "cache_write_tokens": write / attempts}}
+        one = _openai_cost(model_id, usage)
+    if one is None:
+        return None
+    cost = one * attempts
+    return cost * 0.5 if backend.endswith("-batch") else cost
 
 
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param

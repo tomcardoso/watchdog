@@ -67,6 +67,74 @@ _OPENAI_PRICING = {
     for m in _CATALOG["models"] if m["provider"] != "anthropic"
 }
 
+
+# The long-prompt rate card (D365): model id -> (threshold, card), where `card` has the same shape
+# as the model's tuple in `_PRICING`/`_OPENAI_PRICING` and replaces it for the WHOLE request once
+# the request's prompt is longer than `threshold` real tokens. Only a model whose vendor prices by
+# prompt length declares `long_context` in the YAML. A threshold without a card (or the reverse)
+# is a catalog error, caught at import rather than priced wrong.
+def _long_context_card(m: dict) -> tuple:
+    lc = m["long_context"]
+    if m["provider"] == "anthropic":
+        return (float(lc["input"]), float(lc["output"]), float(lc["cache_write"]),
+                float(lc["cache_read"]))
+    return (float(lc["input"]), float(lc["output"]), float(lc["cached_input"]),
+            float(lc.get("cache_write", 0.0)))
+
+
+for _m in _CATALOG["models"]:
+    if ("long_context_threshold" in _m) != ("long_context" in _m):
+        raise ValueError(f"model_catalog.yaml: {_m['id']} must declare both long_context_threshold "
+                         "and long_context, or neither")
+
+_LONG_CONTEXT_PRICING = {
+    m["id"]: (int(m["long_context_threshold"]), _long_context_card(m))
+    for m in _CATALOG["models"] if "long_context" in m
+}
+
+
+def rate_card(model_id: str, prompt_tokens: int = 0) -> tuple | None:
+    """The per-token rates one request to `model_id` is billed at, given its prompt length in real
+    tokens (D365): the long-prompt card when the model has one and `prompt_tokens` is over its
+    threshold, else the ordinary card. The tuple has `_PRICING`'s shape for a Claude model and
+    `_OPENAI_PRICING`'s for everyone else; None for an uncatalogued id.
+
+    "Over" is strict, as both vendors word it: Anthropic's "a request whose prompt is over
+    100,000 tokens", OpenAI's "more than 272K input tokens". What counts as the prompt is the
+    caller's to work out, because the providers report it differently — see
+    `model_client._anthropic_prompt_tokens` and `model_client._openai_cost`."""
+    base = _PRICING.get(model_id) or _OPENAI_PRICING.get(model_id)
+    if base is None:
+        return None
+    tier = _LONG_CONTEXT_PRICING.get(model_id)
+    if tier is not None and prompt_tokens > tier[0]:
+        return tier[1]
+    return base
+
+
+def long_context_card(model_id: str) -> tuple[int, tuple] | None:
+    """(threshold, long-prompt card) for a model priced by prompt length, or None (D365)."""
+    return _LONG_CONTEXT_PRICING.get(model_id)
+
+
+def list_price(model_id: str, prompt_tokens: float, output_tokens: float,
+               long_share: float = 0.0, at: datetime | None = None) -> float | None:
+    """Pre-run price of `prompt_tokens` in and `output_tokens` out on `model_id`, every input token
+    a cache miss, at the rate in force now (D217). `long_share` (0 to 1) is the part of both that
+    falls in requests over the model's long-prompt line, priced at that card (D365): an aggregate
+    token count cannot say which card a request hits, so the estimates work the share out from the
+    calls they plan. None for an uncatalogued id."""
+    low = rate_card(model_id)
+    if low is None:
+        return None
+    tier = _LONG_CONTEXT_PRICING.get(model_id)
+    high = tier[1] if tier else low
+    share = min(max(long_share, 0.0), 1.0) if tier else 0.0
+    cost = ((1 - share) * (prompt_tokens * low[0] + output_tokens * low[1])
+            + share * (prompt_tokens * high[0] + output_tokens * high[1]))
+    return cost * price_multiplier(model_id, at)
+
+
 # (substring/prefix, value) pairs, most-specific-first — see model_catalog.yaml's own comments.
 _CONTEXT_WINDOW_FALLBACK = [(row[0], int(row[1])) for row in _CATALOG["context_window_fallback"]]
 _MAX_OUTPUT_TOKENS_FALLBACK = [(row[0], int(row[1]))
@@ -101,9 +169,9 @@ def catalog_max_output_tokens(model_id: str) -> int | None:
 
 
 def catalog_long_context_threshold(model_id: str) -> int | None:
-    """Real-token input length at/above which this model bills at a higher rate (#555), or None
-    when it prices flat at every length. See `model_catalog.yaml`'s `long_context_threshold`
-    comment — including the caveat that these figures still need a vendor citation."""
+    """Real-token prompt length above which this model bills the whole request at its long-prompt
+    card (#555, D365), or None when it prices flat at every length. See `model_catalog.yaml`'s
+    `long_context_threshold` comment."""
     entry = _entry(model_id)
     return entry.get("long_context_threshold") if entry else None
 

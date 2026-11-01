@@ -77,10 +77,24 @@ def old_vault(tmp_path):
     md.parent.mkdir(parents=True, exist_ok=True)
     md.write_text("<!-- PAGE 1 -->\n\nThe City Council heard Acme Corp's request for a longer lease. "
                   "The City Council deferred the vote.\n", encoding="utf-8")
+    # A run whose one extraction call went over Claude Haiku 5.5's long-prompt line and was
+    # recorded at the lower rate, as every such call was before D365.
+    usage_dir = vault / REG / "usage"
+    usage_dir.mkdir(parents=True, exist_ok=True)
+    (usage_dir / "usage-20261031T120000Z.json").write_text(json.dumps({"calls": [
+        _OLD_LONG_CALL, {**_OLD_LONG_CALL, "input_tokens": 50_000, "cost_usd": 0.03}],
+        "totals": {"cost_usd": 0.07420075}}), encoding="utf-8")
     # Built before the stamp existed.
     migrations.stamp_path(vault).unlink()
     entity_facts.clear_cache()
     return vault
+
+
+# The 2026-10-31 call: 101,113 uncached + 12,330 cache-write prompt tokens, 65,099 output.
+_OLD_LONG_CALL = {"task": "extract", "model": "claude-haiku-5-5", "backend": "claude-api",
+                  "auth_mode": "api-key", "input_tokens": 101_113, "cache_write_tokens": 12_330,
+                  "cache_read_tokens": 0, "output_tokens": 65_099, "attempts": 1,
+                  "cost_usd": 0.04420075}
 
 
 def _result(parsed):
@@ -293,13 +307,13 @@ def test_a_spending_stop_leaves_the_later_steps_pending_and_resumes(tmp_path, fa
         return "The spending limit is reached." if calls["n"] == 1 else None
     monkeypatch.setattr(orchestrate, "_spending_stop", stop)
     out = _run(vault)
-    # The free step ran; the first model step stopped before it started.
-    assert out["applied"] == 1 and out["spending_limit"]
+    # The free steps ran; the first model step stopped before it started.
+    assert out["applied"] == 2 and out["spending_limit"]   # the two free steps
     assert [m.id for m in migrations.pending(vault)][0] == "2026-10-erased-dates"
     assert history.versions(vault, limit=1)["versions"][0]["cause"].get("incomplete") is True
     assert "spending limit" in migrations.summary(out)
     out = _run(vault)
-    assert out["applied"] == len(migrations.MIGRATIONS) - 1 and migrations.pending(vault) == []
+    assert out["applied"] == len(migrations.MIGRATIONS) - 2 and migrations.pending(vault) == []
 
 
 def test_a_failed_call_keeps_the_step_pending(tmp_path, fake, monkeypatch):
@@ -311,7 +325,7 @@ def test_a_failed_call_keeps_the_step_pending(tmp_path, fake, monkeypatch):
         return await fake(**kw)
     monkeypatch.setattr(model_client, "acomplete_json", failing)
     out = _run(vault)
-    assert out["applied"] == 1
+    assert out["applied"] == 2                         # the two free steps
     a = _art(vault, "sha-a")["document"]["key_facts"]
     assert a[0]["date_recovery"] == "code"            # code's dates are kept
     assert "date_recovery" not in a[1]                # the model's is asked again next time

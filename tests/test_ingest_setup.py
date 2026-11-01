@@ -303,7 +303,7 @@ def test_cost_estimate_empty_queue(tmp_path):
     est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
     assert est == {"documents": 0, "pages": 0, "est_tokens": 0,
                     "cost_low": None, "cost_high": None, "runs_used": 0,
-                    "subscription": False}
+                    "subscription": False, "long_prompt_calls": 0, "long_prompt_documents": 0}
 
 
 def test_cost_estimate_marks_subscription_runs(tmp_path):
