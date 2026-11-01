@@ -1091,3 +1091,94 @@ def test_corpus_ocr_plans(filename, expected):
 
 
 
+
+
+# ── the OCR engine that actually read a document (D372) ──────────────────────
+
+def _converter_with(*pipelines):
+    import types
+    return types.SimpleNamespace(initialized_pipelines={i: p for i, p in enumerate(pipelines)})
+
+
+def test_the_engine_auto_picked_is_read_from_the_auto_model():
+    import types
+
+    class RapidOcrModel:
+        pass
+
+    class OcrAutoModel:
+        def __init__(self):
+            self._engine = RapidOcrModel()
+
+    auto = _converter_with(types.SimpleNamespace(ocr_model=OcrAutoModel()))
+    assert preprocess.ocr_engine_used(auto) == "rapidocr"
+
+
+def test_an_engine_chosen_by_name_is_read_from_the_model_itself():
+    import types
+
+    class TesseractOcrModel:
+        pass
+
+    named = _converter_with(types.SimpleNamespace(ocr_model=TesseractOcrModel()))
+    assert preprocess.ocr_engine_used(named) == "tesseract"
+
+
+def test_no_ocr_model_is_none_and_no_pipeline_is_unknown():
+    import types
+    assert preprocess.ocr_engine_used(_converter_with(types.SimpleNamespace())) == "none"  # a Word file
+    assert preprocess.ocr_engine_used(_converter_with()) == "unknown"                       # never converted
+    assert preprocess.ocr_engine_used(object()) == "unknown"                                # not a converter
+
+
+def test_the_metadata_names_the_engine_the_setting_and_the_platform(monkeypatch):
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "auto" if key == "ocr_engine" else default)
+    monkeypatch.setattr(preprocess, "_package_version", lambda name: {"rapidocr": "3.1", "docling": "2.9"}.get(name))
+    meta = preprocess.ocr_provenance("rapidocr")
+    assert meta == {"ocr_engine": "rapidocr", "ocr_engine_configured": "auto", "platform": sys.platform,
+                    "ocr_engine_version": "3.1", "docling_version": "2.9"}
+
+
+def test_direct_text_is_read_by_no_engine(tmp_path):
+    f = tmp_path / "note.txt"
+    f.write_text("plain text")
+    assert preprocess.process_direct_text(f)["metadata"]["ocr_engine"] == "none"
+
+
+def test_slices_report_the_engines_they_used(tmp_path, monkeypatch):
+    """A document converted in slices records every engine its slices used, joined; a slice that
+    used none (its text came from the file) adds nothing."""
+    from pathlib import Path as _Path
+    engines = iter(["tesseract", "rapidocr", "none"])
+
+    def fake_slice(slice_path, page_numbers, force_ocr):
+        return {"pages": [{"page": page_numbers[0] + 1, "markdown": "text"}],
+                "metadata": {"ocr_engine": next(engines)}}
+
+    monkeypatch.setattr(preprocess, "pdf_extract_pages", _fake_extract(tmp_path))
+    monkeypatch.setattr(preprocess, "_run_slice_subprocess", fake_slice)
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: 1 if key == "chunk_workers" else default)
+    result = process_pdf_slices(_Path("/fake/doc.pdf"), [([0], True), ([1], True), ([2], False)])
+    assert result["ocr_engine"] == "rapidocr+tesseract"
+
+
+def test_tesseract_without_language_data_is_not_ready(monkeypatch):
+    import types
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("./", [])))
+    assert preprocess._tesseract_ready() is False
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("./", ["osd"])))
+    assert preprocess._tesseract_ready() is False          # orientation data reads no text
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("/td", ["eng", "osd"])))
+    assert preprocess._tesseract_ready() is True
+
+
+def test_auto_passes_over_tesseract_without_language_data_but_the_tesseract_setting_does_not(monkeypatch):
+    """Under `auto`, a Tesseract with no language data used to fail the whole conversion; now
+    another engine reads the document. Asked for by name, Tesseract is still used, so its own
+    error says what is missing."""
+    import types
+    pytest.importorskip("docling")
+    from docling.datamodel.pipeline_options import OcrAutoOptions, TesseractOcrOptions
+    monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("./", [])))
+    assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
+    assert isinstance(preprocess._make_tesseract_opts(False, required=True), TesseractOcrOptions)

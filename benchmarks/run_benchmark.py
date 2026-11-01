@@ -950,6 +950,14 @@ def _run(args) -> int:
 
     results: list[ArmResult] = []
     previews: list[tuple[str, dict, dict]] = []
+    # Whether the master chew matches the one the keys' quotes were checked on (D372), checked
+    # once per master vault and said before the go-ahead.
+    chew_notes: dict[Path, list[str]] = {}
+
+    def _check_chew(master: Path) -> None:
+        if master not in chew_notes:
+            import chew_manifest
+            chew_notes[master] = chew_manifest.warning_lines(chew_manifest.check(master))
     plan: list[tuple[str, dict]] = []   # (kind, arm-plus-context) queued for real execution
     # resolved vault path -> how to (re)seed it, populated as the plan is built. Insertion order
     # is plan order, which matters on restore: a finalizer arm is copied from the base vault, so
@@ -964,6 +972,7 @@ def _run(args) -> int:
         defaults = sweep.get("defaults") or {}
         master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
                                      root=root)
+        _check_chew(master)
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue
@@ -982,6 +991,7 @@ def _run(args) -> int:
         base_vault = arm_vault(sweep["vault_prefix"], "base", root)
         base_master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
                                           root=root)
+        _check_chew(base_master)
         def _seed_base() -> None:
             seed_arm_vault(base_master, base_vault)
             base_result = run_extractor_arm({"id": "base", **sweep["base"]}, base_vault)
@@ -1070,6 +1080,9 @@ def _run(args) -> int:
         print("Nothing to run for the requested stage(s).")
         return 0
 
+    for lines in chew_notes.values():
+        if lines:
+            print("\n" + "\n".join(lines) + "\n")
     proceed = confirm_run(previews, estimate_only=args.estimate_only, stale=stale)
     if not proceed:
         return 0

@@ -201,6 +201,17 @@ It exits non-zero on any problem. `benchmarks/runs/` is gitignored, so this need
 run of the corpus; the check is on the frozen chew, not the PDFs, because the chew is what an
 extraction is scored against.
 
+Record that chew's fingerprint from the same chewed vault, so every later run can tell whether it
+reads the same text (D372):
+
+```
+python3 benchmarks/chew_manifest.py write <the chewed master vault>
+```
+
+It writes `keys/chew-manifest.json`: each page's text hash, the OCR engine and the platform. A run
+whose chew differs (another OCR engine, another platform) warns before asking to spend anything
+and lists the documents in `REPORT.md`; it does not refuse.
+
 Then hash the keys the way the corpus is hashed and do not touch them again:
 
 ```

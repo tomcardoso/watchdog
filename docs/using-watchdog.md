@@ -78,7 +78,7 @@ skill: corporate-filings
 
 ![A scanned document open in Watchdog: the page on the left, the facts taken from it on the right, each with its date, page and source passage.](images/app-document.png)
 
-Open a document to read it: the original on the left, with page navigation and zoom, and the facts taken from it on the right. Each fact's page number scrolls the original to that page. Other tabs show the summary, the entities it names, its full extracted text, its details (including metadata embedded in the file, such as author and creation date, which is a lead, not a fact) and [your notes](#history-and-your-notes).
+Open a document to read it: the original on the left, with page navigation and zoom, and the facts taken from it on the right. Each fact's page number scrolls the original to that page. Other tabs show the summary, the entities it names, its full extracted text, its details (including what read its text, either the file's own text or the OCR engine that read its scanned pages, and metadata embedded in the file, such as author and creation date, which is a lead, not a fact) and [your notes](#history-and-your-notes).
 
 <a id="finding-words-in-a-document"></a>**Find in document** sits above the original in every kind of viewer; press ⌘F (Ctrl+F) to jump to it. It ignores capitals, accents, the style of quotation marks, dashes and line-break hyphens, so "Renee" finds "Renée". On a scanned page, find highlights the match on the scan itself, and you can select and copy its text; the highlight's position within a line is an estimate. When find turns up nothing, **Search the extracted text instead** opens the Text tab.
 

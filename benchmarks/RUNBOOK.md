@@ -76,8 +76,13 @@ Read in this order:
    question than a complete arm's and is not a quality signal against the full corpus. A
    "Thin extractions" section lists every document an arm kept with implausibly few facts for
    its length (D367); `errors.log` names them too, and the terminal's last line counts them.
+   A "Chew" section appears when the run's page text is not the frozen chew the keys' quotes were
+   checked on (another OCR engine or platform, D372), listing the documents and pages that
+   differ: key quotes there may be missing from what the model read, so their figures are not
+   comparable with runs on the frozen chew. The same warning prints before the go-ahead.
 3. **`run.json`** — the same numbers as data, for the composite score index; each arm's
-   `thin_extractions` lists its flagged documents.
+   `thin_extractions` lists its flagged documents, and `chew` names each document's OCR engine,
+   platform and text hash, and any difference from the frozen chew.
 4. **`artifacts/<arm>/reasoning/`** — every benchmark run saves each model call's reasoning
    (D368): one JSON file per call with its task, document, model, effort, stop reason, token
    counts and the model's summarized thinking (Claude, DeepSeek; none for OpenAI or Gemini). The

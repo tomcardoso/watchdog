@@ -7,6 +7,7 @@ call involved.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -447,6 +448,41 @@ def thin_extractions_md(results: list) -> list[str]:
     return out + [""]
 
 
+def chew_check(results: list) -> dict | None:
+    """What read the run's documents, and whether that chew matches the frozen one the keys'
+    quotes were checked on (D372, `chew_manifest.py`). Every extraction arm is seeded from the
+    same master chew, so the first arm vault that still holds its queue speaks for the run.
+    `documents` lists each document's engine, platform and page-text hash; `differs` the
+    documents whose text is not the frozen chew's. None when no arm vault has a queue."""
+    import chew_manifest
+    for r in results:
+        vault = Path(r.vault) if getattr(r, "vault", None) else None
+        if r.stage not in ("extractor", "finalizer", "sdk-check") or vault is None:
+            continue
+        chew = chew_manifest.read_chew(vault)
+        if not chew:
+            continue
+        documents = []
+        for sha, d in sorted(chew.items()):
+            text = "\n".join(d["pages"][n] for n in sorted(d["pages"]))
+            documents.append({"sha256": sha, "filename": d["filename"],
+                              "ocr_engine": d["metadata"].get("ocr_engine") or "unknown",
+                              "platform": d["metadata"].get("platform") or "unknown",
+                              "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+        return {"vault": vault.name, "documents": documents, **chew_manifest.check(vault)}
+    return None
+
+
+def chew_md(check: dict | None) -> list[str]:
+    """REPORT.md's chew section: the warning when the chew differs, a note when no manifest
+    exists to check against, nothing when it matches."""
+    if check is None:
+        return []
+    import chew_manifest
+    lines = chew_manifest.warning_lines(check)
+    return ["## Chew", "", *lines, ""] if lines else []
+
+
 def _errors_log_text(results: list) -> str:
     """Full failure detail for every arm that had any — a hard failure (`error`, arm-level),
     per-document failures caught and tallied internally by processing and post-processing (`doc_errors`
@@ -698,6 +734,8 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
         "versions": {"scorer": score_arms.SCORER_VERSION, "cost_model": COST_MODEL_VERSION},
         "arms": arms,
         "repeat_groups": repeat_groups(results, scores),
+        # D372: which engine read each document, and whether this chew is the frozen one.
+        "chew": chew_check(results),
     }
 
 
@@ -738,6 +776,7 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
         f"# Benchmark run {rid}", "",
         "Verified frozen references: " + ", ".join(f"`{v}`" for v in verified), "",
         _provenance_note(prov), "",
+        *chew_md(chew_check(results)),
         "## Extractor sweep", "", extractor_table_md(results, scores),
         *_notional_note([r for r in results if r.stage == "extractor"]), "",
         "## Spread across repeated runs", "",
