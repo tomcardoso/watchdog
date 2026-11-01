@@ -2,7 +2,7 @@
 
 One YAML per corpus document. These are the fixed reference every condition in the #361 / #215
 benchmark is scored against — see `../BENCHMARKING.md` for how many runs that is and what each one
-varies. **Frozen at `keys-v4.sha256`.** Re-freezing after any revision (see "The freeze" below) is
+varies. **Frozen at `keys-v5.sha256`.** Re-freezing after any revision (see "The freeze" below) is
 Step 0 of `BENCHMARKING.md` — the one thing to do before anything else in that guide.
 
 ## What these are, and what they are not
@@ -220,8 +220,9 @@ archived comparison claiming to be scored against a key that no longer exists.
 | `keys-v2.sha256` | 2026-08-09 | `must_not_miss` anchoring and de-bundling (#573) — 77 entries became 131 |
 | `keys-v3.sha256` | 2026-08-11 | `ocr_hazards` removed from the Initial Order and its dangling `why` references rewritten (#579). **Ids and item text are unchanged from v2** — this bump is advisory prose only |
 | `keys-v4.sha256` | 2026-08-18 | The page-by-page pass (#625) — 257 entries became 553. 14 wrong page cites corrected and 6 unlocatable quotes rewritten as spans; `verify_keys.py` added and now gates the freeze. **No id drift** — every v4 entry is either a v3 entry under its original id or a new one appended after the highest existing id. No surviving entry's `fact`/`item` text changed; what changed is `page` on 17 of them and `quote` on 10, neither of which a judge is shown |
+| `keys-v5.sha256` | 2026-10-31 | Entity types brought into line with the extractor's current vocabulary. Six entries retyped `organization` → `public-body` (the Ontario Superior Court of Justice (Commercial List) twice, the Ontario Ministry of Colleges and Universities three times, the Financial Services Regulatory Authority of Ontario once), and the `role`-typed "Chief Redevelopment Officer" entity removed from the annual financial report 2020-21 key: the document never names who holds the post, and the appointment stays keyed as `M23`. **No `facts`/`must_not_miss` entry changed** — ids, text, pages and quotes are byte-identical to v4, and no scorer reads `entities`, so every v4 figure stands against v5. `verify_keys.py` on a 2026-10-31 chew reported the same 7 quote failures for v4 and v5 (F23, F24 on the 2019-20 report; F32, F33, F34, M1.1, M1.3 on the Initial Order): a difference in that chew's page text, not a key change |
 
-Each version's key files are archived beside its manifest (`v1/`, `v2/`) so an archived figure can
+Each version's key files are archived beside its manifest (`v1/` to `v4/`) so an archived figure can
 be read against the exact keys that produced it.
 
 **Archived judgments do not survive a key version bump, and must not be made to.** De-bundling

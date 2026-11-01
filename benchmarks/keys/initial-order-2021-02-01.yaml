@@ -75,7 +75,7 @@ entities:
     role: counsel for LU (LSO# 79504N)
     page: 17
   - name: Ontario Ministry of Colleges and Universities
-    type: organization
+    type: public-body
     aliases: ["MCU"]
     role: government body the Monitor is empowered to talk to
     page: 10
