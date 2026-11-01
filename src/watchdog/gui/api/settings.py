@@ -635,13 +635,8 @@ def skills_read(name: str) -> dict:
 
 def _gliner_cached() -> bool:
     """Whether the GLiNER name-detection model is already downloaded (no import, no network)."""
-    try:
-        from huggingface_hub import constants
-        cache = Path(constants.HF_HUB_CACHE)
-    except Exception:  # noqa: BLE001
-        home = os.environ.get("HF_HOME") or str(Path.home() / ".cache" / "huggingface")
-        cache = Path(home) / "hub"
-    return (cache / "models--urchade--gliner_multi-v2.1").is_dir()
+    from watchdog.gui import engine_setup
+    return (engine_setup._hf_cache() / "models--urchade--gliner_multi-v2.1").is_dir()
 
 
 # Programs Watchdog uses when they are installed: (command, label). None blocks the app: qpdf and
