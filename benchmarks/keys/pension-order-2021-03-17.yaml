@@ -39,7 +39,7 @@ entities:
     page: 1
 
   - name: Ontario Superior Court of Justice (Commercial List)
-    type: organization
+    type: public-body
     role: issuing court
     page: 1
 
@@ -102,7 +102,7 @@ entities:
     page: 5
 
   - name: Financial Services Regulatory Authority of Ontario
-    type: organization
+    type: public-body
     aliases: ["FSRA", "Financial Services Regulatory Authority"]
     role: pension regulator; actuarial valuation filed with it in December 2020
     page: 2
