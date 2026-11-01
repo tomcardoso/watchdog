@@ -281,6 +281,7 @@ def test_a_download_that_stops_part_way_leaves_docling_incomplete_until_it_finis
         raise RuntimeError("certificate verify failed")
 
     monkeypatch.setattr(engine_setup, "fingerprints", lambda: {"docling": "docling-v1"})
+    monkeypatch.setattr(engine_setup, "_docling_fingerprint", lambda: "docling-v1")   # not the installed one
     monkeypatch.setattr(engine_setup, "_RUNNERS", {"docling": partial})
     assert engine_setup.download_models(["docling"]) == {"docling": "warn"}
     assert "certificate verify failed" in engine_setup.ERRORS["docling"]
