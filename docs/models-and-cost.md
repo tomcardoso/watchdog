@@ -176,7 +176,7 @@ Two settings belong to a single investigation and live on its Overview instead: 
 
 | Field | Default | What it controls |
 |---|---|---|
-| OCR engine | `auto` | `auto` uses [Apple Vision](https://developer.apple.com/documentation/vision) on a Mac and [Tesseract](https://github.com/tesseract-ocr/tesseract) elsewhere; [`easyocr`](https://github.com/JaidedAI/EasyOCR) and [`rapidocr`](https://github.com/RapidAI/RapidOCR) need no system install but are less accurate on forms. |
+| OCR engine | `auto` | `auto` uses [Apple Vision](https://developer.apple.com/documentation/vision) on a Mac. Elsewhere it uses [Tesseract](https://github.com/tesseract-ocr/tesseract) when Tesseract is installed with its language data, and otherwise [`rapidocr`](https://github.com/RapidAI/RapidOCR) or [`easyocr`](https://github.com/JaidedAI/EasyOCR), which need no system install but are less accurate on forms. Each document's **Details** tab says which engine read it. |
 | OCR languages | *(auto-detect)* | Languages for Apple Vision, as codes such as `en-US,fr-FR`. Set it only if detection does poorly. |
 | Garbled-text threshold | `0.6` | One of three signals Watchdog uses to decide a PDF page's text layer is unreadable and needs OCR; at least two must agree, so dense but readable tables are not sent through OCR. |
 

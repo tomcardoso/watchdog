@@ -106,6 +106,11 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   saved, carried through sliced conversion and renumbered like the pages, then written by
   `preprocess_batch` to `.watchdog/text-positions/<sha>.json` and never queued. Line granularity
   (RapidOCR and Apple Vision both report lines). No second OCR pass; the original is untouched.
+- **What read the text (D372).** The queue descriptor's `metadata` names the OCR engine a
+  conversion actually used (`ocr_engine`, read from the OCR model Docling built, so `auto` is
+  resolved; `none` for a file's own text; joined with `+` when slices differed), the setting as
+  written, the engine's and Docling's versions and the platform. Under `auto`, Tesseract is
+  passed over when it finds no language data.
 
 ---
 

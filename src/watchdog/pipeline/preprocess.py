@@ -18,8 +18,16 @@ Outputs a single JSON object to stdout:
     "media": {...},           # audio/video only: kind, duration and each page's time range
                               # (see transcribe.process_media)
     "chunked": bool,          # true when the PDF was split for parallel processing
-    "ocr_pages": [int]        # 1-indexed pages OCR'd, present only when OCR was
+    "ocr_pages": [int],       # 1-indexed pages OCR'd, present only when OCR was
                               # page-scoped — i.e. some pages but not all (#605)
+    "ocr_engine": str,        # the engine that read any OCR'd text (D372): `ocrmac`,
+                              # `rapidocr`, `tesseract`, `easyocr`... (`a+b` when slices
+                              # differed), `none` when the text came from the file itself,
+                              # `unknown` when Docling could not be asked
+    "ocr_engine_configured": str,  # the `ocr_engine` setting as written (`auto`...)
+    "ocr_engine_version": str,     # that engine's package version, when installed as one
+    "docling_version": str,
+    "platform": str                # sys.platform: `darwin`, `linux`, `win32`
   },
   "text_positions": {...},    # where each OCR'd line sits on its page, for pages read by a
                               # full-page OCR pass and for images; absent when there are none.
@@ -317,7 +325,7 @@ def process_direct_text(path: Path, encoding_errors: str = "replace") -> dict:
         "page_count": 1,
         "pages": [{"page": 1, "markdown": text}],
         "metadata": {"ocr_used": False, "garbled_detected": False,
-                     "source_type": "direct_text", "chunked": False},
+                     "source_type": "direct_text", "chunked": False, "ocr_engine": "none"},
     }
 
 
@@ -396,15 +404,33 @@ def _ocr_languages() -> list[str]:
     return _config_get("ocr_languages", [])
 
 
-def _make_tesseract_opts(force_ocr: bool):
-    """Return TesseractOcrOptions if tesserocr is importable, else OcrAutoOptions."""
+def _tesseract_ready() -> bool:
+    """tesserocr is importable and finds at least one language's data. Installed without its
+    data (no TESSDATA_PREFIX, or a package that ships none), Tesseract fails the whole conversion
+    ("No language models have been detected") rather than letting another engine read it (D372)."""
+    try:
+        import tesserocr
+        _path, langs = tesserocr.get_languages()
+    except Exception:  # noqa: BLE001
+        return False
+    return any(lang != "osd" for lang in langs)
+
+
+def _make_tesseract_opts(force_ocr: bool, *, required: bool = False):
+    """TesseractOcrOptions when Tesseract is ready, else OcrAutoOptions. With `required` (the
+    `tesseract` setting rather than `auto`), Tesseract is used whenever tesserocr imports, so a
+    missing language pack fails with Tesseract's own message instead of silently reading the
+    document with another engine."""
     try:
         import tesserocr  # noqa: F401
+        ready = required or _tesseract_ready()
+    except ImportError:
+        ready = False
+    if ready:
         from docling.datamodel.pipeline_options import TesseractOcrOptions
         return TesseractOcrOptions(force_full_page_ocr=force_ocr)
-    except ImportError:
-        from docling.datamodel.pipeline_options import OcrAutoOptions
-        return OcrAutoOptions(force_full_page_ocr=force_ocr)
+    from docling.datamodel.pipeline_options import OcrAutoOptions
+    return OcrAutoOptions(force_full_page_ocr=force_ocr)
 
 
 def _load_models(converter, fmt) -> None:
@@ -461,7 +487,7 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
             from docling.datamodel.pipeline_options import RapidOcrOptions
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
         else:  # auto or tesseract
-            ocr_opts = _make_tesseract_opts(force_ocr)
+            ocr_opts = _make_tesseract_opts(force_ocr, required=engine == "tesseract")
     if force_ocr and ocr_scale:
         ocr_opts.scale = ocr_scale
 
@@ -613,6 +639,59 @@ def _ocr_engine_name(converter) -> str:
         return "unknown"
 
 
+# Docling's OCR model classes, by the name the `ocr_engine` setting uses for each.
+_OCR_MODEL_NAMES = {
+    "OcrMacModel": "ocrmac", "RapidOcrModel": "rapidocr", "EasyOcrModel": "easyocr",
+    "TesseractOcrModel": "tesseract", "TesseractOcrCliModel": "tesseract",
+    "NemotronOcrModel": "nemotron",
+}
+# The package each engine is installed as, for its version.
+_OCR_PACKAGES = {"ocrmac": "ocrmac", "rapidocr": "rapidocr", "easyocr": "easyocr",
+                 "tesseract": "tesserocr", "nemotron": "nemotron-ocr"}
+
+
+def ocr_engine_used(converter) -> str:
+    """The OCR engine a conversion actually used (D372), read from the OCR model Docling built:
+    with `auto`, Docling picks one when the pipeline starts and keeps it as the auto model's
+    `_engine`. `none` when the conversion's pipeline has no OCR model (a Word file, a
+    spreadsheet), `unknown` when no pipeline was built or Docling's internals have moved."""
+    try:
+        pipelines = list((getattr(converter, "initialized_pipelines", None) or {}).values())
+    except Exception:  # noqa: BLE001
+        return "unknown"
+    if not pipelines:
+        return "unknown"
+    for pipeline in pipelines:
+        model = getattr(pipeline, "ocr_model", None)
+        if model is None:
+            continue
+        model = getattr(model, "_engine", None) or model
+        return _OCR_MODEL_NAMES.get(type(model).__name__, "unknown")
+    return "none"
+
+
+def _package_version(name: str | None) -> str | None:
+    if not name:
+        return None
+    try:
+        from importlib.metadata import version
+        return version(name)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def ocr_provenance(engine: str) -> dict:
+    """What read a document's text, for its metadata (D372): the engine that ran, the setting
+    as written, the engine's and Docling's versions, and the platform."""
+    out = {"ocr_engine": engine, "ocr_engine_configured": str(_config_get("ocr_engine", "auto")),
+           "platform": sys.platform}
+    for key, value in (("ocr_engine_version", _package_version(_OCR_PACKAGES.get(engine))),
+                       ("docling_version", _package_version("docling"))):
+        if value:
+            out[key] = value
+    return out
+
+
 def build_image_converter():
     """The converter for an image file: Docling's defaults, plus the parsed pages kept so the
     OCR'd lines' positions can be read (D289)."""
@@ -710,12 +789,16 @@ def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict
     all_pages, failed = [], []
     positions: dict[str, dict] = {}
     engine = None
+    engines: set[str] = set()
     for n, (pages, _force) in enumerate(slices):
         r = results[n]
         if "error" in r:
             failed.append(f"pages {_page_range(pages)}: {r['error']}")
             continue
         all_pages.extend(r.get("pages", []))
+        used = (r.get("metadata") or {}).get("ocr_engine")
+        if used and used not in ("none", "unknown"):
+            engines.add(used)
         tp = r.get("text_positions")
         if isinstance(tp, dict) and isinstance(tp.get("pages"), dict):
             positions.update(tp["pages"])
@@ -726,7 +809,8 @@ def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict
 
     # Sorted, not concatenated: slices are grouped by OCR verdict, so their
     # pages interleave in the original document.
-    out = {"pages": sorted(all_pages, key=lambda p: p["page"])}
+    out = {"pages": sorted(all_pages, key=lambda p: p["page"]),
+           "ocr_engine": "+".join(sorted(engines)) or "unknown"}
     block = _text_positions.block(positions, engine or "unknown")
     if block:
         out["text_positions"] = block
@@ -744,12 +828,14 @@ def _page_range(pages: list[int]) -> str:
 
 def _docling_result(path: Path, pages: list[dict], page_count: int, *,
                     ocr_used: bool, garbled: bool, ocr_pages: list[int] | None = None,
-                    chunk_count: int | None = None, text_positions: dict | None = None) -> dict:
+                    chunk_count: int | None = None, text_positions: dict | None = None,
+                    ocr_engine: str = "unknown") -> dict:
     metadata = {
         "ocr_used": ocr_used,
         "garbled_detected": garbled,
         "source_type": "docling",
         "chunked": chunk_count is not None,
+        **ocr_provenance(ocr_engine),
     }
     if chunk_count is not None:
         metadata["chunk_count"] = chunk_count
@@ -965,6 +1051,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
             ocr_pages=force_pages,
             chunk_count=len(slices),
             text_positions=result.get("text_positions"),
+            ocr_engine=result.get("ocr_engine") or "unknown",
         )
 
     # Small PDFs and all other formats: single Docling conversion
@@ -1016,7 +1103,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
 
     return _docling_result(path, pages, page_count,
                            ocr_used=force_ocr, garbled=bool(garbled_pages),
-                           text_positions=positions)
+                           text_positions=positions, ocr_engine=ocr_engine_used(converter))
 
 
 def main() -> None:
