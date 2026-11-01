@@ -447,7 +447,7 @@ def _resolve(model_str: str | None, default: str):
 def _model_id(model_str: str | None, default: str) -> str:
     """The catalog id an arm's model runs as: `_resolve` hands a Claude tier alias back as
     written (`(None, 'haiku-5.5')`), and both the archived usage records and the catalog key on
-    the id (`claude-haiku-5-5`), so a preview looking up the alias found neither (D365)."""
+    the id (`claude-haiku-5-5`), so a preview looking up the alias found neither (D366)."""
     from watchdog.model_catalog import resolve_model_id
     _, model = _resolve(model_str, default=default)
     return resolve_model_id(model)

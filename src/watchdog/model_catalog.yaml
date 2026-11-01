@@ -105,14 +105,14 @@
 # The dataset also goes stale in a way a diff won't show: its DeepSeek V4 rows still carried the
 # pre-2026-08-16 prices days after DeepSeek itself published the increase, so a provider's own
 # page is the authority when the two disagree, not the tie-breaker.
-# Speaking of tiers: a model whose vendor prices by PROMPT LENGTH carries two rate cards (D365) —
+# Speaking of tiers: a model whose vendor prices by PROMPT LENGTH carries two rate cards (D366) —
 # the ordinary one in the entry's own `input`/`output`/cache fields, and `long_context`, which
 # replaces ALL of them for the whole request once its prompt is over `long_context_threshold`
 # real tokens. Both are written out as the vendor's table prints them, not as multipliers, so a
 # vendor that stops scaling every column by the same factor needs no code change.
 # `model_catalog.rate_card` picks the card; `model_client`'s cost functions measure the prompt by
 # each provider's own definition (Anthropic: uncached input + cache writes + cache reads; OpenAI:
-# `prompt_tokens`, which already includes cached tokens). Before D365 the catalog priced every
+# `prompt_tokens`, which already includes cached tokens). Before D366 the catalog priced every
 # call at the lower card and trusted the sectioning clamp below to keep calls under the line; a
 # benchmark run on 2026-10-31 showed the clamp's headroom is smaller than the prompt's fixed
 # overhead, so calls did cross, and were recorded at about half their real cost. Two boundaries
@@ -144,7 +144,7 @@
 # `model_catalog.price_multiplier()` resolves it against the current UTC time (or an explicit one),
 # and `model_client`'s `_api_cost`/`_openai_cost` apply it to the finished per-call figure — so a
 # call is billed at the rate in force WHEN IT RAN, which is also why Usage reads the stored
-# `cost_usd` rather than re-pricing it on read (the one repricing of stored calls, D365's
+# `cost_usd` rather than re-pricing it on read (the one repricing of stored calls, D366's
 # migration, touches only calls over a long-prompt line, none of which is clock-priced). The
 # pre-flight estimates (`--estimate-all`, `benchmarks/cost_reference.fallback_estimate`) apply the
 # same multiplier for the moment they are asked, and mark the affected rows: a long run that
@@ -157,7 +157,7 @@
 # these models a factor of five under the line by accident: sizing from the context window alone
 # gives a 1.05M-window OpenAI model a 393,750 est-token budget — about 315,000 real tokens at the
 # 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still. The clamp is a
-# cost control, not the pricing: since D365 a call that crosses the line anyway is priced at the
+# cost control, not the pricing: since D366 a call that crosses the line anyway is priced at the
 # upper card, and the estimates price a planned call that will cross it the same way. Omit both
 # fields entirely for a model that prices flat (every Claude entry but Haiku 5.5, every DeepSeek
 # and Gemini entry).
@@ -232,7 +232,7 @@ models:
   # prompt length: $0.10 / $0.50 per MTok for a prompt up to 100,000 tokens, $0.50 / $2.50 above
   # (the whole request, cache reads and writes counted in the length); cache reads 0.1x input,
   # 5-minute cache writes 1.25x, 1-hour writes 2x, of whichever input rate applies. Both cards
-  # below; `long_context_threshold` also clamps sectioning toward the lower one (D202, D365).
+  # below; `long_context_threshold` also clamps sectioning toward the lower one (D202, D366).
   # 300K output on the Message Batches beta (listed in the
   # overview's max-output note, fetched 2026-10-13). `tokenizer_ratio` is DERIVED, not measured:
   # Anthropic says this tokenizer counts the same text as about 30% more tokens than Haiku 4.5's,
@@ -251,7 +251,7 @@ models:
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.21     # derived from "about 30% more tokens" than Haiku 4.5; unmeasured
     long_context_threshold: 100_000   # prompt over this (input + cache reads + cache writes)...
-    long_context:                     # ...bills the whole request at this card (D365)
+    long_context:                     # ...bills the whole request at this card (D366)
       input: 0.50e-6
       output: 2.50e-6
       cache_write: 0.625e-6
@@ -359,7 +359,7 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # copied from the GPT-5.x value (#617), unconfirmed for GPT-6 (D249)
-    long_context_threshold: 272_000   # prompt over this bills the whole request at (D365):
+    long_context_threshold: 272_000   # prompt over this bills the whole request at (D366):
     long_context:                     # 2x input and cache, 1.5x output
       input: 0.20e-6
       output: 0.75e-6
@@ -382,7 +382,7 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
-    long_context_threshold: 272_000   # prompt over this bills the whole request at (D365):
+    long_context_threshold: 272_000   # prompt over this bills the whole request at (D366):
     long_context:                     # 2x input and cache, 1.5x output
       input: 0.40e-6
       output: 1.80e-6

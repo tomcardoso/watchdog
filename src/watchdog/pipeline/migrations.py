@@ -554,7 +554,7 @@ async def _housekeeping_apply(ctx: Context) -> dict:
     return out
 
 
-# ── long-prompt costs (D365) ─────────────────────────────────────────────────────────────
+# ── long-prompt costs (D366) ─────────────────────────────────────────────────────────────
 
 def _long_prompt_scan(ctx: Context, write: bool) -> dict:
     """Every stored call over its model's long-prompt line, repriced at that card
@@ -613,11 +613,11 @@ async def _long_prompt_apply(ctx: Context) -> dict:
 
 MIGRATIONS: list[Migration] = [
     Migration("2026-10-long-prompt-cost", "Cost of past long prompts",
-              "Before November 2026 a model call whose prompt was over the model's long-prompt line "
+              "In earlier versions a model call whose prompt was over the model's long-prompt line "
               "(100,000 tokens on Claude Haiku 5.5, 272,000 on GPT-6 Luna and GPT-5.6 Luna) was "
               "recorded at the lower rate, though the provider billed all of it at the higher one. "
-              "Prices those calls again from their stored token counts, so Usage and the spending "
-              "limit match the bill. No AI model is used.",
+              "Prices those calls again from their stored token counts, so Usage matches the bill; "
+              "a key's spending limit keeps the amount it had counted. No AI model is used.",
               False, None, _long_prompt_estimate, _long_prompt_apply),
     Migration("2026-10-free-fixes", "Free fixes to saved extractions",
               "Points fact tags that are near misses at the entity their document meant, and moves "

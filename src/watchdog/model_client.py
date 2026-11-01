@@ -99,7 +99,7 @@ def long_context_input_cap(model: str | None, backend: str | None = None) -> int
     `section.py` clamps both the sectioning threshold and the per-section budget to this, so a
     section's document text is never planned past the boundary. It is a cost control, not the
     pricing: the prompt's fixed overhead rides on top of that text and can still carry a call over
-    the line, and such a call is priced at the upper card (`rate_card`, D365). Returns None for an uncatalogued id: we
+    the line, and such a call is priced at the upper card (`rate_card`, D366). Returns None for an uncatalogued id: we
     can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
     its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
     pricing tiers vary within a family (Haiku 5.5 is the only Claude model with one), so a
@@ -794,7 +794,7 @@ def _usage_get(usage, name: str):
 
 
 def _anthropic_prompt_tokens(usage) -> int:
-    """A Claude request's prompt length as Anthropic prices it (D365): "all of its input tokens,
+    """A Claude request's prompt length as Anthropic prices it (D366): "all of its input tokens,
     including cache reads and cache writes" — `input_tokens` alone is only the uncached part."""
     return sum(_usage_get(usage, k) or 0 for k in
                ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
@@ -808,7 +808,7 @@ _ANTHROPIC_1H_WRITE = 2.0
 
 
 def _api_cost(model_id: str, usage) -> float | None:
-    """Cost of one Claude Messages API call (D365). The rate card is chosen by the request's whole
+    """Cost of one Claude Messages API call (D366). The rate card is chosen by the request's whole
     prompt length (`_anthropic_prompt_tokens`), so a Haiku 5.5 request over 100,000 tokens is billed
     entirely at the long-prompt card, cache reads and writes included. Thinking tokens are already
     inside `output_tokens` and billed as output. `usage` is the SDK's `Usage` or its dict form."""
@@ -833,7 +833,7 @@ def _api_cost(model_id: str, usage) -> float | None:
 
 def _batch_cost(model_id: str, usage) -> float | None:
     """Message Batches pricing is a flat 50% off every per-token rate of whichever card the
-    request's prompt length selects, cache read/write included (#214, D365) — so batch cost is
+    request's prompt length selects, cache read/write included (#214, D366) — so batch cost is
     the normal API cost at half price."""
     cost = _api_cost(model_id, usage)
     return cost * 0.5 if cost is not None else None
@@ -1033,7 +1033,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     which is how DeepSeek states it and the only shape `price_periods` allows.
 
     The rate card is chosen by `prompt_tokens`, which on this API already includes the cached
-    part (D365): a GPT-6 Luna or GPT-5.6 Luna request over 272,000 prompt tokens is billed
+    part (D366): a GPT-6 Luna or GPT-5.6 Luna request over 272,000 prompt tokens is billed
     entirely at the long-prompt card. Reasoning tokens are inside `completion_tokens` (Gemini's
     are folded in first by `_fold_in_hidden_reasoning`) and billed as output."""
     if not usage or model_id not in _OPENAI_PRICING:
@@ -1057,8 +1057,8 @@ def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
 
 
 def reprice_long_prompt_record(record: dict) -> float | None:
-    """What a stored usage record (`orchestrate._record_usage`'s shape) costs under D365's
-    long-prompt card, or None when the record is not one D365 reprices: an uncatalogued model, a
+    """What a stored usage record (`orchestrate._record_usage`'s shape) costs under D366's
+    long-prompt card, or None when the record is not one D366 reprices: an uncatalogued model, a
     model priced flat at every length, a subscription call (its figure is Claude Code's, not
     ours), or a call whose prompt stayed at or under the line.
 

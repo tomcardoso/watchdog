@@ -87,7 +87,7 @@ def fallback_estimate(est_tokens: int, model: str, effort: str | None,
     published rate rather than any run-derived $/token ratio, scaled by
     `DEFAULT_OUTPUT_RATIO_BY_EFFORT`'s rough per-effort ratio. `model` may be a catalog id or a
     tier alias (`haiku-5.5`). `long_share` is the part of the tokens in calls over the model's
-    long-prompt line (`ingest_setup.long_prompt_plan`), priced at that card (D365). Returns `None`
+    long-prompt line (`ingest_setup.long_prompt_plan`), priced at that card (D366). Returns `None`
     for a model not in the catalog, so a caller never fabricates a number from nothing.
     """
     from watchdog.model_catalog import list_price, resolve_model_id

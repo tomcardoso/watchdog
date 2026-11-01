@@ -68,7 +68,7 @@ _OPENAI_PRICING = {
 }
 
 
-# The long-prompt rate card (D365): model id -> (threshold, card), where `card` has the same shape
+# The long-prompt rate card (D366): model id -> (threshold, card), where `card` has the same shape
 # as the model's tuple in `_PRICING`/`_OPENAI_PRICING` and replaces it for the WHOLE request once
 # the request's prompt is longer than `threshold` real tokens. Only a model whose vendor prices by
 # prompt length declares `long_context` in the YAML. A threshold without a card (or the reverse)
@@ -95,7 +95,7 @@ _LONG_CONTEXT_PRICING = {
 
 def rate_card(model_id: str, prompt_tokens: int = 0) -> tuple | None:
     """The per-token rates one request to `model_id` is billed at, given its prompt length in real
-    tokens (D365): the long-prompt card when the model has one and `prompt_tokens` is over its
+    tokens (D366): the long-prompt card when the model has one and `prompt_tokens` is over its
     threshold, else the ordinary card. The tuple has `_PRICING`'s shape for a Claude model and
     `_OPENAI_PRICING`'s for everyone else; None for an uncatalogued id.
 
@@ -113,7 +113,7 @@ def rate_card(model_id: str, prompt_tokens: int = 0) -> tuple | None:
 
 
 def long_context_card(model_id: str) -> tuple[int, tuple] | None:
-    """(threshold, long-prompt card) for a model priced by prompt length, or None (D365)."""
+    """(threshold, long-prompt card) for a model priced by prompt length, or None (D366)."""
     return _LONG_CONTEXT_PRICING.get(model_id)
 
 
@@ -121,7 +121,7 @@ def list_price(model_id: str, prompt_tokens: float, output_tokens: float,
                long_share: float = 0.0, at: datetime | None = None) -> float | None:
     """Pre-run price of `prompt_tokens` in and `output_tokens` out on `model_id`, every input token
     a cache miss, at the rate in force now (D217). `long_share` (0 to 1) is the part of both that
-    falls in requests over the model's long-prompt line, priced at that card (D365): an aggregate
+    falls in requests over the model's long-prompt line, priced at that card (D366): an aggregate
     token count cannot say which card a request hits, so the estimates work the share out from the
     calls they plan. None for an uncatalogued id."""
     low = rate_card(model_id)
@@ -170,7 +170,7 @@ def catalog_max_output_tokens(model_id: str) -> int | None:
 
 def catalog_long_context_threshold(model_id: str) -> int | None:
     """Real-token prompt length above which this model bills the whole request at its long-prompt
-    card (#555, D365), or None when it prices flat at every length. See `model_catalog.yaml`'s
+    card (#555, D366), or None when it prices flat at every length. See `model_catalog.yaml`'s
     `long_context_threshold` comment."""
     entry = _entry(model_id)
     return entry.get("long_context_threshold") if entry else None

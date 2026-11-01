@@ -1,4 +1,4 @@
-"""Long-prompt rate cards (D365): a request over a model's prompt-length line is billed in full at
+"""Long-prompt rate cards (D366): a request over a model's prompt-length line is billed in full at
 the upper card, by each provider's own definition of prompt length; the estimates price planned
 calls that will cross it the same way; stored history is repriced by a migration. No model is
 called."""

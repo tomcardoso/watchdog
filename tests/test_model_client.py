@@ -915,7 +915,7 @@ def earlier_openai(catalog_entry):
 
 
 def test_openai_cost_prices_openai_models():
-    # gpt-6-luna standard: $0.10/1M input, $0.50/1M output, for a prompt under 272K (D365).
+    # gpt-6-luna standard: $0.10/1M input, $0.50/1M output, for a prompt under 272K (D366).
     assert mc._openai_cost("gpt-6-luna",
                            {"prompt_tokens": 200_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(0.02 + 0.50)
@@ -931,7 +931,7 @@ def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, 
     added, invisible because nothing asserted a per-model price. Every row here verified
     2026-10-13, and again 2026-10-31, against developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
     deliberately, not discover the drift through a cost report. The prompt stays under the 272K
-    long-prompt line (D365); `test_long_prompt_cost.py` covers the card above it."""
+    long-prompt line (D366); `test_long_prompt_cost.py` covers the card above it."""
     assert mc._openai_cost(model_id, {"prompt_tokens": 200_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(0.2 * price_in + price_out)
 

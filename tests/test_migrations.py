@@ -78,7 +78,7 @@ def old_vault(tmp_path):
     md.write_text("<!-- PAGE 1 -->\n\nThe City Council heard Acme Corp's request for a longer lease. "
                   "The City Council deferred the vote.\n", encoding="utf-8")
     # A run whose one extraction call went over Claude Haiku 5.5's long-prompt line and was
-    # recorded at the lower rate, as every such call was before D365.
+    # recorded at the lower rate, as every such call was before D366.
     usage_dir = vault / REG / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     (usage_dir / "usage-20261031T120000Z.json").write_text(json.dumps({"calls": [

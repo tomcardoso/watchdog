@@ -624,7 +624,7 @@ def test_openai_collect_prices_at_half_the_standard_rate(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
 
     out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-6-luna", backend="openai-batch"))
-    # gpt-6-luna: $0.10/1M input under the 272K line (D365), halved by the batch discount.
+    # gpt-6-luna: $0.10/1M input under the 272K line (D366), halved by the batch discount.
     assert out["sha1"]["cost_usd"] == pytest.approx(0.01)
 
 

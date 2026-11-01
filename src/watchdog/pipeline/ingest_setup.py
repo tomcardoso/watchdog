@@ -215,7 +215,7 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
 # grows with the pages the call carries, mostly the checklist. Fitted to the two ends of one
 # benchmark run on 2026-10-31 (about 13,600 real tokens for a 5-page document and 27,800 for a
 # 70-page one, on Claude Haiku 5.5's 1.21 tokenizer ratio), so a judgement, not a measurement of
-# every corpus: see the CLAUDE.md Standing Follow-ups (D365).
+# every corpus: see the CLAUDE.md Standing Follow-ups (D366).
 _PROMPT_OVERHEAD_EST = 10_300
 _PROMPT_OVERHEAD_EST_PER_PAGE = 180
 
@@ -223,7 +223,7 @@ _PROMPT_OVERHEAD_EST_PER_PAGE = 180
 def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
                      vault: Path | None = None) -> dict:
     """Which of the queue's planned extraction calls will be billed at `model`'s long-prompt card
-    (D365). Each document is planned as `section.run` plans it — one call at or under the
+    (D366). Each document is planned as `section.run` plans it — one call at or under the
     sectioning threshold, else even sections of the budget — and each call's prompt is its text
     plus the fixed overhead above, converted to real tokens with the model's tokenizer ratio.
 
@@ -277,7 +277,7 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None,
     figure verbatim (#574, D135).
 
     With `queue_files` (an extraction queue), each model's planned calls that will cross its
-    long-prompt line are priced at that card (`long_prompt_plan`, D365), and the row says how many
+    long-prompt line are priced at that card (`long_prompt_plan`, D366), and the row says how many
     calls that is. Post-processing passes no queue: its calls are packed well under the line
     (`chunking.prompt_budget_chars`)."""
     if output_ratio is None:
@@ -306,7 +306,7 @@ def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3,
     comparison across providers before committing to one. `est_tokens` should be `cost_estimate`'s
     own already-calibrated figure, so this projection starts from the same 'tokens in' number the
     single-model estimate already shows. `queue_files` lets each model's row price the calls that
-    will cross its long-prompt line at that card (D365)."""
+    will cross its long-prompt line at that card (D366)."""
     return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs),
                                     queue_files, vault)
 
@@ -321,7 +321,7 @@ def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: in
 
 def _long_prompt_factor(model: str | None, output_ratio: float | None) -> float:
     """How many times dearer a call at `model`'s long-prompt card is than the same call at its
-    ordinary card, for a call writing `output_ratio` output tokens per input token (D365): 5 on
+    ordinary card, for a call writing `output_ratio` output tokens per input token (D366): 5 on
     Claude Haiku 5.5 whatever the mix, between 1.5 and 2 on the OpenAI entries. 1.0 for a model
     that prices flat."""
     from watchdog import model_catalog, model_client
@@ -350,7 +350,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     seeded vault, `BENCHMARKING.md`), the caller can supply usage files archived from a prior run
     of the same model/effort/backend combination elsewhere.
 
-    ``model``, the extraction model, makes the figure tier-aware (D365): the queue's calls that
+    ``model``, the extraction model, makes the figure tier-aware (D366): the queue's calls that
     will cross the model's long-prompt line (`long_prompt_plan`) have their share of the cost
     scaled by `_long_prompt_factor`, and `long_prompt_calls`/`long_prompt_documents` say how many.
     The history ratio is taken as the ordinary card's, since sectioning keeps most calls under the

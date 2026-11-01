@@ -1,4 +1,4 @@
-"""Compare what a run recorded with what Anthropic billed for the day (D365).
+"""Compare what a run recorded with what Anthropic billed for the day (D366).
 
     python benchmarks/reconcile_cost.py RUN_DIR --day 2026-10-31 [--workspace wrkspc_...]
 

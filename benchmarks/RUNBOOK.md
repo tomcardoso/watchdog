@@ -86,7 +86,7 @@ siblings** (the old blob-level failure mode) or counted as a miss.
 
 Every dollar figure in a run is Watchdog's own: the APIs return token counts, and
 `model_client` prices them from `model_catalog.yaml`. A pricing rule the catalog misses (the
-long-prompt card was one, D365) is invisible until it is compared with what the provider billed.
+long-prompt card was one, D366) is invisible until it is compared with what the provider billed.
 Do it for any run whose cost figure a decision leans on.
 
 - **Run benchmarks in their own Anthropic workspace** (Console → Settings → Workspaces, with a key

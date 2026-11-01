@@ -128,7 +128,7 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   standalone-finalize history. The all-models view prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
   gets token counts, never dollars. For a model priced by prompt length, each document's planned
   extraction calls (sectioning plus a fixed prompt overhead, `ingest_setup.long_prompt_plan`) decide
-  what share of the queue is priced at the long-prompt card (D365).
+  what share of the queue is priced at the long-prompt card (D366).
 - **Rate limits (D71, D184).** A `RateLimitError` stops the batch cleanly; unfinished documents
   stay queued and the next `dig` resumes. With `wait` (`RunOptions.wait`) the run sleeps until the
   reported reset and loops, refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
@@ -863,13 +863,13 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
   tokenizer ratios and capability flags. It holds each provider's current frontier models: a
   superseded or retired model is removed, with no alias (D300, D310), unless something still needs
   it. A price that changes on a calendar date is changed by hand on the day.
-- **Cost (D217, D365).** Providers return token counts, not prices, so `model_client` prices every
+- **Cost (D217, D366).** Providers return token counts, not prices, so `model_client` prices every
   call: `_api_cost`/`_batch_cost` (Claude) and `_openai_cost`/`_openai_batch_cost` (every other
   provider) measure the prompt by the provider's own definition and take the rate card
   `model_catalog.rate_card` selects — a model with a `long_context` card bills the whole request at
   it once the prompt is over `long_context_threshold` — then apply `price_multiplier`. The call's
   `cost_usd` is stored with its usage record and read, never re-priced, by Usage and the spending
-  limit; the one exception is the D365 migration that repriced calls recorded before the card was
+  limit; the one exception is the D366 migration that repriced calls recorded before the card was
   modelled, keeping the original as `cost_usd_recorded`.
 - **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
   the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects

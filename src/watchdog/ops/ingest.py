@@ -131,7 +131,7 @@ def _format_cost_estimate(est: dict) -> str:
         line += f" (~{cost} based on your {run_label})"
     long_docs = est.get("long_prompt_documents") or 0
     if long_docs and not est.get("subscription"):
-        # D365: a call over the model's long-prompt line is billed in full at the higher rate.
+        # D366: a call over the model's long-prompt line is billed in full at the higher rate.
         line += (f"\n  {long_docs} document{'s are' if long_docs != 1 else ' is'} long enough that "
                  "a call will cross this model's long-prompt line and be billed at its higher rate; "
                  "the figure above includes that.")
