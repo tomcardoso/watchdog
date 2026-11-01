@@ -13,6 +13,7 @@ import pytest
 from watchdog.pipeline import entity_facts, history
 
 from tests.gui_support import call
+from tests.demo_support import copy_demo
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -320,13 +321,9 @@ def test_clear_removes_every_past_version_and_keeps_the_files(tmp_path):
 # ── every write point records a version ───────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
-def demo(tmp_path_factory):
-    root = tmp_path_factory.mktemp("demo-history")
-    vault = root / "vault"
-    env = {**os.environ, "PYTHONPATH": str(SRC), "NO_COLOR": "1"}
-    proc = subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(root / "home")],
-                          env=env, capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, proc.stderr
+def demo(demo_build, tmp_path_factory):
+    root, stdout = demo_build
+    vault, home = copy_demo(root, tmp_path_factory.mktemp("demo-history") / "copy")
     return vault
 
 

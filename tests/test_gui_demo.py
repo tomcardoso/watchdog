@@ -3,29 +3,22 @@ pipeline with canned model answers, in a scratch HOME. The build runs once per m
 subprocess, exactly as the app's developers run it."""
 
 import json
-import os
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 from watchdog.gui import demo, demo_pdf
 from watchdog.pipeline.timeline import _timeline_dir  # noqa: F401  (the vault's timeline folder)
+from tests.demo_support import copy_demo
 
-SRC = Path(__file__).resolve().parent.parent / "src"
 
 
 @pytest.fixture(scope="module")
-def demo_vault(tmp_path_factory):
-    root = tmp_path_factory.mktemp("demo")
-    vault, home = root / "vault", root / "home"
-    env = {**os.environ, "PYTHONPATH": str(SRC), "NO_COLOR": "1"}
-    proc = subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(home)],
-                          env=env, capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, proc.stderr
-    return vault, home, proc.stdout
+def demo_vault(demo_build, tmp_path_factory):
+    root, stdout = demo_build
+    vault, home = copy_demo(root, tmp_path_factory.mktemp("demo") / "copy")
+    return vault, home, stdout
 
 
 def _registry(vault: Path, name: str) -> dict:

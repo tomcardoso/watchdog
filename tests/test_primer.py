@@ -1,28 +1,20 @@
 """The session primer (D285): a deterministic, budgeted picture of the whole investigation that the
 app adds to every Ask Claude session's system prompt (D299), replacing the model-written hot.md."""
 
-import os
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
 from watchdog import primer
 
 from tests.test_write_vault import make_vault
+from tests.demo_support import copy_demo
 
-SRC = Path(__file__).resolve().parent.parent / "src"
-_ENV = {**os.environ, "PYTHONPATH": str(SRC), "NO_COLOR": "1"}
 
 
 @pytest.fixture(scope="module")
-def demo(tmp_path_factory):
-    root = tmp_path_factory.mktemp("primer-demo")
-    vault, home = root / "vault", root / "home"
-    proc = subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(home)],
-                          env=_ENV, capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, proc.stderr
+def demo(demo_build, tmp_path_factory):
+    root, stdout = demo_build
+    vault, home = copy_demo(root, tmp_path_factory.mktemp("primer-demo") / "copy")
     return vault, home
 
 
