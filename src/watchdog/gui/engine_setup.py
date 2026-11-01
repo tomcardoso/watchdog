@@ -127,14 +127,19 @@ def _fastembed_cache() -> Path:
 
 
 def _hf_cache() -> Path:
+    """The Hugging Face hub cache. The variables are read first, in the hub's own order, because
+    `huggingface_hub.constants` fixes the path when the library is first imported and so misses a
+    variable set after that; the library is asked only when neither is set (it also honours
+    XDG_CACHE_HOME)."""
+    if os.environ.get("HF_HUB_CACHE"):
+        return Path(os.environ["HF_HUB_CACHE"])
+    if os.environ.get("HF_HOME"):
+        return Path(os.environ["HF_HOME"]) / "hub"
     try:
         from huggingface_hub import constants
         return Path(constants.HF_HUB_CACHE)
     except Exception:  # noqa: BLE001
-        if os.environ.get("HF_HUB_CACHE"):
-            return Path(os.environ["HF_HUB_CACHE"])
-        home = os.environ.get("HF_HOME") or str(Path.home() / ".cache" / "huggingface")
-        return Path(home) / "hub"
+        return Path.home() / ".cache" / "huggingface" / "hub"
 
 
 # Written as a step's record before its download starts and replaced by the fingerprint when it
