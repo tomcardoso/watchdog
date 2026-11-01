@@ -219,7 +219,7 @@ def test_the_catalog_projection_prices_each_model_at_its_own_card(tmp_path, monk
     rows = {r["id"]: r for r in ingest_setup._catalog_cost_projection(100_000, 0.25, queue, tmp_path)}
     haiku = rows["claude-haiku-5-5"]
     assert haiku["long_prompt_calls"] == 1
-    low = 100_000 * 1.21 * (0.10e-6 + 0.25 * 0.50e-6)
+    low = 100_000 * 1.235 * (0.10e-6 + 0.25 * 0.50e-6)   # Haiku 5.5's catalog ratio (D375)
     assert haiku["cost"] == pytest.approx(low * (1 + 4 * share))
     assert rows["claude-sonnet-5-5"]["long_prompt_calls"] == 0
     no_queue = {r["id"]: r for r in ingest_setup._catalog_cost_projection(100_000, 0.25)}

@@ -483,19 +483,33 @@ def preview_extractor_arm(vault: Path, extractor_model: str, extractor_effort: s
     none exists anywhere yet falls back to a rough catalog-list-price projection, clearly marked
     as such rather than presented as a calibrated figure."""
     import cost_reference
-    from watchdog.pipeline.ingest_setup import cost_estimate, long_prompt_plan, scan_queue
+    from watchdog.pipeline.ingest_setup import (
+        cost_estimate, long_prompt_plan, planned_prompts, scan_queue)
     queue_files = scan_queue(vault)
     backend = arm_backend(extractor_model, default="sonnet")
     model = _model_id(extractor_model, default="sonnet")
     ref_files = (cost_reference.reference_usage_files(benchmarks_root, model, extractor_effort,
                                                       backend) if benchmarks_root else [])
     est = cost_estimate(vault, queue_files, backend, usage_files=ref_files, model=model)
-    if est["cost_low"] is None and backend != "claude-agent-sdk" and est["documents"]:
+    if backend == "claude-agent-sdk" or not est["documents"]:
+        return est
+    # Every call's whole prompt, not the document text alone: the instructions, record skill, brief
+    # and candidate checklist ride on every call, and were half of what a run billed. The app
+    # corrects `est_tokens` with the investigation's own history (`_tokens_calibration`); a fresh
+    # arm vault has none, so the planned prompts stand in for it here.
+    prompt_tokens = round(sum(sum(p) for p in planned_prompts(queue_files, model, backend, vault)))
+    if est["cost_low"] is not None:
+        if prompt_tokens and est["est_tokens"]:
+            scale = prompt_tokens / est["est_tokens"]
+            est["cost_low"] *= scale
+            est["cost_high"] *= scale
+    else:
         share = long_prompt_plan(queue_files, model, backend, vault)["share"]
-        fallback = cost_reference.fallback_estimate(est["est_tokens"], model, extractor_effort,
-                                                    long_share=share)
+        fallback = cost_reference.fallback_estimate(prompt_tokens or est["est_tokens"], model,
+                                                    extractor_effort, long_share=share)
         if fallback:
             est.update(fallback)
+    est["prompt_tokens"] = prompt_tokens
     return est
 
 

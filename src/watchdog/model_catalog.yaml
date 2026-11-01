@@ -241,9 +241,9 @@ models:
   # below; `long_context_threshold` also keeps every planned extraction prompt under the lower
   # one, whole prompt counted (D202, D366, D370).
   # 300K output on the Message Batches beta (listed in the
-  # overview's max-output note, fetched 2026-10-13). `tokenizer_ratio` is DERIVED, not measured:
-  # Anthropic says this tokenizer counts the same text as about 30% more tokens than Haiku 4.5's,
-  # so 0.93 x 1.3 = 1.21 — see the CLAUDE.md Standing Follow-ups.
+  # overview's max-output note, fetched 2026-10-13). `tokenizer_ratio` MEASURED 2026-11-01 with
+  # `benchmarks/tokenizer_ratio.py --count` (Anthropic's free counter) over a fresh corpus-v1 chew:
+  # 1.235, per document 1.205–1.666 (D375). It replaced 1.21, derived from a vendor sentence.
   - id: claude-haiku-5-5
     name: Claude Haiku 5.5
     provider: anthropic
@@ -256,7 +256,7 @@ models:
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.21     # derived from "about 30% more tokens" than Haiku 4.5; unmeasured
+    tokenizer_ratio: 1.235    # measured 2026-11-01, corpus-v1, count_tokens (D375)
     long_context_threshold: 100_000   # prompt over this (input + cache reads + cache writes)...
     long_context:                     # ...bills the whole request at this card (D366)
       input: 0.50e-6
@@ -265,8 +265,8 @@ models:
       cache_read: 0.05e-6
   # Claude Sonnet 5.5 — the bare `sonnet` default since 2026-10-01 (D236). $2 / $10 per MTok, 5m
   # cache write $2.50, cache read $0.10: 0.05x input (corrected 2026-10-13 from
-  # $0.20, which over-stated every cache read by 2x). `tokenizer_ratio` is COPIED from the new
-  # Claude tokenizer's measured value (#617), unmeasured for this id — see the Standing Follow-ups.
+  # $0.20, which over-stated every cache read by 2x). `tokenizer_ratio` MEASURED 2026-11-01 as for
+  # Haiku 5.5, with identical counts: the two share a tokenizer (D375). It replaced a copied 1.28.
   - id: claude-sonnet-5-5
     name: Claude Sonnet 5.5
     provider: anthropic
@@ -279,7 +279,7 @@ models:
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.28     # copied from the new Claude tokenizer (#617), unconfirmed for this id
+    tokenizer_ratio: 1.235    # measured 2026-11-01, corpus-v1, count_tokens (D375)
 
   # DeepSeek (1M-token window; a cache hit costs 1/50 of a miss on Flash, 1/30 on Pro).
   # Re-verified against api-docs.deepseek.com/quick_start/pricing on 2026-10-13, and every rate

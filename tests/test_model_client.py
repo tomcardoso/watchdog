@@ -780,10 +780,10 @@ def test_context_window_ignores_backend_for_hosted_models():
 # model within one returned byte-identical counts on the corpus — and a model joining a family
 # copies its value until measured (D310). Only an UNCATALOGUED id falls through to 1.0.
 @pytest.mark.parametrize("model, ratio", [
-    ("sonnet", 1.28),            # default tier is Sonnet 5.5 — new Claude tokenizer (D236)
-    ("haiku", 1.21),             # Haiku 5.5: derived from "about 30% more" than 4.5, unmeasured (D277)
-    (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
-    ("sonnet-5.5", 1.28),        # new Claude tokenizer, copied not measured
+    ("sonnet", 1.235),           # default tier is Sonnet 5.5, measured 2026-11-01 (D375)
+    ("haiku", 1.235),            # Haiku 5.5, measured 2026-11-01 (D375)
+    (None, 1.235),               # default tier (sonnet = Sonnet 5.5)
+    ("sonnet-5.5", 1.235),       # measured 2026-11-01, same tokenizer as Haiku 5.5 (D375)
     ("gemini-3.8-flash", 0.91),
     ("gemini-3.5-flash-lite", 0.91),
     ("gpt-6-luna", 0.80),        # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
@@ -805,7 +805,7 @@ def test_tokenizer_ratio_local_backend_always_one():
 
 def test_tokenizer_ratio_no_vault_uses_catalog(tmp_path):
     # No vault context (e.g. `watchdog configure`'s preview, #606 Part A) — plain catalog value.
-    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=None) == 1.28
+    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=None) == 1.235
 
 
 def test_tokenizer_ratio_uses_vault_calibration_when_available(tmp_path, monkeypatch):
@@ -828,8 +828,8 @@ def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp
 
     monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", lambda *a, **kw: None)
     vault = tmp_path / "vault"
-    # sonnet-5.5's catalog ratio (1.28) is used when the vault has no matching calibration history.
-    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=vault) == 1.28
+    # sonnet-5.5's catalog ratio (1.235) is used when the vault has no matching calibration history.
+    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=vault) == 1.235
 
 
 @pytest.mark.parametrize("model_id, expected_cap", [

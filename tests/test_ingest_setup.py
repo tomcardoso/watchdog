@@ -830,7 +830,7 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path, m
 def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path, monkeypatch):
     # Every catalogued model's measured tokenizer_ratio (#574, remeasured #617) is applied to its
     # projected input AND output tokens, so each is priced against its own real token count for
-    # the same text. The correction runs both directions: Sonnet 5.5's 1.28 prices it up, Gemini's
+    # the same text. The correction runs both directions: Sonnet 5.5's 1.235 prices it up, Gemini's
     # 0.91 prices it down, and only a model with no declared ratio is projected as-is.
     from watchdog.model_catalog import all_models
     _flat_prices(monkeypatch)
@@ -848,8 +848,8 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
         scaled_out = scaled_in * 0.5   # output_ratio (500/1000), applied after scaling
         return scaled_in * m["input"] + scaled_out * m["output"]
 
-    assert by_id["claude-sonnet-5-5"] == pytest.approx(projected("claude-sonnet-5-5", 1.28))
-    assert by_id["claude-haiku-5-5"] == pytest.approx(projected("claude-haiku-5-5", 1.21))
+    assert by_id["claude-sonnet-5-5"] == pytest.approx(projected("claude-sonnet-5-5", 1.235))
+    assert by_id["claude-haiku-5-5"] == pytest.approx(projected("claude-haiku-5-5", 1.235))
     assert by_id["gemini-3.8-flash"] == pytest.approx(projected("gemini-3.8-flash", 0.91))
     assert by_id["gpt-6-luna"] == pytest.approx(projected("gpt-6-luna", 0.80))
     assert by_id["deepseek-flash"] == pytest.approx(projected("deepseek-flash", 0.81))
