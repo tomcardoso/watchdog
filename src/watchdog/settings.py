@@ -51,9 +51,9 @@ SETTINGS = {
     "ocr_languages": {
         "short": "Apple Vision OCR languages (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
         "help": (
-            "Languages Apple Vision should try when reading scanned documents.\n"
-            "  Leave unset to auto-detect from the image (macOS 13+).\n"
-            "  Set explicitly if auto-detection produces poor results or you are on macOS 12.\n"
+            "Languages Apple Vision reads scanned documents in, in order of preference.\n"
+            "  Unset, Vision reads English only: it does not detect a page's language itself.\n"
+            "  Set it to read other languages, e.g. en-US,fr-FR for English and French.\n"
             "  Codes: https://developer.apple.com/documentation/vision/vnrecognizetextrequest"
         ),
         "type": "lang_list",
@@ -788,7 +788,7 @@ def display_value(key: str, value, cfg: dict | None = None) -> str:
         return _auto_resolved(key, cfg) if cfg is not None else "auto"
     if value is None:
         if key == "ocr_languages":
-            return "auto-detect (default)"
+            return "English (default)"
         d = default_value(key)
         if d is None:
             return "(not set)"
@@ -796,7 +796,7 @@ def display_value(key: str, value, cfg: dict | None = None) -> str:
             return f"{d} (default)"
         value = d
     if key == "ocr_languages":
-        return ", ".join(value) if value else "auto-detect (default)"
+        return ", ".join(value) if value else "English (default)"
     if isinstance(value, bool):
         return "true" if value else "false"
     if meta.get("secret") and value:
@@ -811,7 +811,7 @@ def coerce(cfg: dict, key: str, value: str) -> str:
     if key == "ocr_languages":
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
         cfg[key] = langs
-        return ", ".join(langs) if langs else "auto-detect"
+        return ", ".join(langs) if langs else "English"
     if key == "projects_dir":
         path = Path(value).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)
