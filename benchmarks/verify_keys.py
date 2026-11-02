@@ -57,6 +57,13 @@ that Morawetz is the judge who sat on 17 March rather than two true facts about
 one page. The `fact`/`item` field is what asserts the relationship, and only a
 human reading the page can vouch for it. This tool exists to stop a key citing
 text that isn't there; it cannot certify the claim built on top of it.
+
+A KEY QUOTES THE PAGE, NOT THE OCR (D378). Where the frozen chew misreads a
+scanned page (a stamp's `2021` read as `202ÍŚ`), the quote keeps the page's
+text and the entry says what the chew reads instead in `chew_misreads`. Such a
+quote is reported as MISREAD, not as a failure: the key is right and the chew
+is wrong, and that is a miss every arm shares. A marked quote that IS found is
+noted, so the marker can be removed once the OCR reads the page correctly.
 """
 import argparse
 import glob
@@ -253,7 +260,7 @@ def newest_pages_dir():
 def verify(keys_dir, pages_dir):
     """-> (totals, problems). `problems` is a list of (slug, id, verdict, where)."""
     chew = load_chew(pages_dir)
-    totals = {"ok": 0, "offpage": 0, "fail": 0, "nocite": 0, "no_quote": 0}
+    totals = {"ok": 0, "offpage": 0, "fail": 0, "misread": 0, "nocite": 0, "no_quote": 0}
     problems, skipped = [], []
 
     for path in sorted(glob.glob(os.path.join(keys_dir, "*.yaml"))):
@@ -271,6 +278,12 @@ def verify(keys_dir, pages_dir):
                     totals["no_quote"] += 1
                     continue
                 verdict, where = check_entry(entry, doc["pages"])
+                if entry.get("chew_misreads"):
+                    if verdict == "fail":
+                        verdict = "misread"
+                    elif verdict == "ok":
+                        problems.append((slug, f"{section}:{entry.get('id')}", "marked misread but found",
+                                         cited_pages(entry), where))
                 totals[verdict] += 1
                 if verdict != "ok":
                     problems.append((slug, f"{section}:{entry.get('id')}",

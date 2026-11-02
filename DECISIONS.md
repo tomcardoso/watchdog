@@ -3193,3 +3193,11 @@ Tradeoff: the three-fact limit and the placeholder test are fitted on three coll
 Measured on corpus-v1 with RapidOCR: every document keeps exactly the same words, only two pages of one document change (a French notice's file-number heading moves from the end of page 22 to the top of page 23, where the page shows it), and `verify_keys.py` gives identical results on the old and new chew. The macOS (Apple Vision) chew the keys mirror could not be checked here; write `keys/chew-manifest.json` (D372) from a chew made after this change.
 
 Tradeoff: a document already in an investigation keeps its old page text until it is added again; no migration (I19), because correcting it means reading and extracting it again, which costs money, and the misfiling touches only groups crossing a page break.
+
+### D378 — Answer keys quote the page, not the OCR
+
+The benchmark keys copied OCR damage into `quote` where a scan was misread (`MSK 1K7` for the page's `M5K 1K7`, `699931` for `LSO# 69993I`), keeping the page's value only in `item`, and counted an extraction that repeated the misreading as correct. A key is meant to record what the document says, so `quote` now keeps the page's text too, and `chew_misreads` on the entry names what the frozen chew reads instead. `verify_keys.py` reports a marked quote it cannot find as MISREAD rather than failing the freeze, and notes a marked quote it does find, so the marker goes once the OCR reads the page. Errors printed in the document itself (a wrong date, a file number without its zeros) are unchanged: those are what the page says, and reporting them as printed stays correct.
+
+The first frozen-chew manifest (D372) is written with this, from corpus-v1 chewed on macOS by Apple Vision after D377, as `keys-v6`: three Initial Order entries carry the marker (`M1.1`, `M1.3`, `M2`), and `F34`'s quote is cut at a page break D377's export exposed.
+
+Tradeoff: an arm that repeats the OCR's reading of those entries now scores a miss it used to be credited with, so their figures are not comparable with `keys-v5`. Every arm reads the same chew, so the change cannot move one arm against another.

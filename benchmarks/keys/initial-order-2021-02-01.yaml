@@ -4,9 +4,9 @@
 # OCR pass. OCRing the scan first and drafting from that would bake the pipeline's own OCR errors
 # into the key: anything the OCR mangles would be absent from the key, the extractor would never
 # be scored on it, and every condition would "pass". That is the correlation failure mode #361
-# warns about, one stage earlier. So the key records what is ON THE PAGE, and where the text layer
-# is corrupt the `item`/`quote` split below records both the truth and the damage (see the comment
-# above `M1.1`).
+# warns about, one stage earlier. So the key records what is ON THE PAGE, quotes included: where
+# the chew misreads the scan, the quote keeps the page's text and `chew_misreads` says what the
+# chew reads instead (D378; see the comment above `M1.1`).
 
 document:
   file: "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"
@@ -363,11 +363,12 @@ facts:
       No party may discontinue, alter, interfere with or terminate any right, contract, lease or
       licence held by Laurentian or the SGA, or otherwise interrupt the university's business or use
       of its property, during the Stay Period.
-    page: 7
+    pages: [7, 8]
     location: "para 16, No Interference with Rights"
     quote:
       - "no Person shall discontinue, fail to honour, alter, interfere with, repudiate, terminate or cease to perform any right, renewal right, contract, agreement, lease, sublease, licence or permit"
-      - "take any steps to interrupt or interfere with the operation of the Business or the continued use of the Property of the Applicant"
+      - "take any steps to interrupt or interfere with the operation of the"
+      - "Business or the continued use of the Property of the Applicant"
   - id: F35
     fact: >
       Suppliers of software, communications/data services, banking, insurance, transportation and
@@ -443,11 +444,10 @@ contradictions: []
 
 must_not_miss:
   # The backsheet (page 17) is rotated 90° in the source PDF. The chew auto-rotates it and
-  # renders the whole page, but with character-level damage: `item` below carries the TRUE
-  # values read from the source PDF, `quote` carries what the OCR text layer actually
-  # produced, and two of them diverge (M5K->MSK, 69993I->699931). The divergence is
-  # deliberate — do NOT reconcile them. Per README, faithfully extracting the wrong
-  # value is correct extraction and is not scored as a miss.
+  # renders the whole page, but with character-level damage: it reads M5K as MSK and 69993I
+  # as 699931. Both `item` and `quote` below carry what the page says, and `chew_misreads`
+  # records the damage (D378). An extraction that repeats the chew's misreading has not
+  # captured the page's value.
   - id: M1.1
     item: >
       Thornton Grout Finnigan LLP is located at 3200-100 Wellington Street West, TD West Tower,
@@ -456,8 +456,9 @@ must_not_miss:
       - "Thornton Grout Finnigan LLP"
       - "3200 - 100 Wellington Street West"
       - "TD West Tower, Toronto-Dominion Centre"
-      - "Toronto, ON MSK 1K7"
+      - "Toronto, ON M5K 1K7"
       - "Lawyers for the Applicant"
+    chew_misreads: "the postal code as MSK 1K7"
     page: 17
     location: backsheet — ROTATED 90°
     why: >
@@ -481,7 +482,8 @@ must_not_miss:
     item: >
       Mitchell W. Grossell (LSO# 69993I) is lawyer for the Applicant.
     quote:
-      - "Mitchell W. Grossell (LSO# 699931)"
+      - "Mitchell W. Grossell (LSO# 69993I)"
+    chew_misreads: "the LSO number as 699931"
     page: 17
     location: backsheet — ROTATED 90°
     why: >
@@ -519,6 +521,7 @@ must_not_miss:
       — dated FEB 0 1 2021, proving entry.
     quote:
       - "ENTERED AT / INSCRIT À TORONTO ON / BOOK NO: LE / DANS LE REGISTRE NO: FEB 0 1 2021"
+    chew_misreads: "the stamp's handwritten year as 202ÍŚ"
     page: 16
     location: court registry stamp, below the signature
     why: >
