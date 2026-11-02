@@ -2,7 +2,7 @@
 
 One YAML per corpus document. These are the fixed reference every condition in the #361 / #215
 benchmark is scored against — see `../BENCHMARKING.md` for how many runs that is and what each one
-varies. **Frozen at `keys-v5.sha256`.** Re-freezing after any revision (see "The freeze" below) is
+varies. **Frozen at `keys-v6.sha256`.** Re-freezing after any revision (see "The freeze" below) is
 Step 0 of `BENCHMARKING.md` — the one thing to do before anything else in that guide.
 
 ## What these are, and what they are not
@@ -70,10 +70,10 @@ of the 296 carry more than one, because `drafting-prompt.md` asks for discrete v
 forbids eliding across them. So a list there is not by itself a signal that the page is damaged;
 read the entry's `location` for that. In the pre-#625 entries a list still means what it says below.
 
-In all three, `fact`/`item` carries the truth and the spans carry what the conversion renders —
-the M1.1 precedent in `initial-order-2021-02-01.yaml`. **Every quote in every key is machine-checked
-to appear on its cited page in the frozen chew**; a quote that cannot be located there is a defect
-in the key, not evidence about the pipeline.
+In all three, the spans are still the page's own words, cut where the conversion breaks them up.
+**Every quote in every key is machine-checked to appear on its cited page in the frozen chew**; a
+quote that cannot be located there is a defect in the key, not evidence about the pipeline, unless
+the entry records that the chew misreads it (`chew_misreads`, below).
 
 ### `must_not_miss` anchoring (#573)
 
@@ -90,11 +90,14 @@ honest:
   pass before 2026-08-09.
 - **`inferred` is scored separately from quoted, never dropped.** An inferred item is a real
   thing a reporter must not miss; it just cannot be graded as recall of stated text.
-- **`quote` mirrors the OCR; `item` carries the truth.** Where the text layer is corrupt these
-  diverge on purpose — see the comment above `M1.1` in `initial-order-2021-02-01.yaml`, where
-  `item` has the true `LSO# 69993I` and `quote` has the OCR's `699931`. Do not reconcile them.
-  Faithfully extracting the wrong value is correct extraction (see the errors note below), and
-  the divergence is the only durable record that the text layer is damaged there.
+- **A key quotes the page, not the OCR (D378).** Where the chew misreads a scan, `quote` keeps
+  what the page says, like `item`, and `chew_misreads` names what the chew reads instead:
+  `M1.3` in `initial-order-2021-02-01.yaml` quotes the page's `LSO# 69993I` and records that the
+  chew reads `699931`. `verify_keys.py` reports such a quote as MISREAD rather than failing the
+  freeze, and notes a marked quote it does find, so the marker can go once the OCR improves. An
+  extraction that repeats the misreading has not captured the page's value: that is an
+  OCR-caused miss (below). This reverses the rule before `keys-v6`, where `quote` copied the
+  OCR's damage and repeating it counted as correct.
 
 ## Scoring notes that are easy to get wrong
 
@@ -112,7 +115,7 @@ honest:
   yield "nothing or gibberish", losing the applicant's counsel entirely — **did not happen**: the
   chew auto-rotates the backsheet and renders the firm, the address, all four lawyers and their
   LSO numbers. The prediction that held was character-level damage on that page, and that is
-  recorded where it is actionable, in the `item`/`quote` divergence on `M1.1`–`M1.5`.
+  recorded where it is actionable, in `chew_misreads` on `M1.1` and `M1.3`.
 - **The scored contradiction is C1** in `annual-financial-report-19-20.yaml` ↔
   `prefiling-report-monitor.yaml`. Neither document cites the other.
 - **The $52.8M endowment figure is NOT a contradiction** — documents 1 and 2 agree on it. Flagging
@@ -232,8 +235,9 @@ archived comparison claiming to be scored against a key that no longer exists.
 | `keys-v3.sha256` | 2026-08-11 | `ocr_hazards` removed from the Initial Order and its dangling `why` references rewritten (#579). **Ids and item text are unchanged from v2** — this bump is advisory prose only |
 | `keys-v4.sha256` | 2026-08-18 | The page-by-page pass (#625) — 257 entries became 553. 14 wrong page cites corrected and 6 unlocatable quotes rewritten as spans; `verify_keys.py` added and now gates the freeze. **No id drift** — every v4 entry is either a v3 entry under its original id or a new one appended after the highest existing id. No surviving entry's `fact`/`item` text changed; what changed is `page` on 17 of them and `quote` on 10, neither of which a judge is shown |
 | `keys-v5.sha256` | 2026-10-31 | Entity types brought into line with the extractor's current vocabulary. Six entries retyped `organization` → `public-body` (the Ontario Superior Court of Justice (Commercial List) twice, the Ontario Ministry of Colleges and Universities three times, the Financial Services Regulatory Authority of Ontario once), and the `role`-typed "Chief Redevelopment Officer" entity removed from the annual financial report 2020-21 key: the document never names who holds the post, and the appointment stays keyed as `M23`. **No `facts`/`must_not_miss` entry changed** — ids, text, pages and quotes are byte-identical to v4, and no scorer reads `entities`, so every v4 figure stands against v5. `verify_keys.py` on a 2026-10-31 chew reported the same 7 quote failures for v4 and v5 (F23, F24 on the 2019-20 report; F32, F33, F34, M1.1, M1.3 on the Initial Order): a difference in that chew's page text, not a key change |
+| `keys-v6.sha256` | 2026-11-02 | Checked against the first frozen chew with a manifest (`chew-manifest.json`, D372): corpus-v1 chewed on macOS by Apple Vision (`ocrmac`) with 1.0.15's per-page text export (D377). Two changes to the Initial Order, and no `fact`/`item` text changed anywhere (the Pension Order's `F1` `note` loses its pointer to the old rule). **`F34`** now cites `pages: [7, 8]`, its second span cut at the page break ("…the operation of the" / "Business or the continued use…"): the PDF's page 7 ends mid-sentence, and the earlier export carried page 8's first line onto page 7, which hid the break. **Keys quote the page, not the OCR (D378):** `M1.1` and `M1.3` now quote the page's `M5K 1K7` and `LSO# 69993I` instead of the chew's `MSK 1K7` and `699931`, and they and `M2` (whose stamp year the chew reads as `202ÍŚ`) carry `chew_misreads`. For `M1.1` and `M1.3` an extraction that repeats the misreading is now a miss where it used to be credited, so their figures are not comparable with v5. `verify_keys.py` on this chew: 520 quotes located, 3 marked misreads, no failures. Of the seven failures on the earlier Linux chew, `F34` was the page break above, and the other six (F23, F24, F32, F33, M1.1, M1.3) do not occur on this chew |
 
-Each version's key files are archived beside its manifest (`v1/` to `v4/`) so an archived figure can
+Each version's key files are archived beside its manifest (`v1/` to `v5/`) so an archived figure can
 be read against the exact keys that produced it.
 
 **Archived judgments do not survive a key version bump, and must not be made to.** De-bundling

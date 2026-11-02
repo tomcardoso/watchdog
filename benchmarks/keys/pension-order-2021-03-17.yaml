@@ -167,8 +167,8 @@ facts:
     note: >
       The PDF sets the judge and the date in a two-column header read across the page. The
       conversion reads it column-wise into a two-row table, so even "THE HONOURABLE CHIEF
-      JUSTICE MORAWETZ" has no contiguous counterpart. `fact` carries the truth, the spans
-      carry what the conversion renders — the M1.1 precedent.
+      JUSTICE MORAWETZ" has no contiguous counterpart. `fact` carries the claim, the spans
+      carry the page's words in the pieces the conversion keeps together.
 
   - id: F2
     fact: "The motion was brought by LU under the Companies' Creditors Arrangement Act (CCAA)."

@@ -189,3 +189,36 @@ def test_a_key_whose_document_is_absent_from_the_chew_is_skipped_not_failed(tmp_
     (pages / "doc.json").unlink()
     totals, problems, skipped = verify_keys.verify(str(keys), str(pages))
     assert skipped == ["doc"] and problems == [] and totals["ok"] == 0
+
+
+def test_a_marked_misread_is_reported_but_does_not_fail(tmp_path, capsys):
+    """A key quotes the page; where the chew misreads it, the entry says so (D378)."""
+    keys, pages = _write_corpus(tmp_path, [
+        {"id": "F1", "page": 1, "quote": "until March 31, 2027",
+         "chew_misreads": "the chew reads 2021"},
+    ])
+    totals, problems, _ = verify_keys.verify(str(keys), str(pages))
+    assert totals["misread"] == 1 and totals["fail"] == 0
+    assert problems[0][2] == "misread"
+    assert verify_keys.main(["--keys", str(keys), "--pages", str(pages)]) == 0
+    assert "MISREAD" in capsys.readouterr().out
+
+
+def test_an_unmarked_misread_still_fails(tmp_path):
+    keys, pages = _write_corpus(tmp_path, [
+        {"id": "F1", "page": 1, "quote": "until March 31, 2027"},
+    ])
+    assert verify_keys.main(["--keys", str(keys), "--pages", str(pages)]) == 1
+
+
+def test_a_marked_quote_the_chew_reads_correctly_is_noted_not_failed(tmp_path, capsys):
+    """Once the OCR reads the page, the marker is stale and should be removed."""
+    keys, pages = _write_corpus(tmp_path, [
+        {"id": "F1", "page": 1, "quote": "a stay of proceedings",
+         "chew_misreads": "no longer true"},
+    ])
+    totals, problems, _ = verify_keys.verify(str(keys), str(pages))
+    assert totals["ok"] == 1
+    assert problems[0][2] == "marked misread but found"
+    assert verify_keys.main(["--keys", str(keys), "--pages", str(pages)]) == 0
+    assert "MARKED MISREAD BUT FOUND" in capsys.readouterr().out
