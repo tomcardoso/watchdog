@@ -1,0 +1,3028 @@
+{
+ "corpus": "corpus-v1",
+ "note": "Scanned pages only (no sound text layer). Each line is either read alike by Apple Vision, RapidOCR and Tesseract (agreed) or settled by a person from the page image (reviewed). Line order is not reading order.",
+ "pages": {
+  "Annual-Financial-Report-19-20": {
+   "1": [
+    {
+     "text": "Fiscal year ended April 30, 2020",
+     "source": "agreed"
+    },
+    {
+     "text": "LaurentianUniversity",
+     "source": "agreed"
+    },
+    {
+     "text": "Annual",
+     "source": "reviewed"
+    },
+    {
+     "text": "Financial Report",
+     "source": "reviewed"
+    },
+    {
+     "text": "UniversitéLaurentienne",
+     "source": "reviewed"
+    },
+    {
+     "text": "Sudbury, ON laurentian.ca",
+     "source": "reviewed"
+    }
+   ]
+  },
+  "Annual-Financial-Report-20-21": {
+   "1": [
+    {
+     "text": "ANNUAL",
+     "source": "agreed"
+    },
+    {
+     "text": "FINANCIAL REPORT",
+     "source": "agreed"
+    },
+    {
+     "text": "LaurentianUniversity",
+     "source": "agreed"
+    },
+    {
+     "text": "Sudbury, ON laurentian.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "FISCAL YEAR ENDED APRIL 30, 2021",
+     "source": "reviewed"
+    },
+    {
+     "text": "UniversitéLaurentienne",
+     "source": "reviewed"
+    }
+   ],
+   "70": [
+    {
+     "text": "LaurentianUniversity",
+     "source": "agreed"
+    },
+    {
+     "text": "935 Ramsey Lake Rd., Sudbury ON Canada P3E 2C6 1-800-461-4030 laurentian.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "UniversitéLaurentienne",
+     "source": "reviewed"
+    }
+   ]
+  },
+  "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021": {
+   "1": [
+    {
+     "text": "-00CL",
+     "source": "agreed"
+    },
+    {
+     "text": "ONTARIO",
+     "source": "agreed"
+    },
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "COMMERCIAL LIST",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "DAY OF FEBRUARY, 2021",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "INITIAL ORDER",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS APPLICATION, made by the Applicant pursuant to the Companies' Creditors",
+     "source": "agreed"
+    },
+    {
+     "text": "videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic.",
+     "source": "agreed"
+    },
+    {
+     "text": "ON READING the affidavit of Dr. Robert Haché sworn January 30, 2021 and the",
+     "source": "agreed"
+    },
+    {
+     "text": "Exhibits thereto (the \"Haché Affidavit?), the pre-filing report of the proposed monitor, Ernst &",
+     "source": "agreed"
+    },
+    {
+     "text": "Young Inc. (\"EY'), dated January 30, 2021 (the \"Pre-Filing Report'), and on hearing the",
+     "source": "agreed"
+    },
+    {
+     "text": "submissions of counsel for the Applicant, counsel for EY and those other parties listed on the",
+     "source": "agreed"
+    },
+    {
+     "text": "Counsel Slip, and on reading the consent of EY to act as the monitor (the \"Monitor\");",
+     "source": "agreed"
+    },
+    {
+     "text": "Court File No. CV-21-656040",
+     "source": "reviewed"
+    },
+    {
+     "text": "MONDAY, THE 1ST",
+     "source": "reviewed"
+    },
+    {
+     "text": "THE HONOURABLE CHIEF",
+     "source": "reviewed"
+    },
+    {
+     "text": "JUSTICE MORAWETZ",
+     "source": "reviewed"
+    },
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "reviewed"
+    },
+    {
+     "text": "COURT",
+     "source": "reviewed"
+    },
+    {
+     "text": "IN THE MATTER OF THE COMPANIES' CREDITORS ARRANGEMENT ACT,",
+     "source": "reviewed"
+    },
+    {
+     "text": "R.S.C. 1985, c. C-36, AS AMENDED",
+     "source": "reviewed"
+    },
+    {
+     "text": "AND IN THE MATTER OF A PLAN OF COMPROMISE OR ARRANGEMENT OF",
+     "source": "reviewed"
+    },
+    {
+     "text": "LAURENTIAN UNIVERSITY OF SUDBURY",
+     "source": "reviewed"
+    },
+    {
+     "text": "Arrangement Act, R.S.C. 1985, c. C-36, as amended (the “CCAA”), was heard this day by",
+     "source": "reviewed"
+    }
+   ],
+   "2": [
+    {
+     "text": "SERVICE AND DEFINITIONS",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the time for service of the Notice of Application and the",
+     "source": "agreed"
+    },
+    {
+     "text": "1.",
+     "source": "agreed"
+    },
+    {
+     "text": "Application Record is hereby abridged and validated so that this Application is properly",
+     "source": "agreed"
+    },
+    {
+     "text": "returnable today and hereby dispenses with further service thereof.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that capitalized terms used herein that are not otherwise",
+     "source": "agreed"
+    },
+    {
+     "text": "defined shall have the meaning ascribed to them in the Haché Affidavit.",
+     "source": "agreed"
+    },
+    {
+     "text": "NON-APPLICANT STAY PARTY",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Laurentian University Students General Association",
+     "source": "agreed"
+    },
+    {
+     "text": "(the \"SGA\") shall be referred to herein as a \"Non-Applicant Stay Party\". Although not an",
+     "source": "agreed"
+    },
+    {
+     "text": "applicant under the CCAA, the Non-Applicant Stay Party shall enjoy certain of the benefits and",
+     "source": "agreed"
+    },
+    {
+     "text": "protections provided herein and be subject to the restrictions as expressly hereunder set out.",
+     "source": "agreed"
+    },
+    {
+     "text": "APPLICATION",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS AND DECLARES that the Applicant is insolvent and is a",
+     "source": "agreed"
+    },
+    {
+     "text": "company to which the CCAA applies.",
+     "source": "agreed"
+    },
+    {
+     "text": "POSSESSION OF PROPERTY AND OPERATIONS",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Applicant shall remain in possession and control of its",
+     "source": "agreed"
+    },
+    {
+     "text": "current and future assets, undertakings and properties of every nature and kind whatsoever, and",
+     "source": "agreed"
+    },
+    {
+     "text": "wherever situate including all proceeds thereof (the \"Property\"). Subject to further Order of this",
+     "source": "agreed"
+    },
+    {
+     "text": "Court, the Applicant shall continue to carry on business and deal with its assets, including the",
+     "source": "agreed"
+    },
+    {
+     "text": "businesses and assets of the other entities, partnerships and joint ventures in which the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "has a direct or indirect interest, and is authorized to continue to provide services to such parties",
+     "source": "agreed"
+    },
+    {
+     "text": "in respect of which it is currently providing services, in a manner consistent with the preservation",
+     "source": "agreed"
+    },
+    {
+     "text": "of its business (the \"Business\") and Property. The Applicant is authorized and empowered to",
+     "source": "agreed"
+    },
+    {
+     "text": "continue to retain and employ the employees, consultants, agents, experts, accountants, counsel",
+     "source": "agreed"
+    },
+    {
+     "text": "liberty to retain such further Assistants as it deems reasonably necessary or desirable in the",
+     "source": "agreed"
+    },
+    {
+     "text": "ordinary course of business or for the carrying out of the terms of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Applicant shall be entitled to continue to use the cash",
+     "source": "agreed"
+    },
+    {
+     "text": "management system currently in place, as described in the Haché Affidavit, which for greater",
+     "source": "agreed"
+    },
+    {
+     "text": "2",
+     "source": "reviewed"
+    },
+    {
+     "text": "2.",
+     "source": "reviewed"
+    },
+    {
+     "text": "3.",
+     "source": "reviewed"
+    },
+    {
+     "text": "4.",
+     "source": "reviewed"
+    },
+    {
+     "text": "5.",
+     "source": "reviewed"
+    },
+    {
+     "text": "and such other persons (collectively “Assistants”) currently retained or employed by it, with",
+     "source": "reviewed"
+    },
+    {
+     "text": "6.",
+     "source": "reviewed"
+    }
+   ],
+   "3": [
+    {
+     "text": "certainty includes any segregated bank accounts now existing (together with any segregated",
+     "source": "agreed"
+    },
+    {
+     "text": "accounts established pursuant to paragraph 7, the \"Cash Management System\"), and that any",
+     "source": "agreed"
+    },
+    {
+     "text": "present or future bank or institution providing the Cash Management System to the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "shall not be under any obligation whatsoever to inquire into the propriety, validity or legality of",
+     "source": "agreed"
+    },
+    {
+     "text": "any transfer, payment, collection or other action taken under the Cash Management System, or as",
+     "source": "agreed"
+    },
+    {
+     "text": "to the use or application by the Applicant of funds transferred, paid, collected or otherwise dealt",
+     "source": "agreed"
+    },
+    {
+     "text": "with in the Cash Management System, shall be entitled to provide the Cash Management System",
+     "source": "agreed"
+    },
+    {
+     "text": "without any liability in respect thereof to any Person (as hereinafter defined) other than the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant, pursuant to the terms of the documentation applicable to the Cash Management",
+     "source": "agreed"
+    },
+    {
+     "text": "System, except to the extent that such terms are expressly modified by this Order or with the",
+     "source": "agreed"
+    },
+    {
+     "text": "consent of the Applicant, the Monitor and any applicable bank or financial institution providing a",
+     "source": "agreed"
+    },
+    {
+     "text": "Cash Management System, and shall be, solely in its capacity as provider of the Cash",
+     "source": "agreed"
+    },
+    {
+     "text": "Management System only, an unaffected creditor under any plan or arrangement filed by the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant under the CCAA with regard to any claims or expenses it may suffer or incur in",
+     "source": "agreed"
+    },
+    {
+     "text": "connection with the provision of the Cash Management System on or after the date of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that (a) any segregated bank accounts established by the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant from and after December 1, 2020, to hold funds received by it on the condition that",
+     "source": "agreed"
+    },
+    {
+     "text": "such funds be used for a specific purpose in respect of a particular aspect of the Applicant's",
+     "source": "agreed"
+    },
+    {
+     "text": "Business, including without limitation, funds provided to the Applicant for the purpose of",
+     "source": "agreed"
+    },
+    {
+     "text": "research projects (including grants, awards or other similar funds), funds received in respect of",
+     "source": "agreed"
+    },
+    {
+     "text": "restricted donations or endowments, and employee and employer contributions to benefit plans",
+     "source": "agreed"
+    },
+    {
+     "text": "(collectively, the \"Segregated Funds\") shall be used for such specific purpose, and (b) from and",
+     "source": "agreed"
+    },
+    {
+     "text": "after the date of this Order, the Applicant may establish additional segregated bank accounts,",
+     "source": "agreed"
+    },
+    {
+     "text": "including trust accounts if necessary, to hold any additional Segregated Funds that are received",
+     "source": "agreed"
+    },
+    {
+     "text": "by the Applicant under such agreed upon arrangements, and the Segregated Funds shall not form",
+     "source": "agreed"
+    },
+    {
+     "text": "part of the Applicant's Property.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Applicant shall be entitled but not required to pay the",
+     "source": "agreed"
+    },
+    {
+     "text": "following expenses whether incurred prior to, on or after the date of this Order:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a) all outstanding and future wages, salaries, employee and retiree benefits (including,",
+     "source": "agreed"
+    },
+    {
+     "text": "without limitation, employee medical, dental, vision, insurance and similar benefit",
+     "source": "agreed"
+    },
+    {
+     "text": "7.",
+     "source": "reviewed"
+    },
+    {
+     "text": "8.",
+     "source": "reviewed"
+    }
+   ],
+   "4": [
+    {
+     "text": "plans or arrangements), amounts owing under corporate credit cards issued to",
+     "source": "agreed"
+    },
+    {
+     "text": "management and employees of the Applicant, ordinary course pension benefits or",
+     "source": "agreed"
+    },
+    {
+     "text": "contributions, vacation pay, expenses and any director fees and expenses, payable on",
+     "source": "agreed"
+    },
+    {
+     "text": "or after the date of this Order, in each case for costs incurred in the ordinary course of",
+     "source": "agreed"
+    },
+    {
+     "text": "business and consistent with existing practices, compensation policies and",
+     "source": "agreed"
+    },
+    {
+     "text": "arrangements for current and future employees (but not including any payments to",
+     "source": "agreed"
+    },
+    {
+     "text": "former employees or retirees in respect of the SuRP and the RHBP, as such terms are",
+     "source": "agreed"
+    },
+    {
+     "text": "defined in the Haché Affidavit, or termination or severance payments, which are",
+     "source": "agreed"
+    },
+    {
+     "text": "hereby stayed), and all other payroll processing and servicing expenses;",
+     "source": "agreed"
+    },
+    {
+     "text": "future amounts owing in respect of rebates, refunds or other similar amounts that are",
+     "source": "agreed"
+    },
+    {
+     "text": "owing or may be owed to students or student associations of the Applicant, whether",
+     "source": "agreed"
+    },
+    {
+     "text": "such amounts are as a result of the reimbursement of tuition fees, ancillary fees or",
+     "source": "agreed"
+    },
+    {
+     "text": "otherwise, provided that such rebates, refunds or other similar amounts are subject to",
+     "source": "agreed"
+    },
+    {
+     "text": "the existing policies and procedures of the Applicant;",
+     "source": "agreed"
+    },
+    {
+     "text": "all outstanding amounts owing in respect of the current 2020-21 academic year and",
+     "source": "agreed"
+    },
+    {
+     "text": "future amounts payable to students in respect of student scholarship, bursary or",
+     "source": "agreed"
+    },
+    {
+     "text": "grants; and",
+     "source": "agreed"
+    },
+    {
+     "text": "(d)",
+     "source": "agreed"
+    },
+    {
+     "text": "the fees and disbursements of any Assistants retained or employed by the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "in respect of these proceedings, at their standard rates and charges.",
+     "source": "agreed"
+    },
+    {
+     "text": "9. THIS COURT ORDERS that, except as otherwise provided to the contrary herein, the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant shall be entitled but not required to pay all reasonable expenses incurred by the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant in carrying on the Business in the ordinary course after the date of this Order, and in",
+     "source": "agreed"
+    },
+    {
+     "text": "carrying out the provisions of this Order, which expenses shall include, without limitation:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a) all expenses and capital expenditures reasonably necessary for the preservation of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Property or the Business (including the value thereof) including, without limitation,",
+     "source": "agreed"
+    },
+    {
+     "text": "payments on account of insurance (including directors and officers' insurance),",
+     "source": "agreed"
+    },
+    {
+     "text": "maintenance and security services; and",
+     "source": "agreed"
+    },
+    {
+     "text": "4",
+     "source": "reviewed"
+    },
+    {
+     "text": "(b) all outstanding amounts owing in respect of the current 2020-21 academic year and",
+     "source": "reviewed"
+    },
+    {
+     "text": "(c)",
+     "source": "reviewed"
+    }
+   ],
+   "5": [
+    {
+     "text": "(b) payment for goods or services actually supplied to the Applicant following the date of",
+     "source": "agreed"
+    },
+    {
+     "text": "this Order or payments to obtain the release of goods or delivery of services",
+     "source": "agreed"
+    },
+    {
+     "text": "contracted for prior to the date of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "10. THIS COURT ORDERS that the Applicant shall remit, in accordance with legal",
+     "source": "agreed"
+    },
+    {
+     "text": "requirements, or pay:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a)",
+     "source": "agreed"
+    },
+    {
+     "text": "until further order of this Court, all outstanding and future normal course",
+     "source": "agreed"
+    },
+    {
+     "text": "contributions to or payments in respect of the Pension Plan, as defined in the Haché",
+     "source": "agreed"
+    },
+    {
+     "text": "Affidavit, in the ordinary course of business and consistent with existing",
+     "source": "agreed"
+    },
+    {
+     "text": "compensation policies and arrangements;",
+     "source": "agreed"
+    },
+    {
+     "text": "(b)",
+     "source": "agreed"
+    },
+    {
+     "text": "any statutory deemed trust amounts in favour of the Crown in right of Canada or of",
+     "source": "agreed"
+    },
+    {
+     "text": "any Province thereof or any other taxation authority which are required to be",
+     "source": "agreed"
+    },
+    {
+     "text": "deducted from employees' wages, including, without limitation, amounts in respect of",
+     "source": "agreed"
+    },
+    {
+     "text": "(i) employment insurance, (ii) Canada Pension Plan, and (iii) income taxes;",
+     "source": "agreed"
+    },
+    {
+     "text": "(c)",
+     "source": "agreed"
+    },
+    {
+     "text": "all goods and services or other applicable sales taxes (collectively, \"Sales Taxes\")",
+     "source": "agreed"
+    },
+    {
+     "text": "required to be remitted by the Applicant in connection with the sale of goods and",
+     "source": "agreed"
+    },
+    {
+     "text": "services by the Applicant, but only where such Sales Taxes are accrued or collected",
+     "source": "agreed"
+    },
+    {
+     "text": "after the date of this Order, or where such Sales Taxes were accrued or collected prior",
+     "source": "agreed"
+    },
+    {
+     "text": "to the date of this Order but not required to be remitted until on or after the date of",
+     "source": "agreed"
+    },
+    {
+     "text": "this Order, and",
+     "source": "agreed"
+    },
+    {
+     "text": "(d)",
+     "source": "agreed"
+    },
+    {
+     "text": "any amount payable to the Crown in right of Canada or of any Province thereof or",
+     "source": "agreed"
+    },
+    {
+     "text": "any political subdivision thereof or any other taxation authority in respect of",
+     "source": "agreed"
+    },
+    {
+     "text": "municipal realty, municipal business or other taxes, assessments or levies of any",
+     "source": "agreed"
+    },
+    {
+     "text": "nature or kind which are entitled at law to be paid in priority to claims of secured",
+     "source": "agreed"
+    },
+    {
+     "text": "creditors and which are attributable to or in respect of the carrying on of the Business",
+     "source": "agreed"
+    },
+    {
+     "text": "by the Applicant.",
+     "source": "agreed"
+    },
+    {
+     "text": "11. THIS COURT ORDERS that, except as specifically permitted herein, the Applicant is",
+     "source": "agreed"
+    },
+    {
+     "text": "hereby directed, until further Order of this Court: (a) to make no payments of principal, interest",
+     "source": "agreed"
+    },
+    {
+     "text": "thereon or otherwise on account of amounts owing by the Applicant to any of its creditors as of",
+     "source": "agreed"
+    },
+    {
+     "text": "5",
+     "source": "reviewed"
+    }
+   ],
+   "6": [
+    {
+     "text": "the date of this Order (including for greater certainty in respect of the interest rate swap",
+     "source": "agreed"
+    },
+    {
+     "text": "transactions); (b) to grant no security interests, trust, liens, charges or encumbrances upon or in",
+     "source": "agreed"
+    },
+    {
+     "text": "respect of any of its Property; and (c) to not grant credit or incur liabilities except in the ordinary",
+     "source": "agreed"
+    },
+    {
+     "text": "course of the Business.",
+     "source": "agreed"
+    },
+    {
+     "text": "RESTRUCTURING",
+     "source": "agreed"
+    },
+    {
+     "text": "12. THIS COURT ORDERS that the Applicant shall, subject to such requirements as are",
+     "source": "agreed"
+    },
+    {
+     "text": "imposed by the CCAA, have the right to continue negotiations with stakeholders in an effort to",
+     "source": "agreed"
+    },
+    {
+     "text": "pursue all restructuring options.",
+     "source": "agreed"
+    },
+    {
+     "text": "NO PROCEEDINGS AGAINST THE APPLICANT OR THE PROPERTY",
+     "source": "agreed"
+    },
+    {
+     "text": "13. THIS COURT ORDERS that until and including February 11, 2021, or such later date",
+     "source": "agreed"
+    },
+    {
+     "text": "as this Court may subsequently order (the \"Stay Period\"), no proceeding or enforcement process",
+     "source": "agreed"
+    },
+    {
+     "text": "in or out of any court or tribunal or other forum, whether arising by contract (including pursuant",
+     "source": "agreed"
+    },
+    {
+     "text": "to any collective agreement) or otherwise (each, a \"Proceeding?) shall be commenced or",
+     "source": "agreed"
+    },
+    {
+     "text": "continued against or in respect of the Applicant or the Monitor, or affecting the Business or the",
+     "source": "agreed"
+    },
+    {
+     "text": "Property, except with the written consent of the Applicant and the Monitor, or with leave of this",
+     "source": "agreed"
+    },
+    {
+     "text": "Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "NO EXERCISE OF RIGHTS OR REMEDIES",
+     "source": "agreed"
+    },
+    {
+     "text": "14. THIS COURT ORDERS that during the Stay Period, all rights and remedies of any",
+     "source": "agreed"
+    },
+    {
+     "text": "individual, firm, corporation, governmental body or agency, or any other entities (all of the",
+     "source": "agreed"
+    },
+    {
+     "text": "foregoing, collectively being \"Persons\" and each being a \"Person\") against or in respect of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant or the Monitor, or affecting the Business or the Property, are hereby stayed and",
+     "source": "agreed"
+    },
+    {
+     "text": "suspended, except with the written consent of the Applicant and the Monitor, or leave of this",
+     "source": "agreed"
+    },
+    {
+     "text": "Court, provided that nothing in this Order shall:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a) empower the Applicant to carry on any business which the Applicant is not lawfully",
+     "source": "agreed"
+    },
+    {
+     "text": "entitled to carry on;",
+     "source": "agreed"
+    },
+    {
+     "text": "(b) exempt the Applicant from compliance with any statutory or regulatory provisions",
+     "source": "agreed"
+    },
+    {
+     "text": "relating to health, safety or the environment;",
+     "source": "agreed"
+    },
+    {
+     "text": "6",
+     "source": "reviewed"
+    }
+   ],
+   "7": [
+    {
+     "text": "(c) affect such investigations, actions, suits or proceedings by a regulatory body as are",
+     "source": "agreed"
+    },
+    {
+     "text": "(d) prevent the filing of any registration to preserve or perfect a security interest;",
+     "source": "agreed"
+    },
+    {
+     "text": "(e) prevent the registration of a claim for lien; or",
+     "source": "agreed"
+    },
+    {
+     "text": "(f)",
+     "source": "agreed"
+    },
+    {
+     "text": "prevent any actions that are permitted by Section 34(8) of the CCAA.",
+     "source": "agreed"
+    },
+    {
+     "text": "LIMITED STAY IN RESPECT OF THE NON-APPLICANT STAY PARTY",
+     "source": "agreed"
+    },
+    {
+     "text": "15. THIS COURT ORDERS that during the Stay Period, no Person shall (a) commence or",
+     "source": "agreed"
+    },
+    {
+     "text": "continue any Proceeding or enforcement process, (b) terminate, repudiate, make any demand,",
+     "source": "agreed"
+    },
+    {
+     "text": "accelerate, alter, amend, declare in default, exercise any options, rights or remedies, or (c)",
+     "source": "agreed"
+    },
+    {
+     "text": "discontinue, fail to honour, alter, interfere with or cease to perform any obligation, pursuant to or",
+     "source": "agreed"
+    },
+    {
+     "text": "in respect of any agreement, lease, sublease, license or permit with respect to which the Non-",
+     "source": "agreed"
+    },
+    {
+     "text": "(a) the Applicant being insolvent or having made an application to this Court under the",
+     "source": "agreed"
+    },
+    {
+     "text": "CCAA;",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant being a party to this proceeding or taking any steps related thereto; or",
+     "source": "agreed"
+    },
+    {
+     "text": "(b)",
+     "source": "agreed"
+    },
+    {
+     "text": "(c) the stay granted pursuant to this paragraph 15; and",
+     "source": "agreed"
+    },
+    {
+     "text": "(d) any default or cross-default arising from the matters set out in the foregoing",
+     "source": "agreed"
+    },
+    {
+     "text": "subparagraphs,",
+     "source": "agreed"
+    },
+    {
+     "text": "except with the written consent of the Applicant and the Monitor, or with leave of this Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "NO INTERFERENCE WITH RIGHTS",
+     "source": "agreed"
+    },
+    {
+     "text": "16. THIS COURT ORDERS that during the Stay Period, no Person shall discontinue, fail to",
+     "source": "agreed"
+    },
+    {
+     "text": "contract, agreement, lease, sublease, licence or permit in favour of or held by the Applicant or",
+     "source": "agreed"
+    },
+    {
+     "text": "the Non-Applicant Stay Party or take any steps to interrupt or interfere with the operation of the",
+     "source": "agreed"
+    },
+    {
+     "text": "7",
+     "source": "reviewed"
+    },
+    {
+     "text": "specifically permitted by Section 11.1 of the CCAA;",
+     "source": "reviewed"
+    },
+    {
+     "text": "Applicant Stay Party is a party, borrower, principal obligor or guarantor, by reason of:",
+     "source": "reviewed"
+    },
+    {
+     "text": "honour, alter, interfere with, repudiate, terminate or cease to perform any right, renewal right,",
+     "source": "reviewed"
+    }
+   ],
+   "8": [
+    {
+     "text": "Business or the continued use of the Property of the Applicant, except with the written consent of",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant and the Monitor, or leave of this Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "17. THIS COURT ORDERS that during the Stay Period, all Persons having oral or written",
+     "source": "agreed"
+    },
+    {
+     "text": "agreements with the Applicant or statutory or regulatory mandates for the supply of goods and/or",
+     "source": "agreed"
+    },
+    {
+     "text": "services, including without limitation all computer software, communication and other data",
+     "source": "agreed"
+    },
+    {
+     "text": "services, centralized banking services, insurance, transportation services, utility or other services",
+     "source": "agreed"
+    },
+    {
+     "text": "to the Business or the Applicant, are hereby restrained until further Order of this Court from",
+     "source": "agreed"
+    },
+    {
+     "text": "discontinuing, altering, interfering with or terminating the supply of such goods or services as",
+     "source": "agreed"
+    },
+    {
+     "text": "may be required by the Applicant, and that the Applicant shall be entitled to the continued use of",
+     "source": "agreed"
+    },
+    {
+     "text": "its current premises, telephone numbers, facsimile numbers, internet addresses and domain",
+     "source": "agreed"
+    },
+    {
+     "text": "names, provided in each case that the normal prices or charges for all such goods or services",
+     "source": "agreed"
+    },
+    {
+     "text": "received after the date of this Order are paid by the Applicant in accordance with normal",
+     "source": "agreed"
+    },
+    {
+     "text": "payment practices of the Applicant or such other practices as may be agreed upon by the supplier",
+     "source": "agreed"
+    },
+    {
+     "text": "or service provider and the Applicant and the Monitor, or as may be ordered by this Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "18. THIS COURT ORDERS that, notwithstanding anything else in this Order, no Person",
+     "source": "agreed"
+    },
+    {
+     "text": "shall be prohibited from requiring immediate payment for goods, services, use of lease or",
+     "source": "agreed"
+    },
+    {
+     "text": "licensed property or other valuable consideration provided on or after the date of this Order, nor",
+     "source": "agreed"
+    },
+    {
+     "text": "shall any Person be under any obligation on or after the date of this Order to advance or re-",
+     "source": "agreed"
+    },
+    {
+     "text": "advance any monies or otherwise extend any credit to the Applicant. Nothing in this Order shall",
+     "source": "agreed"
+    },
+    {
+     "text": "derogate from the rights conferred and obligations imposed by the CCAA.",
+     "source": "agreed"
+    },
+    {
+     "text": "PROCEEDINGS AGAINST DIRECTORS AND OFFICERS",
+     "source": "agreed"
+    },
+    {
+     "text": "19. THIS COURT ORDERS that during the Stay Period, and except as permitted by",
+     "source": "agreed"
+    },
+    {
+     "text": "subsection 11.03(2) of the CCAA, no Proceeding may be commenced or continued against any",
+     "source": "agreed"
+    },
+    {
+     "text": "of the current or future directors or officers of the Applicant, including the members of the Board",
+     "source": "agreed"
+    },
+    {
+     "text": "of Governors of the Applicant (the \"Board) with respect to any claim against the directors,",
+     "source": "agreed"
+    },
+    {
+     "text": "officers or the Board that arose before the date of this Order and that relates to any obligations of",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant whereby the directors, officers or the Board are alleged under any law to be liable",
+     "source": "agreed"
+    },
+    {
+     "text": "in their capacity as directors or officers for the payment or performance of such obligations, until",
+     "source": "agreed"
+    },
+    {
+     "text": "8",
+     "source": "reviewed"
+    },
+    {
+     "text": "CONTINUATION OF SERVICES",
+     "source": "reviewed"
+    },
+    {
+     "text": "NON-DEROGATION OF RIGHTS",
+     "source": "reviewed"
+    }
+   ],
+   "9": [
+    {
+     "text": "a compromise or arrangement in respect of the Applicant, if one is filed, is sanctioned by this",
+     "source": "agreed"
+    },
+    {
+     "text": "Court or is refused by the creditors of the Applicant or this Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "20. THIS COURT ORDERS that the Applicant shall indemnify its directors, officers and",
+     "source": "agreed"
+    },
+    {
+     "text": "the Board against obligations and liabilities that they may incur as directors or officers of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant after the commencement of the within proceedings, except to the extent that, with",
+     "source": "agreed"
+    },
+    {
+     "text": "respect to any officer, director or member of the Board, the obligation or liability was incurred as",
+     "source": "agreed"
+    },
+    {
+     "text": "a result of the director's or officer's gross negligence or wilful misconduct.",
+     "source": "agreed"
+    },
+    {
+     "text": "entitled to the benefit of and are hereby granted a charge (the \"Directors' Charge\") on the",
+     "source": "agreed"
+    },
+    {
+     "text": "Property, which charge shall not exceed an aggregate amount of $2,000,000, as security for the",
+     "source": "agreed"
+    },
+    {
+     "text": "indemnity provided in paragraph 20 of this Order. The Directors' Charge shall have the priority",
+     "source": "agreed"
+    },
+    {
+     "text": "22. THIS COURT ORDERS that, notwithstanding any language in any applicable",
+     "source": "agreed"
+    },
+    {
+     "text": "insurance policy to the contrary, (a) no insurer shall be entitled to be subrogated to or claim the",
+     "source": "agreed"
+    },
+    {
+     "text": "benefit of the Directors' Charge, and (b) the Applicant's directors, officers and the Board shall",
+     "source": "agreed"
+    },
+    {
+     "text": "coverage under any applicable insurance policy, or to the extent that such coverage is insufficient",
+     "source": "agreed"
+    },
+    {
+     "text": "to pay amounts indemnified in accordance with paragraph 20 of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "APPOINTMENT OF MONITOR",
+     "source": "agreed"
+    },
+    {
+     "text": "23. THIS COURT ORDERS that Ernst & Young Inc. is hereby appointed pursuant to the",
+     "source": "agreed"
+    },
+    {
+     "text": "CCAA as the Monitor, an officer of this Court, to monitor the business and financial affairs of",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant with the powers and obligations set out in the CCAA or set forth herein and that",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant and its officers, directors, and Assistants shall advise the Monitor of all material",
+     "source": "agreed"
+    },
+    {
+     "text": "steps taken by the Applicant pursuant to this Order, and shall co-operate fully with the Monitor",
+     "source": "agreed"
+    },
+    {
+     "text": "in the exercise of its powers and discharge of its obligations and provide the Monitor with the",
+     "source": "agreed"
+    },
+    {
+     "text": "assistance that is necessary to enable the Monitor to adequately carry out the Monitor's",
+     "source": "agreed"
+    },
+    {
+     "text": "functions.",
+     "source": "agreed"
+    },
+    {
+     "text": "9",
+     "source": "reviewed"
+    },
+    {
+     "text": "DIRECTORS’ AND OFFICERS’ INDEMNIFICATION AND CHARGE",
+     "source": "reviewed"
+    },
+    {
+     "text": "21. THIS COURT ORDERS that the directors, officers and Board of the Applicant shall be",
+     "source": "reviewed"
+    },
+    {
+     "text": "set out in paragraphs 32 and 34 herein.",
+     "source": "reviewed"
+    },
+    {
+     "text": "only be entitled to the benefit of the Directors’ Charge to the extent that they do not have",
+     "source": "reviewed"
+    }
+   ],
+   "10": [
+    {
+     "text": "10",
+     "source": "agreed"
+    },
+    {
+     "text": "24. THIS COURT ORDERS that the Monitor, in addition to its prescribed rights and",
+     "source": "agreed"
+    },
+    {
+     "text": "obligations under the CCAA, is hereby directed and empowered to:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a) monitor the Applicant's receipts and disbursements;",
+     "source": "agreed"
+    },
+    {
+     "text": "(b) report to this Court at such times and intervals as the Monitor may deem appropriate",
+     "source": "agreed"
+    },
+    {
+     "text": "with respect to matters relating to the Property, the Business and such other matters as",
+     "source": "agreed"
+    },
+    {
+     "text": "may be relevant to the proceedings herein;",
+     "source": "agreed"
+    },
+    {
+     "text": "advise the Applicant in the preparation of the Applicant's cash flow statements and",
+     "source": "agreed"
+    },
+    {
+     "text": "any other reporting to the Court or otherwise;",
+     "source": "agreed"
+    },
+    {
+     "text": "(d) be at liberty to participate in discussions with representatives of the Ministry of",
+     "source": "agreed"
+    },
+    {
+     "text": "Colleges and Universities (\"MCU) and such other representatives of Provincial or",
+     "source": "agreed"
+    },
+    {
+     "text": "Federal government agencies, at any time on all aspects of this proceeding and the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant's restructuring, subject to such terms of confidentiality as may be",
+     "source": "agreed"
+    },
+    {
+     "text": "appropriate in the Monitor's assessment and in consultation with the Applicant;",
+     "source": "agreed"
+    },
+    {
+     "text": "have full and complete access to the Property, including the premises, books, records,",
+     "source": "agreed"
+    },
+    {
+     "text": "data, including data in electronic form, and other financial documents of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant, wherever situate, in order to assess the Applicant's business and financial",
+     "source": "agreed"
+    },
+    {
+     "text": "affairs or to perform its duties arising under this Order;",
+     "source": "agreed"
+    },
+    {
+     "text": "be at liberty to engage independent legal counsel or such other persons as the Monitor",
+     "source": "agreed"
+    },
+    {
+     "text": "deems necessary or advisable respecting the exercise of its powers and performance",
+     "source": "agreed"
+    },
+    {
+     "text": "of its obligations under this Order; and",
+     "source": "agreed"
+    },
+    {
+     "text": "(g) perform such other duties as are required by this Order or by this Court from time to",
+     "source": "agreed"
+    },
+    {
+     "text": "time.",
+     "source": "agreed"
+    },
+    {
+     "text": "25. THIS COURT ORDERS that the Monitor shall not take possession of the Property of",
+     "source": "agreed"
+    },
+    {
+     "text": "the Applicant, or any property of the Non-Applicant Stay Party, and shall take no part",
+     "source": "agreed"
+    },
+    {
+     "text": "whatsoever in the management or supervision of the management of the Business and shall not,",
+     "source": "agreed"
+    },
+    {
+     "text": "by fulfilling its obligations hereunder, be deemed to have taken or maintained possession or",
+     "source": "agreed"
+    },
+    {
+     "text": "control of the Business or Property, or any part thereof.",
+     "source": "agreed"
+    },
+    {
+     "text": "(c)",
+     "source": "reviewed"
+    },
+    {
+     "text": "(e)",
+     "source": "reviewed"
+    },
+    {
+     "text": "(f)",
+     "source": "reviewed"
+    }
+   ],
+   "11": [
+    {
+     "text": "11",
+     "source": "agreed"
+    },
+    {
+     "text": "26. THIS COURT ORDERS that nothing herein contained shall require the Monitor to",
+     "source": "agreed"
+    },
+    {
+     "text": "collectively, \"Possession\") of any of the Property that might be environmentally contaminated,",
+     "source": "agreed"
+    },
+    {
+     "text": "might be a pollutant or a contaminant, or might cause or contribute to a spill, discharge, release",
+     "source": "agreed"
+    },
+    {
+     "text": "or deposit of a substance contrary to any federal, provincial or other law respecting the",
+     "source": "agreed"
+    },
+    {
+     "text": "protection, conservation, enhancement, remediation or rehabilitation of the environment or",
+     "source": "agreed"
+    },
+    {
+     "text": "relating to the disposal of waste or other contamination including, without limitation, the",
+     "source": "agreed"
+    },
+    {
+     "text": "Canadian Environmental Protection Act, the Ontario Environmental Protection Act, the Ontario",
+     "source": "agreed"
+    },
+    {
+     "text": "Water Resources Act, or the Ontario Occupational Health and Safety Act and regulations",
+     "source": "agreed"
+    },
+    {
+     "text": "thereunder (the \"Environmental Legislation), provided however that nothing herein shall",
+     "source": "agreed"
+    },
+    {
+     "text": "Environmental Legislation. The Monitor shall not, as a result of this Order or anything done in",
+     "source": "agreed"
+    },
+    {
+     "text": "possession.",
+     "source": "agreed"
+    },
+    {
+     "text": "27. THIS COURT ORDERS that the Monitor shall provide any creditor of the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "and the proposed DIP Lender with information provided by the Applicant in response to",
+     "source": "agreed"
+    },
+    {
+     "text": "reasonable requests for information made in writing by such creditor addressed to the Monitor.",
+     "source": "agreed"
+    },
+    {
+     "text": "The Monitor shall not have any responsibility or liability with respect to the information",
+     "source": "agreed"
+    },
+    {
+     "text": "disseminated by it pursuant to this paragraph. In the case of information that the Monitor has",
+     "source": "agreed"
+    },
+    {
+     "text": "been advised by the Applicant is confidential, the Monitor shall not provide such information to",
+     "source": "agreed"
+    },
+    {
+     "text": "creditors unless otherwise directed by this Court or on such terms as the Monitor and the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant may agree.",
+     "source": "agreed"
+    },
+    {
+     "text": "28. THIS COURT ORDERS that, in addition to the rights and protections afforded the",
+     "source": "agreed"
+    },
+    {
+     "text": "Monitor under the CCAA or as an officer of this Court, the Monitor shall incur no liability or",
+     "source": "agreed"
+    },
+    {
+     "text": "obligation as a result of its appointment or the carrying out of the provisions of this Order, save",
+     "source": "agreed"
+    },
+    {
+     "text": "and except for any gross negligence or wilful misconduct on its part. Nothing in this Order shall",
+     "source": "agreed"
+    },
+    {
+     "text": "derogate from the protections afforded the Monitor by the CCAA or any applicable legislation.",
+     "source": "agreed"
+    },
+    {
+     "text": "29. THIS COURT ORDERS that the Monitor, counsel to the Monitor and the Applicant's",
+     "source": "agreed"
+    },
+    {
+     "text": "occupy or to take control, care, charge, possession or management (separately and/or",
+     "source": "reviewed"
+    },
+    {
+     "text": "occupy",
+     "source": "reviewed"
+    },
+    {
+     "text": "exempt the Monitor from any duty to report or make disclosure imposed by applicable",
+     "source": "reviewed"
+    },
+    {
+     "text": "pursuance of the Monitor's duties and powers under this Order, be deemed to be in Possession of",
+     "source": "reviewed"
+    },
+    {
+     "text": "pursuance",
+     "source": "reviewed"
+    },
+    {
+     "text": "any of the Property within the meaning of any Environmental legislation, unless it is actually in",
+     "source": "reviewed"
+    },
+    {
+     "text": "any",
+     "source": "reviewed"
+    },
+    {
+     "text": "counsel and advisors in connection with the CCAA proceedings (collectively, the “Restructuring",
+     "source": "reviewed"
+    }
+   ],
+   "12": [
+    {
+     "text": "12",
+     "source": "agreed"
+    },
+    {
+     "text": "paid their reasonable fees and disbursements, in each case at their standard rates and charges,",
+     "source": "agreed"
+    },
+    {
+     "text": "whether incurred prior to or subsequent to the date of this Order, by the Applicant as part of the",
+     "source": "agreed"
+    },
+    {
+     "text": "costs of these proceedings. The Applicant is hereby authorized and directed to pay the accounts",
+     "source": "agreed"
+    },
+    {
+     "text": "of the Restructuring Advisors and Board Counsel. Notwithstanding the foregoing, the fees and",
+     "source": "agreed"
+    },
+    {
+     "text": "disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall",
+     "source": "agreed"
+    },
+    {
+     "text": "not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "30. THIS COURT ORDERS that the Monitor and its legal counsel shall pass their accounts",
+     "source": "agreed"
+    },
+    {
+     "text": "from time to time, and for this purpose the accounts of the Monitor and its legal counsel are",
+     "source": "agreed"
+    },
+    {
+     "text": "hereby referred to a judge of the Commercial List of the Ontario Superior Court of Justice.",
+     "source": "agreed"
+    },
+    {
+     "text": "31. THIS COURT ORDERS that the Restructuring Advisors shall be entitled to the benefit",
+     "source": "agreed"
+    },
+    {
+     "text": "of and are hereby granted a charge (the \"Administration Charge\") on the Property, which",
+     "source": "agreed"
+    },
+    {
+     "text": "charge shall not exceed an aggregate amount of $400,000, as security for their professional fees",
+     "source": "agreed"
+    },
+    {
+     "text": "and disbursements incurred at the standard rates and charges of the Restructuring Advisors, both",
+     "source": "agreed"
+    },
+    {
+     "text": "before and after the making of this Order in respect of these proceedings. The Administration",
+     "source": "agreed"
+    },
+    {
+     "text": "Charge shall have the priority set out in paragraphs 32 and 34 hereof.",
+     "source": "agreed"
+    },
+    {
+     "text": "VALIDITY AND PRIORITY OF CHARGES CREATED BY THIS ORDER",
+     "source": "agreed"
+    },
+    {
+     "text": "32. THIS COURT ORDERS that the priorities of the Administration Charge and the",
+     "source": "agreed"
+    },
+    {
+     "text": "them, shall be as follows:",
+     "source": "agreed"
+    },
+    {
+     "text": "First - Administration Charge (to the maximum amount of $400,000); and",
+     "source": "agreed"
+    },
+    {
+     "text": "33. THIS COURT ORDERS that the filing, registration or perfection of the Charges shall",
+     "source": "agreed"
+    },
+    {
+     "text": "not be required, and that the Charges shall be valid and enforceable for all purposes, including as",
+     "source": "agreed"
+    },
+    {
+     "text": "against any right, title or interest filed, registered, recorded or perfected subsequent to the",
+     "source": "agreed"
+    },
+    {
+     "text": "Charges coming into existence, notwithstanding any such failure to file, register, record or",
+     "source": "agreed"
+    },
+    {
+     "text": "perfect.",
+     "source": "agreed"
+    },
+    {
+     "text": "Advisors”) together with independent counsel to the Board (“Board Counsel”) shall each be",
+     "source": "reviewed"
+    },
+    {
+     "text": "Directors’ Charge (collectively, the “Charges” and each individually, a “Charge”) as among",
+     "source": "reviewed"
+    },
+    {
+     "text": "Second —Directors’ Charge (to the maximum amount of $2,000,000).",
+     "source": "reviewed"
+    }
+   ],
+   "13": [
+    {
+     "text": "13",
+     "source": "agreed"
+    },
+    {
+     "text": "34. THIS COURT ORDERS that each of the Charges shall constitute a charge on the",
+     "source": "agreed"
+    },
+    {
+     "text": "Property and such Charges shall rank in priority to all other security interests, trusts, liens,",
+     "source": "agreed"
+    },
+    {
+     "text": "construction liens, charges and encumbrances, claims of secured creditors, statutory or otherwise",
+     "source": "agreed"
+    },
+    {
+     "text": "(collectively, \"Encumbrances\") in favour of any Person, except for any Person who is a",
+     "source": "agreed"
+    },
+    {
+     "text": "\"secured creditor\" as defined in the CCAA that has not been served with the Notice of",
+     "source": "agreed"
+    },
+    {
+     "text": "Application for this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "35. THIS COURT ORDERS that the Applicant shall be entitled, on a subsequent",
+     "source": "agreed"
+    },
+    {
+     "text": "attendance on notice to those Persons likely to be affected thereby, to seek an increase to the",
+     "source": "agreed"
+    },
+    {
+     "text": "amounts, to seek additional charges and to seek priority of the Charges ahead of any",
+     "source": "agreed"
+    },
+    {
+     "text": "Encumbrance over which the Charges have not obtained priority under this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "36. THIS COURT ORDERS that except as otherwise expressly provided for herein, or as",
+     "source": "agreed"
+    },
+    {
+     "text": "may be approved by this Court, the Applicant shall not grant any Encumbrances over any",
+     "source": "agreed"
+    },
+    {
+     "text": "Property that rank in priority to, or pari passu with, any of the Charges, unless the Applicant also",
+     "source": "agreed"
+    },
+    {
+     "text": "obtains the prior written consent of the Monitor and the beneficiaries of the Charges affected",
+     "source": "agreed"
+    },
+    {
+     "text": "thereby (collectively, the \"Chargees\"), or further Order of this Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "37. THIS COURT ORDERS that any Charge created by this Order over leases of real",
+     "source": "agreed"
+    },
+    {
+     "text": "property in Canada shall only be a Charge in the Applicant's interest in such real property leases.",
+     "source": "agreed"
+    },
+    {
+     "text": "38. THIS COURT ORDERS that, notwithstanding anything else contained herein and",
+     "source": "agreed"
+    },
+    {
+     "text": "pending further Order of the Court, the Property subject to the Charges herein shall not include",
+     "source": "agreed"
+    },
+    {
+     "text": "SERVICE AND NOTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "39. THIS COURT ORDERS that the Monitor shall (i) without delay, publish in the Globe",
+     "source": "agreed"
+    },
+    {
+     "text": "& Mail and the Sudbury Star a notice containing the information prescribed under the CCAA,",
+     "source": "agreed"
+    },
+    {
+     "text": "and (ii) within five days of the date of this Order, (A) make this Order publicly available in the",
+     "source": "agreed"
+    },
+    {
+     "text": "manner prescribed under the CCAA, (B) send, in the prescribed manner, a notice to every known",
+     "source": "agreed"
+    },
+    {
+     "text": "employees, former employees with pension and/or retirement savings or benefits plan",
+     "source": "agreed"
+    },
+    {
+     "text": "entitlements, and retirees and other beneficiaries who have entitlements under any pension or",
+     "source": "agreed"
+    },
+    {
+     "text": "retirement savings plan), and (C) prepare a list showing the names and addresses of those",
+     "source": "agreed"
+    },
+    {
+     "text": "the Segregated Accounts.",
+     "source": "reviewed"
+    },
+    {
+     "text": "creditor who has a claim against the Applicant of more than $1,000 (excluding any individual",
+     "source": "reviewed"
+    }
+   ],
+   "14": [
+    {
+     "text": "14",
+     "source": "agreed"
+    },
+    {
+     "text": "creditors and the estimated amounts of those claims, and make it publicly available in the",
+     "source": "agreed"
+    },
+    {
+     "text": "prescribed manner, all in accordance with Section 23(1)(a) of the CCAA and the regulations",
+     "source": "agreed"
+    },
+    {
+     "text": "made thereunder, provided that the Monitor shall not make the claims, names and addresses of",
+     "source": "agreed"
+    },
+    {
+     "text": "individuals who are creditors publicly available, unless otherwise ordered by the Court.",
+     "source": "agreed"
+    },
+    {
+     "text": "40. THIS COURT ORDERS that the E-Service Protocol of the Commercial List (the",
+     "source": "agreed"
+    },
+    {
+     "text": "\"Protocol') is approved and adopted by reference herein and, in this proceeding, the service of",
+     "source": "agreed"
+    },
+    {
+     "text": "documents made in accordance with the Protocol (which can be found on the Commercial List",
+     "source": "agreed"
+    },
+    {
+     "text": "website",
+     "source": "agreed"
+    },
+    {
+     "text": "http://www.ontariocourts.ca/scj/practice/practice-directions/toronto/eservice-",
+     "source": "agreed"
+    },
+    {
+     "text": "at",
+     "source": "agreed"
+    },
+    {
+     "text": "Procedure, this Order shall constitute an order for substituted service pursuant to Rule 16.04 of",
+     "source": "agreed"
+    },
+    {
+     "text": "paragraph 21 of the Protocol, service of documents in accordance with the Protocol will be",
+     "source": "agreed"
+    },
+    {
+     "text": "effective on transmission. This Court further orders that a Case Website shall be established in",
+     "source": "agreed"
+    },
+    {
+     "text": "accordance with the Protocol with the following URL: www.ey.com/ca/Laurentian.",
+     "source": "agreed"
+    },
+    {
+     "text": "41. THIS COURT ORDERS that if the service or distribution of documents in accordance",
+     "source": "agreed"
+    },
+    {
+     "text": "with the Protocol is not practicable, the Applicant and the Monitor are at liberty to serve or",
+     "source": "agreed"
+    },
+    {
+     "text": "distribute this Order, any other materials and orders in these proceedings, any notices or other",
+     "source": "agreed"
+    },
+    {
+     "text": "correspondence, by forwarding true copies thereof by prepaid ordinary mail, courier, personal",
+     "source": "agreed"
+    },
+    {
+     "text": "delivery or facsimile transmission to the Applicant's creditors or other interested parties at their",
+     "source": "agreed"
+    },
+    {
+     "text": "respective addresses as last shown on the records of the Applicant and that any such service or",
+     "source": "agreed"
+    },
+    {
+     "text": "distribution by courier, personal delivery or facsimile transmission shall be deemed to be",
+     "source": "agreed"
+    },
+    {
+     "text": "received on the next business day following the date of forwarding thereof, or if sent by ordinary",
+     "source": "agreed"
+    },
+    {
+     "text": "mail, on the third business day after mailing.",
+     "source": "agreed"
+    },
+    {
+     "text": "42. THIS COURT ORDERS that the Monitor shall create, maintain and update as",
+     "source": "agreed"
+    },
+    {
+     "text": "necessary a list of all Persons appearing in person or by counsel in this proceeding (the \"Service",
+     "source": "agreed"
+    },
+    {
+     "text": "website as part of the public materials in relation to this proceeding. Notwithstanding the",
+     "source": "agreed"
+    },
+    {
+     "text": "foregoing, the Monitor shall have no liability in respect of the accuracy of or the timeliness of",
+     "source": "agreed"
+    },
+    {
+     "text": "making any changes to the Service List.",
+     "source": "agreed"
+    },
+    {
+     "text": "commercial) shall be valid and effective service. Subject to Rule 17.05 of the Rules of Civil",
+     "source": "reviewed"
+    },
+    {
+     "text": "the Rules of Civil Procedure. Subject to Rule 3.01(d) of the Rules of Civil Procedure and",
+     "source": "reviewed"
+    },
+    {
+     "text": "List”). The Monitor shall post the Service List, as may be updated from time to time, on the case",
+     "source": "reviewed"
+    }
+   ],
+   "15": [
+    {
+     "text": "15",
+     "source": "agreed"
+    },
+    {
+     "text": "counsel are at liberty to serve or distribute this Order, and other materials and orders as may be",
+     "source": "agreed"
+    },
+    {
+     "text": "reasonably required in these proceedings, including any notices, or other correspondence, by",
+     "source": "agreed"
+    },
+    {
+     "text": "forwarding true copies thereof by electronic message to the Applicant's creditors or other",
+     "source": "agreed"
+    },
+    {
+     "text": "interested parties and their advisors. For greater certainty, any such distribution or service shall",
+     "source": "agreed"
+    },
+    {
+     "text": "be deemed to be in satisfaction of a legal or judicial obligation, and notice requirements within",
+     "source": "agreed"
+    },
+    {
+     "text": "the meaning of clause 3(c) of the Electronic Commerce Protection Regulations, Reg. 81000-2-",
+     "source": "agreed"
+    },
+    {
+     "text": "SEALING PROVISION",
+     "source": "agreed"
+    },
+    {
+     "text": "44. THIS COURT ORDERS that Confidential Exhibits \"EEE\" and \"FFF\" of the Haché",
+     "source": "agreed"
+    },
+    {
+     "text": "Affidavit are hereby sealed pending further order of the Court, and shall not form part of the",
+     "source": "agreed"
+    },
+    {
+     "text": "public record.",
+     "source": "agreed"
+    },
+    {
+     "text": "GENERAL",
+     "source": "agreed"
+    },
+    {
+     "text": "45. THIS COURT ORDERS that the Applicant or the Monitor may from time to time apply",
+     "source": "agreed"
+    },
+    {
+     "text": "to this Court for advice and directions in the discharge of their powers and duties hereunder.",
+     "source": "agreed"
+    },
+    {
+     "text": "46. THIS COURT HEREBY REQUESTS the aid and recognition of any court, tribunal,",
+     "source": "agreed"
+    },
+    {
+     "text": "regulatory or administrative body having jurisdiction in Canada or outside of Canada to give",
+     "source": "agreed"
+    },
+    {
+     "text": "effect to this Order and to assist the Applicant, the Monitor and their respective agents in",
+     "source": "agreed"
+    },
+    {
+     "text": "carrying out the terms of this Order. All courts, tribunals, regulatory and administrative bodies",
+     "source": "agreed"
+    },
+    {
+     "text": "are hereby respectfully requested to make such orders and to provide such assistance to the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant and to the Monitor, as an officer of this Court, as may be necessary or desirable to give",
+     "source": "agreed"
+    },
+    {
+     "text": "effect to this Order, to grant representative status to the Monitor in any foreign proceeding, or to",
+     "source": "agreed"
+    },
+    {
+     "text": "assist the Applicant and the Monitor and their respective agents in carrying out the terms of this",
+     "source": "agreed"
+    },
+    {
+     "text": "Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "47. THIS COURT ORDERS that each of the Applicant and the Monitor be at liberty and is",
+     "source": "agreed"
+    },
+    {
+     "text": "hereby authorized and empowered to apply to any court, tribunal, regulatory or administrative",
+     "source": "agreed"
+    },
+    {
+     "text": "body, wherever located, for the recognition of this Order and for assistance in carrying out the",
+     "source": "agreed"
+    },
+    {
+     "text": "terms of this Order, and that the Monitor is authorized and empowered to act as a representative",
+     "source": "agreed"
+    },
+    {
+     "text": "43. THIS COURT ORDERS that the Applicant and the Monitor and their respective",
+     "source": "reviewed"
+    },
+    {
+     "text": "175 (SOR/DORS).",
+     "source": "reviewed"
+    }
+   ],
+   "16": [
+    {
+     "text": "16",
+     "source": "agreed"
+    },
+    {
+     "text": "in respect of the within proceedings for the purpose of having these proceedings recognized in a",
+     "source": "agreed"
+    },
+    {
+     "text": "48. THIS COURT ORDERS that any interested party (including the Applicant and the",
+     "source": "agreed"
+    },
+    {
+     "text": "Monitor) may apply to this Court to vary or amend this Order on not less than seven (7) days",
+     "source": "agreed"
+    },
+    {
+     "text": "notice to any other party or parties likely to be affected by the order sought or upon such other",
+     "source": "agreed"
+    },
+    {
+     "text": "notice, if any, as this Court may order.",
+     "source": "agreed"
+    },
+    {
+     "text": "49. THIS COURT ORDERS that this Order and all of its provisions are effective as of",
+     "source": "agreed"
+    },
+    {
+     "text": "12:01 a.m. Eastern Time on the date of this Order, and is enforceable without any need for entry",
+     "source": "agreed"
+    },
+    {
+     "text": "and filing.",
+     "source": "agreed"
+    },
+    {
+     "text": "jurisdiction outside Canada.",
+     "source": "reviewed"
+    },
+    {
+     "text": "CHIEF JUSTICE G.B. MORAWETZ",
+     "source": "reviewed"
+    },
+    {
+     "text": "ENTERED AT/INSCRIT À TORONTO",
+     "source": "reviewed"
+    },
+    {
+     "text": "ON/BOOK NO:",
+     "source": "reviewed"
+    },
+    {
+     "text": "LE/DANS LE REGISTRE NO:",
+     "source": "reviewed"
+    },
+    {
+     "text": "FEB 01 2021",
+     "source": "reviewed"
+    },
+    {
+     "text": "PER/PAR:",
+     "source": "reviewed"
+    }
+   ],
+   "17": [
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "Proceeding commenced at Toronto",
+     "source": "agreed"
+    },
+    {
+     "text": "TD West Tower, Toronto-Dominion Centre",
+     "source": "agreed"
+    },
+    {
+     "text": "(COMMERCIAL LIST)",
+     "source": "agreed"
+    },
+    {
+     "text": "Andrew Hanrahan (LSO# 78003K)",
+     "source": "agreed"
+    },
+    {
+     "text": "INITIAL ORDER",
+     "source": "agreed"
+    },
+    {
+     "text": "3200 - 100 Wellington Street West",
+     "source": "agreed"
+    },
+    {
+     "text": "Derek Harland (LSO# 79504N)",
+     "source": "agreed"
+    },
+    {
+     "text": "Thornton Grout Finnigan LLP",
+     "source": "agreed"
+    },
+    {
+     "text": "ONTARIO",
+     "source": "agreed"
+    },
+    {
+     "text": "D.J. Miller (LSO# 344393P)",
+     "source": "agreed"
+    },
+    {
+     "text": "Lawyers for the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: ahanrahan@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: mgrossell@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: djmiller@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: dharland@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Tel: 416-304-1616",
+     "source": "agreed"
+    },
+    {
+     "text": "Fax: 416-304-1313",
+     "source": "agreed"
+    },
+    {
+     "text": "C-36, AS AMENDED AND IN THE MATTER OF A PLAN OF COMPROMISE OR",
+     "source": "agreed"
+    },
+    {
+     "text": "ARRANGEMENT OF LAURENTIAN UNIVERSITY OF SUDBURY",
+     "source": "agreed"
+    },
+    {
+     "text": "-00CL",
+     "source": "reviewed"
+    },
+    {
+     "text": "Mitchell W. Grossell (LSO# 69993I)",
+     "source": "reviewed"
+    },
+    {
+     "text": "IN THE MATTER OF THE COMPANIES’ CREDITORS ARRANGEMENT ACT, R.S.C. 1985, c. Court File No.: CV-21-",
+     "source": "reviewed"
+    },
+    {
+     "text": "Toronto, ON M5K 1K7",
+     "source": "reviewed"
+    }
+   ]
+  },
+  "Laurentian First Report of the Monitor": {
+   "15": [
+    {
+     "text": "CASH FLOW FORECAST",
+     "source": "agreed"
+    },
+    {
+     "text": "APPENDIX “A”",
+     "source": "reviewed"
+    }
+   ],
+   "21": [
+    {
+     "text": "NOTICE TO CREDITORS",
+     "source": "agreed"
+    },
+    {
+     "text": "APPENDIX “B”",
+     "source": "reviewed"
+    }
+   ],
+   "25": [
+    {
+     "text": "Court File No. CV-21-00656040-00CL",
+     "source": "agreed"
+    },
+    {
+     "text": "ONTARIO",
+     "source": "agreed"
+    },
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "COMMERCIAL LIST",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": ")",
+     "source": "agreed"
+    },
+    {
+     "text": "",
+     "source": "agreed"
+    },
+    {
+     "text": "R.S.C. 1985, c. C-36, AS AMENDED",
+     "source": "agreed"
+    },
+    {
+     "text": "LAURENTIAN UNIVERSITY OF SUDBURY",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "ORDER",
+     "source": "agreed"
+    },
+    {
+     "text": "(Re: Appointment of Mediator)",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS APPLICATION, made by Laurentian University of Sudbury (the \"Applicant)",
+     "source": "agreed"
+    },
+    {
+     "text": "pursuant to the Companies' Creditors Arrangement Act, R.S.C. 1985, c. C-36, as amended (the",
+     "source": "agreed"
+    },
+    {
+     "text": "\"CCAA\"), for an order appointing a mediator as an officer of the Court to act as a neutral third",
+     "source": "agreed"
+    },
+    {
+     "text": "party, was heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19",
+     "source": "agreed"
+    },
+    {
+     "text": "pandemic.",
+     "source": "agreed"
+    },
+    {
+     "text": "ON READING the Notice of Application of the Applicant dated February 1, 2021, the",
+     "source": "agreed"
+    },
+    {
+     "text": "affidavit of Dr. Robert Haché sworn January 30, 2021 and the Exhibits thereto (the \"Haché Initial",
+     "source": "agreed"
+    },
+    {
+     "text": "Affidavit\") and the Report of Ernst & Young Inc. (the \"Monitor\") dated January 30, 2021 and on",
+     "source": "agreed"
+    },
+    {
+     "text": "hearing the submissions of counsel for the Applicant, counsel for the Monitor and counsel for the",
+     "source": "agreed"
+    },
+    {
+     "text": "FRIDAY, THE 5TH",
+     "source": "reviewed"
+    },
+    {
+     "text": "THE HONOURABLE CHIEF",
+     "source": "reviewed"
+    },
+    {
+     "text": "DAY OF FEBRUARY, 2021",
+     "source": "reviewed"
+    },
+    {
+     "text": "JUSTICE MORAWETZ",
+     "source": "reviewed"
+    },
+    {
+     "text": "COURT",
+     "source": "reviewed"
+    },
+    {
+     "text": "IN THE MATTER OF THE COMPANIES’ CREDITORS ARRANGEMENT ACT,",
+     "source": "reviewed"
+    },
+    {
+     "text": "AND IN THE MATTER OF A PLAN OF COMPROMISE OR ARRANGEMENT OF",
+     "source": "reviewed"
+    },
+    {
+     "text": "Laurentian University Faculty Association (“LUFA”).",
+     "source": "reviewed"
+    }
+   ],
+   "26": [
+    {
+     "text": "SERVICE AND DEFINITIONS",
+     "source": "agreed"
+    },
+    {
+     "text": "Notice of Case Conference is hereby abridged and validated so that this case conference is properly",
+     "source": "agreed"
+    },
+    {
+     "text": "returnable today and hereby dispenses with further service thereof.",
+     "source": "agreed"
+    },
+    {
+     "text": "2. THIS COURT ORDERS that capitalized terms used herein that are not otherwise defined",
+     "source": "agreed"
+    },
+    {
+     "text": "shall have the meaning ascribed to them in the Haché Initial Affidavit.",
+     "source": "agreed"
+    },
+    {
+     "text": "COURT-APPOINTED MEDIATOR",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that Justice Sean Dunphy is hereby appointed, as an officer of",
+     "source": "agreed"
+    },
+    {
+     "text": "the Court and shall act as a neutral third party (the \"Court-Appointed Mediator\") to assist the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant and its relevant stakeholders with the mediation of the following issues:",
+     "source": "agreed"
+    },
+    {
+     "text": "(a)",
+     "source": "agreed"
+    },
+    {
+     "text": "the review and restructuring of the Applicant's existing academic programs;",
+     "source": "agreed"
+    },
+    {
+     "text": "(b) the review and restructuring of the faculty necessary to deliver the Applicant's",
+     "source": "agreed"
+    },
+    {
+     "text": "restructured academic programs;",
+     "source": "agreed"
+    },
+    {
+     "text": "(c)",
+     "source": "agreed"
+    },
+    {
+     "text": "a new collective agreement between the Applicant and LUFA, including resolving all",
+     "source": "agreed"
+    },
+    {
+     "text": "outstanding grievances;",
+     "source": "agreed"
+    },
+    {
+     "text": "the review and restructuring of the Applicant's Federated Universities' model;",
+     "source": "agreed"
+    },
+    {
+     "text": "(d)",
+     "source": "agreed"
+    },
+    {
+     "text": "(e) the framework for the Applicant's restructuring and future operations; and",
+     "source": "agreed"
+    },
+    {
+     "text": "(f) any other matters that are referred to the Court-Appointed Mediator by the Applicant,",
+     "source": "agreed"
+    },
+    {
+     "text": "the Monitor, the relevant stakeholders or this Court;",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that in carrying out his mandate, the Court-Appointed Mediator",
+     "source": "agreed"
+    },
+    {
+     "text": "may, among other things:",
+     "source": "agreed"
+    },
+    {
+     "text": "- 2 -",
+     "source": "reviewed"
+    },
+    {
+     "text": "1. THIS COURT ORDERS that the time for service of the Notice of Application and the",
+     "source": "reviewed"
+    },
+    {
+     "text": "3.",
+     "source": "reviewed"
+    },
+    {
+     "text": "(together, the “Mediation Objectives”).",
+     "source": "reviewed"
+    },
+    {
+     "text": "4.",
+     "source": "reviewed"
+    }
+   ],
+   "27": [
+    {
+     "text": "(a)",
+     "source": "agreed"
+    },
+    {
+     "text": "adopt processes, procedures, and timelines which, in his discretion, he considers",
+     "source": "agreed"
+    },
+    {
+     "text": "appropriate to facilitate an effective and efficient negotiation of the Mediation",
+     "source": "agreed"
+    },
+    {
+     "text": "Objectives (the \"Mediation Process'); and",
+     "source": "agreed"
+    },
+    {
+     "text": "(b)",
+     "source": "agreed"
+    },
+    {
+     "text": "Objectives, the Monitor, the Applicant, and such creditors, stakeholders of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant, and other persons the Court-Appointed Mediator considers appropriate.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Monitor shall provide the Court-Appointed Mediator",
+     "source": "agreed"
+    },
+    {
+     "text": "with such assistance as the Court-Appointed Mediator shall reasonably request.",
+     "source": "agreed"
+    },
+    {
+     "text": "6. THIS COURT ORDERS that the Mediation Confidentiality Protocol (the \"Protocol')",
+     "source": "agreed"
+    },
+    {
+     "text": "attached hereto as Schedule \"A\" is hereby approved and that the entirety of the Mediation Process",
+     "source": "agreed"
+    },
+    {
+     "text": "or anything reasonably incidental to the Mediation Process shall be subject to the Protocol.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that the Court-Appointed Mediator is authorized to take all steps",
+     "source": "agreed"
+    },
+    {
+     "text": "and to do all acts reasonably necessary or desirable to carry out the terms of this Order, including",
+     "source": "agreed"
+    },
+    {
+     "text": "dealing with any Court, regulatory body or other government ministry, department or agency, and",
+     "source": "agreed"
+    },
+    {
+     "text": "to take all such steps as are necessary or incidental thereto.",
+     "source": "agreed"
+    },
+    {
+     "text": "THIS COURT ORDERS that, in addition to the rights and protections afforded as an",
+     "source": "agreed"
+    },
+    {
+     "text": "officer of this Court, the Court-Appointed Mediator shall incur no liability or obligation as a result",
+     "source": "agreed"
+    },
+    {
+     "text": "of his appointment or the carrying out of the provisions of this Order. Nothing in this Order shall",
+     "source": "agreed"
+    },
+    {
+     "text": "derogate from the protections afforded to a person pursuant to Section 142 of the Courts of Justice",
+     "source": "agreed"
+    },
+    {
+     "text": "Act (Ontario).",
+     "source": "agreed"
+    },
+    {
+     "text": "9. THIS COURT ORDERS that the Court and the Court-Appointed Mediator may",
+     "source": "agreed"
+    },
+    {
+     "text": "communicate between one another directly to discuss, on an ongoing basis, the conduct of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Mediation Process and the manner in which it will be coordinated with the CCAA proceedings,",
+     "source": "agreed"
+    },
+    {
+     "text": "including but not limited to individual matters referred specifically by the Court to the Court-",
+     "source": "agreed"
+    },
+    {
+     "text": "Appointed Mediator for resolution.",
+     "source": "agreed"
+    },
+    {
+     "text": "10. THIS COURT ORDERS that the Court shall not disclose to the Court-Appointed",
+     "source": "agreed"
+    },
+    {
+     "text": "Mediator how the Court will decide any matter which may come before the Court for determination",
+     "source": "agreed"
+    },
+    {
+     "text": "- 3 -",
+     "source": "reviewed"
+    },
+    {
+     "text": "consult with any appointed representative(s) of the parties relevant to the Mediation",
+     "source": "reviewed"
+    },
+    {
+     "text": "5.",
+     "source": "reviewed"
+    },
+    {
+     "text": "7.",
+     "source": "reviewed"
+    },
+    {
+     "text": "8.",
+     "source": "reviewed"
+    }
+   ],
+   "28": [
+    {
+     "text": "and the Court-Appointed Mediator will not disclose to the Court the negotiating positions or",
+     "source": "agreed"
+    },
+    {
+     "text": "confidential information of any of the parties in the Mediation Process.",
+     "source": "agreed"
+    },
+    {
+     "text": "GENERAL",
+     "source": "agreed"
+    },
+    {
+     "text": "11. THIS COURT ORDERS that the Applicant and the Monitor may apply to this Court from",
+     "source": "agreed"
+    },
+    {
+     "text": "time to time for directions from this Court with respect to this Order, or for such further order or",
+     "source": "agreed"
+    },
+    {
+     "text": "orders as any of them may consider necessary or desirable to amend, supplement or clarify the",
+     "source": "agreed"
+    },
+    {
+     "text": "terms of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "12. THIS COURT HEREBY REQUESTS the aid and recognition of any court, tribunal,",
+     "source": "agreed"
+    },
+    {
+     "text": "regulatory or administrative body having jurisdiction in Canada or outside of Canada to give effect",
+     "source": "agreed"
+    },
+    {
+     "text": "to this Order and to assist the Applicant, the Monitor and their respective agents in carrying out",
+     "source": "agreed"
+    },
+    {
+     "text": "the terms of this Order. All courts, tribunals, regulatory and administrative bodies are hereby",
+     "source": "agreed"
+    },
+    {
+     "text": "respectfully requested to make such orders and to provide such assistance to the Applicant and to",
+     "source": "agreed"
+    },
+    {
+     "text": "the Monitor, as an officer of this Court, as may be necessary or desirable to give effect to this",
+     "source": "agreed"
+    },
+    {
+     "text": "Order, to grant representative status to the Monitor in any foreign proceeding, or to assist the",
+     "source": "agreed"
+    },
+    {
+     "text": "Applicant and the Monitor and their respective agents in carrying out the terms of this Order.",
+     "source": "agreed"
+    },
+    {
+     "text": "13. THIS COURT ORDERS that each of the Applicant and the Monitor be at liberty and is",
+     "source": "agreed"
+    },
+    {
+     "text": "hereby authorized and empowered to apply to any court, tribunal, regulatory or administrative",
+     "source": "agreed"
+    },
+    {
+     "text": "body, wherever located, for the recognition of this Order and for assistance in carrying out the",
+     "source": "agreed"
+    },
+    {
+     "text": "a.m. Eastern Time on the date of this Order, and is enforceable without any need for entry and",
+     "source": "agreed"
+    },
+    {
+     "text": "filing.",
+     "source": "agreed"
+    },
+    {
+     "text": "FEB 0 5:2021",
+     "source": "agreed"
+    },
+    {
+     "text": "CHIEF JUSTICE G.B. MORAWETZ",
+     "source": "agreed"
+    },
+    {
+     "text": "- 4 -",
+     "source": "reviewed"
+    },
+    {
+     "text": "terms of this Order.",
+     "source": "reviewed"
+    },
+    {
+     "text": "14. THIS COURT ORDERS that this Order and all of its provisions are effective as of 12:01",
+     "source": "reviewed"
+    },
+    {
+     "text": "ENTERED AT/INSCRIT À TORONTO",
+     "source": "reviewed"
+    },
+    {
+     "text": "ENTERED AT/INSCRIT À TORONTO",
+     "source": "reviewed"
+    },
+    {
+     "text": "ON/BOOK NO:",
+     "source": "reviewed"
+    },
+    {
+     "text": "LE/DANS LE REGISTRE NO:",
+     "source": "reviewed"
+    },
+    {
+     "text": "LE/",
+     "source": "reviewed"
+    },
+    {
+     "text": "PER/PAR:",
+     "source": "reviewed"
+    }
+   ],
+   "29": [
+    {
+     "text": "SCHEDULE \"A\" to Proposed Form of Mediator Appointment Order",
+     "source": "agreed"
+    },
+    {
+     "text": "Court File No.: 21-CV-00656040-00CL",
+     "source": "agreed"
+    },
+    {
+     "text": "ONTARIO",
+     "source": "agreed"
+    },
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "(COMMERCIAL LIST)",
+     "source": "agreed"
+    },
+    {
+     "text": "IN THE MATTER OF THE COMPANIES' CREDITORS ARRANGEMENT ACT,",
+     "source": "agreed"
+    },
+    {
+     "text": "R.S.C. 1985, c. C-36, AS AMENDED",
+     "source": "agreed"
+    },
+    {
+     "text": "AND IN THE MATTER OF A PLAN OF COMPROMISE OR",
+     "source": "agreed"
+    },
+    {
+     "text": "ARRANGEMENT OF LAURENTIAN UNIVERSITY OF SUDBURY",
+     "source": "agreed"
+    },
+    {
+     "text": "MEDIATION CONFIDENTIALITY PROTOCOL",
+     "source": "agreed"
+    },
+    {
+     "text": "1. THE PROCESS:",
+     "source": "agreed"
+    },
+    {
+     "text": "Pursuant to the Court's Order (the \"Mediation Order\"), Justice Sean Dunphy was appointed as",
+     "source": "agreed"
+    },
+    {
+     "text": "an officer of the Court and to act as a neutral third party (the \"Court-Appointed Mediator') to",
+     "source": "agreed"
+    },
+    {
+     "text": "assist the Applicant and stakeholders with a mediation of various issues in the Applicant's CCAA",
+     "source": "agreed"
+    },
+    {
+     "text": "proceeding. The Mediation Order authorizes the Court-Appointed Mediator to adopt processes,",
+     "source": "agreed"
+    },
+    {
+     "text": "procedures, and timelines that, in his discretion, are considered appropriate to facilitate an effective",
+     "source": "agreed"
+    },
+    {
+     "text": "and efficient mediation. Further to that authority, this Mediation Confidentiality Protocol shall",
+     "source": "agreed"
+    },
+    {
+     "text": "apply to all written and oral communications related to or arising out of the mediation undertaken",
+     "source": "agreed"
+    },
+    {
+     "text": "pursuant to the Mediation Order (the \"Mediation\").",
+     "source": "agreed"
+    },
+    {
+     "text": "PARTY AND MONITOR CONFIDENTIALITY:",
+     "source": "agreed"
+    },
+    {
+     "text": "All written and oral communication at the Mediation shall be deemed to be without prejudice",
+     "source": "agreed"
+    },
+    {
+     "text": "settlement discussions. For the purposes of this section, a Mediation communication shall also",
+     "source": "agreed"
+    },
+    {
+     "text": "include all conduct, statements, discussion, promises, offers, views, opinions, admissions and",
+     "source": "agreed"
+    },
+    {
+     "text": "communications for purposes of conducting, considering, initiating, continuing, or reconvening",
+     "source": "agreed"
+    },
+    {
+     "text": "the Mediation together with the delivery and exchange of any documents in the course of the",
+     "source": "agreed"
+    },
+    {
+     "text": "Mediation made by any party, their agents, employees, representatives, or other invitees, and by",
+     "source": "agreed"
+    },
+    {
+     "text": "the Court-Appointed Mediator.",
+     "source": "agreed"
+    },
+    {
+     "text": "The parties and the Monitor acknowledge and agree that:",
+     "source": "agreed"
+    },
+    {
+     "text": "a) the Mediation is a settlement negotiation;",
+     "source": "agreed"
+    },
+    {
+     "text": "b) the Mediation is confidential and no stenographic, visual, or audio recordings shall be",
+     "source": "agreed"
+    },
+    {
+     "text": "made;",
+     "source": "agreed"
+    },
+    {
+     "text": "- 5 -",
+     "source": "reviewed"
+    },
+    {
+     "text": "2.",
+     "source": "reviewed"
+    }
+   ],
+   "30": [
+    {
+     "text": "c) no Mediation communication shall be discoverable, admissible or referred to in Court",
+     "source": "agreed"
+    },
+    {
+     "text": "for any purpose, including impeachment in the action or in any other proceeding or to",
+     "source": "agreed"
+    },
+    {
+     "text": "establish the meaning and/or validity of any settlement or alleged settlement arising",
+     "source": "agreed"
+    },
+    {
+     "text": "from the Mediation, and shall not be discussed with anyone, provided that",
+     "source": "agreed"
+    },
+    {
+     "text": "communications otherwise admissible or subject to discovery do not become",
+     "source": "agreed"
+    },
+    {
+     "text": "inadmissible or protected from discovery or admission by reason of their use in",
+     "source": "agreed"
+    },
+    {
+     "text": "Mediation;",
+     "source": "agreed"
+    },
+    {
+     "text": "d) any notes, records, statements made, discussions had, and recollections of the Court-",
+     "source": "agreed"
+    },
+    {
+     "text": "Appointed Mediator in conducting the Mediation shall be confidential and without",
+     "source": "agreed"
+    },
+    {
+     "text": "prejudice and protected from disclosure for all purposes; and",
+     "source": "agreed"
+    },
+    {
+     "text": "e) except as permitted by law, the parties will not subpoena or otherwise require the Court-",
+     "source": "agreed"
+    },
+    {
+     "text": "Appointed Mediator to testify or produce the records or notes in an action or in any other",
+     "source": "agreed"
+    },
+    {
+     "text": "proceeding.",
+     "source": "agreed"
+    },
+    {
+     "text": "3.",
+     "source": "agreed"
+    },
+    {
+     "text": "MEDIATOR CONFIDENTIALITY:",
+     "source": "agreed"
+    },
+    {
+     "text": "During the Mediation process, the Court-Appointed Mediator may disclose to either party any",
+     "source": "agreed"
+    },
+    {
+     "text": "information provided by either party, unless the disclosing party has specifically requested the",
+     "source": "agreed"
+    },
+    {
+     "text": "Court-Appointed Mediator to keep the information confidential, in which case the Court-",
+     "source": "agreed"
+    },
+    {
+     "text": "Appointed Mediator will attempt to keep that information in confidence.",
+     "source": "agreed"
+    },
+    {
+     "text": "The Court-Appointed Mediator will not disclose to anyone who is not a party to the Mediation",
+     "source": "agreed"
+    },
+    {
+     "text": "anything said, or any materials submitted to the Court-Appointed Mediator, except:",
+     "source": "agreed"
+    },
+    {
+     "text": "a) where applicable, to the lawyers or other professionals retained on behalf of the parties",
+     "source": "agreed"
+    },
+    {
+     "text": "or to non-parties consented to in writing by the parties, as deemed appropriate or",
+     "source": "agreed"
+    },
+    {
+     "text": "necessary by the Court-Appointed Mediator;",
+     "source": "agreed"
+    },
+    {
+     "text": "b) to the Court, to the extent specifically permitted in the Mediation Order; or",
+     "source": "agreed"
+    },
+    {
+     "text": "c) where otherwise ordered to do so by a judicial authority or where required to do so by",
+     "source": "agreed"
+    },
+    {
+     "text": "law.",
+     "source": "agreed"
+    },
+    {
+     "text": "Except as noted above, the notes, records, statements made, and recollections of the Court-",
+     "source": "agreed"
+    },
+    {
+     "text": "Appointed Mediator shall be confidential and protected from disclosure for all purposes.",
+     "source": "agreed"
+    },
+    {
+     "text": "Each party present during all or any part of the Mediation shall review this Mediation",
+     "source": "agreed"
+    },
+    {
+     "text": "Confidentiality Protocol and agrees to proceed with the Mediation on the terms herein contained.",
+     "source": "agreed"
+    },
+    {
+     "text": "- 6 -",
+     "source": "reviewed"
+    },
+    {
+     "text": "4. CONSENT TO THIS AGREEMENT:",
+     "source": "reviewed"
+    }
+   ],
+   "31": [
+    {
+     "text": "AND IN THE MATTER OF A PLAN OF COMPROMISE OR ARRANGEMENT OF LAURENTIAN UNIVERSITY OF SUDBURY",
+     "source": "agreed"
+    },
+    {
+     "text": "Court File No. CV-21-00656040-00CL",
+     "source": "agreed"
+    },
+    {
+     "text": "ONTARIO",
+     "source": "agreed"
+    },
+    {
+     "text": "SUPERIOR COURT OF JUSTICE",
+     "source": "agreed"
+    },
+    {
+     "text": "(COMMERCIAL LIST)",
+     "source": "agreed"
+    },
+    {
+     "text": "Proceedings commenced at Toronto",
+     "source": "agreed"
+    },
+    {
+     "text": "ORDER",
+     "source": "agreed"
+    },
+    {
+     "text": "(Appointment of Mediator)",
+     "source": "agreed"
+    },
+    {
+     "text": "THORNTON GROUT FINNIGAN LLP",
+     "source": "agreed"
+    },
+    {
+     "text": "3200 - 100 Wellington Street West",
+     "source": "agreed"
+    },
+    {
+     "text": "TD West Tower, Toronto-Dominion Centre",
+     "source": "agreed"
+    },
+    {
+     "text": "D.J. Miller (LSO# 344393P)",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: djmiller@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: mgrossell@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Andrew Hanrahan (LSO# 78003K)",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: ahanrahan@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Derek Harland (LSO# 79504N)",
+     "source": "agreed"
+    },
+    {
+     "text": "Email: dharland@tgf.ca",
+     "source": "agreed"
+    },
+    {
+     "text": "Tel: 416-304-1616",
+     "source": "agreed"
+    },
+    {
+     "text": "Fax: 416-304-1313",
+     "source": "agreed"
+    },
+    {
+     "text": "Lawyers for the Applicant",
+     "source": "agreed"
+    },
+    {
+     "text": "IN THE MATTER OF THE COMPANIES’ CREDITORS ARRANGEMENT ACT, R.S.C. 1985, c. C-36, AS AMENDED",
+     "source": "reviewed"
+    },
+    {
+     "text": "Toronto, ON M5K 1K7",
+     "source": "reviewed"
+    },
+    {
+     "text": "Mitchell W. Grossell (LSO# 69993I)",
+     "source": "reviewed"
+    }
+   ],
+   "32": [
+    {
+     "text": "ENDORSEMENT RE: APPOINTMENT OF MEDIATOR",
+     "source": "agreed"
+    },
+    {
+     "text": "APPENDIX “D”",
+     "source": "reviewed"
+    }
+   ],
+   "24": [
+    {
+     "text": "APPENDIX “C”",
+     "source": "reviewed"
+    },
+    {
+     "text": "ORDER APPOINTING MEDIATOR",
+     "source": "reviewed"
+    }
+   ]
+  },
+  "Laurentian Pre-Filing Report of the Proposed Monitor": {
+   "42": [
+    {
+     "text": "APPENDIX A\"",
+     "source": "agreed"
+    },
+    {
+     "text": "CASH FLOW FORECAST",
+     "source": "agreed"
+    }
+   ]
+  }
+ }
+}
