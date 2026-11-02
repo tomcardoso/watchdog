@@ -111,7 +111,7 @@ def test_section_auto_ignores_extractor_effort():
 def test_display_of_defaults_booleans_and_secrets():
     assert settings.display_value("garbled_threshold", None) == "0.6"
     assert settings.display_value("table_structure", False) == "false"
-    assert settings.display_value("ocr_languages", None) == "auto-detect (default)"
+    assert settings.display_value("ocr_languages", None) == "English (default)"
     assert settings.display_value("wayback_secret_key", "hunter2") == "•••••••• (set)"
     assert settings.display_value("finalizer_writing_model", None) == "(not set)"
 
