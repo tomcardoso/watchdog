@@ -1233,8 +1233,8 @@ def _no_binding(monkeypatch, program, langs):
 def test_without_the_binding_tesseract_runs_through_the_installed_program(monkeypatch):
     """The desktop app has no `tesserocr`, so the `tesseract` setting used to fall through to
     another engine without a word. It now runs the program, with the languages it has."""
-    from docling.datamodel.pipeline_options import TesseractCliOcrOptions
     _no_binding(monkeypatch, "/opt/homebrew/bin/tesseract", ["eng", "snum"])
+    from docling.datamodel.pipeline_options import TesseractCliOcrOptions
     for required in (True, False):
         opts = preprocess._make_tesseract_opts(True, required=required)
         assert isinstance(opts, TesseractCliOcrOptions)
@@ -1243,15 +1243,15 @@ def test_without_the_binding_tesseract_runs_through_the_installed_program(monkey
 
 
 def test_a_program_with_no_language_data_is_passed_over_by_auto_but_not_by_the_setting(monkeypatch):
-    from docling.datamodel.pipeline_options import OcrAutoOptions, TesseractCliOcrOptions
     _no_binding(monkeypatch, "/usr/bin/tesseract", [])
+    from docling.datamodel.pipeline_options import OcrAutoOptions, TesseractCliOcrOptions
     assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
     assert isinstance(preprocess._make_tesseract_opts(False, required=True), TesseractCliOcrOptions)
 
 
 def test_the_tesseract_setting_without_tesseract_fails_instead_of_using_another_engine(monkeypatch):
-    from docling.datamodel.pipeline_options import OcrAutoOptions
     _no_binding(monkeypatch, None, [])
+    from docling.datamodel.pipeline_options import OcrAutoOptions
     assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
     with pytest.raises(RuntimeError, match="Tesseract isn't installed"):
         preprocess._make_tesseract_opts(False, required=True)
