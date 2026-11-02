@@ -336,6 +336,15 @@ test('every screen renders against the demo investigation', async () => {
     expect(rowBox!.y).toBeGreaterThan(groupBox!.y)
     expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(groupBox!.y + groupBox!.height + 1)
 
+    // Edit details (D381): a new source is saved at once and shows in the Details tab.
+    await page.evaluate((sha) => (window as any).__watchdogApp.getState().navigate({ view: 'document', sha, tab: 'details' }), foi)
+    await page.getByRole('button', { name: 'Edit details' }).click()
+    const sourceBox = page.getByRole('dialog').locator('label.field').first().locator('input')
+    await expect(sourceBox).not.toHaveValue('', { timeout: 20_000 })
+    await sourceBox.fill('Handed over at the clerk’s counter')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.locator('.det-section dd', { hasText: 'Handed over at the clerk’s counter' }).first()).toBeVisible({ timeout: 20_000 })
+
     // The command palette: a full-height search row (it used to shrink to its text), and the panel
     // inside the window at a small size.
     await page.setViewportSize({ width: 1000, height: 700 })

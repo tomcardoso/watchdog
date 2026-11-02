@@ -428,6 +428,11 @@
 .pipe-file .why.err {
   color: var(--danger);
 }
+.pipe-file .btn {
+  flex: none;
+  margin-left: auto;
+  align-self: center;
+}
 .pipe-actions {
   display: flex;
   gap: 8px;
@@ -1172,6 +1177,16 @@ mark.find-hit.current {
   letter-spacing: 0.07em;
   color: var(--text-3);
   margin-bottom: 10px;
+}
+.det-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.det-head h4 {
+  margin-bottom: 0;
 }
 .det-sha {
   display: flex;

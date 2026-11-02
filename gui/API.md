@@ -145,6 +145,7 @@ EntityRow = {
 | `vault.summary` | `{vault}` | `Summary` |
 | `vault.documents` | `{vault}` | `DocumentRow[]` |
 | `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
+| `vault.details` | `{vault, sha?, path?}` | `{values: {source, obtained, notes, skill}, stage: "waiting"\|"queued"\|"staged"\|"added", skill_costs: bool, reextract: bool}` — the Edit details form's starting values (D381): a document's sidecar fields by `sha`, or a waiting file's by its `path` in `incoming/` (`""` for a field not set). `skill_costs`: a new record skill means extracting again (the document is staged or added); `reextract`: its text is kept for that (D367). Errors: `not_found`, `bad_params` |
 | `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
 | `vault.entities` | `{vault}` | `EntityRow[]` — every entity except those removed from the investigation (D326) |
 | `vault.hiddenEntities` | `{vault}` | `{items: [{id, name, type, at\|null, by\|null, exists, doc_count}]}` — the entities removed from the investigation (`registry/hidden.json`, D326), most recently removed first, with the name and type each had when removed; `exists` is false once its record has gone from the registry (the id stays listed, so it is hidden again if processing brings it back) |
@@ -325,7 +326,7 @@ Every change the app makes is one operation (`watchdog.ops`, D298), named by `op
 parameters as `params`. `jobs.ops` lists them with their schema; the TypeScript mirror is
 `OpParams` in `api.ts`. Parameters are checked against the schema before anything starts: an
 unknown operation or key, a missing required one or a value of the wrong type is `bad_params`;
-`null` or `""` means "not set". "In vault" operations run in the investigation named by `vault`
+`null` or `""` means "not set" (inside a `dict[str, str]` parameter, `""` is kept as a value). "In vault" operations run in the investigation named by `vault`
 (required); the others ignore it.
 
 | Operation | In vault | Params | Result | Engine |
@@ -344,6 +345,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
 | `migrate` | yes | — | `migrations.run`'s result (D336): `{steps: [{id, title, complete, summary}], applied, pending, stopped, spending_limit, error, rebuilt}`; exit code 2 at the spending limit, 1 on a failed call | index |
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
+| `set-details` | yes | `{values: {source?, obtained?, notes?, skill?}, sha?, path?}` | `{filename, stage, changed: string[], skill_changed?, reextract?}` — sets a document's details, the fields of its `.yml` sidecar (D381), `""` removing one: by `sha`, in every copy Watchdog keeps (queue, kept and failed descriptors, the stored extraction, the `.yml` beside the original) and the document note; by `path`, in the sidecar beside a file waiting in `incoming/`. Never calls a model; refused during a processing run, and a new skill on an extracted document whose text is not kept. An action | |
 | `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
 | `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
 | `reasoning-export` | yes | `{output, run}` | `{output, bytes}` — one zip in the folder `output` of a run's saved reasoning, its usage record and the processing-log lines from while it ran (D368). Nothing is uploaded | |

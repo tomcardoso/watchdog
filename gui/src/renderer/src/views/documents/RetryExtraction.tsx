@@ -48,8 +48,10 @@ export function ThinExtractionNote({ sha, filename, thin }: { sha: string; filen
   )
 }
 
-/** Retry extraction for one document or several, after the same checks as Add documents. */
-export function RetryExtractionModal({ open, onClose, shas, label }: { open: boolean; onClose: () => void; shas: string[]; label: string }) {
+/** Retry extraction for one document or several, after the same checks as Add documents. `before`
+ * runs once the reporter has agreed, ahead of the run (Edit details saves a new record skill
+ * there, D381), and `intro` replaces the opening paragraph. */
+export function RetryExtractionModal({ open, onClose, shas, label, before, intro }: { open: boolean; onClose: () => void; shas: string[]; label: string; before?: () => Promise<void>; intro?: string }) {
   const vault = useVault()
   const engine = useEngineGate()
   const options = { reextract: shas }
@@ -67,6 +69,7 @@ export function RetryExtractionModal({ open, onClose, shas, label }: { open: boo
     try {
       // The acknowledgement was given here (or is not needed); the worker checks auto-approve and
       // a run on this computer for itself, as for Add documents.
+      if (before) await before()
       await startJob('add', { reextract: shas, skip_warning: ack || undefined }, `Retrying extraction of ${label}`, 'add', vault)
       toast({ kind: 'info', title: many ? 'Retrying the extractions' : 'Retrying the extraction', body: `Follow it in Activity. ${many ? 'The documents update' : 'The document updates'} when the run finishes.` })
       onClose()
@@ -100,9 +103,9 @@ export function RetryExtractionModal({ open, onClose, shas, label }: { open: boo
     >
       <div className="col" style={{ gap: 14 }}>
         <p className="muted" style={{ margin: 0 }}>
-          {many
+          {intro ?? (many
             ? `This sends these ${shas.length} documents’ text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. Each document’s earlier facts stay until its new extraction has been checked and saved; a document that is still incomplete keeps its warning.`
-            : 'This sends the document’s text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. The earlier facts stay until the new extraction has been checked and saved; if it is still thin, the warning stays.'}
+            : 'This sends the document’s text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. The earlier facts stay until the new extraction has been checked and saved; if it is still thin, the warning stays.')}
         </p>
         <EngineWait />
         {(pf.isError || est.isError) && <Callout tone="danger" title="Could not prepare the retry">{errorMessage(pf.error ?? est.error)}</Callout>}
