@@ -3211,3 +3211,11 @@ The `easyocr` setting had the same fault in another form: it built Docling's own
 Rejected: shipping `tesserocr` with the app, which needs the system's Tesseract headers to install (`pyproject.toml`'s `tesseract` extra), so the app could not install it on a computer without them.
 
 Tradeoff: Docling starts the program for what it reads, which the binding avoids, so it may be slower, and its version is not recorded in a document's details (D372 reads it from the binding's package). No migration (I19): documents already read keep the engine their details name.
+
+### D380 — Macs keep Apple Vision, with its language correction on
+
+#818 asked whether a Mac should read scanned pages with Apple Vision or with RapidOCR, as every other computer does (D373). Measured on every page of corpus-v1 against the page itself (`benchmarks/2026-11-02-ocr-engine-results.md`), Vision misread or missed the fewest words on clean pages and on scans (0.93% and 1.12%, against RapidOCR's 2.70% and 2.17%), and RapidOCR dropped whole printed lines on clean pages that Vision did not (18 passages against 3). Vision stays `auto`'s engine on macOS. Its language correction stays on: with it off, Vision fixed one of its eight scanned identifier misreadings and lost slightly more words on both sets, so the correction is not what causes them.
+
+Rejected: RapidOCR on Macs, which read every scanned identifier exactly but lost twice the words; Tesseract, the most even engine, which the app does not ship.
+
+Tradeoff: on scans Vision confuses look-alike characters in identifiers (`M5K` as `MSK`, `69993I` as `699931`), 8 of 89 against RapidOCR's none; the sample is small and clustered on two backsheets. No migration (I19): nothing stored changes.

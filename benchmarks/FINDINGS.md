@@ -882,6 +882,14 @@ The three DeepSeek arms the frontier run lost, run on their own from the same pr
 
 **Caveats.** An Anthropic model judged DeepSeek output against Claude's figures (the bias #361 records, in Claude's favour; the Gemini cross-check was declined), and in a different session from the frontier passes, so a few points may be judge drift. Part of the run fell in DeepSeek's peak window and was costed at double; off-peak figures use Watchdog's own peak model, not a bill. DeepSeek says `deepseek-flash` is now served by V4.1-Flash-1017, which may not be the checkpoint the catalogue names. Nothing in this entry changed a default, prompt or catalogue value.
 
+### OCR engines on macOS: Apple Vision reads the most words; RapidOCR gets scanned identifiers right but drops whole lines on clean pages (2026-11-02, #818)
+
+Every page of corpus-v1 read by Apple Vision (with and without its language correction), RapidOCR, Tesseract and EasyOCR on one Mac, through Watchdog's own pre-processing. Born-digital pages were scored against their own text layer (128 pages, 42,863 words; 49 pages whose text layer holds unprinted text set aside); the 32 scanned pages against a reference settled line by line by a person wherever the engines disagreed (7,411 words, 89 identifiers). Full tables and method: `2026-11-02-ocr-engine-results.md`.
+
+**What the run showed.** Vision loses the fewest words on both sets (0.93% born-digital, 1.12% scanned). On scans it misreads look-alike letters and digits in identifiers (91% exact: `M5K` as `MSK`, `69993I` as `699931`, `1ST` as `IST`), and turning its language correction off fixes only one of those eight while losing slightly more words, so the correction is not the cause. RapidOCR is exact on every scanned identifier but loses twice Vision's words, and on clean pages drops whole printed lines without a trace (18 passages, an amount among them); it is `auto`'s engine outside macOS (D373). Tesseract is the most even (1.15% and 1.15% lost, 99.65% and 95.5% identifiers) but is not shipped. EasyOCR loses five to seven times Vision's text at 11–12 seconds a page.
+
+**What it does not show.** One Mac, one run; the scanned identifiers are few and cluster on two backsheets that print the same counsel block. English only, so RapidOCR's accents (D373) are still unmeasured. Docling also joins an identifier broken at a line end and drops its hyphen (`81000-2-` / `175` becomes `81000-2175`) for every engine, a pre-processing finding rather than an engine one.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
