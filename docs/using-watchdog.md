@@ -61,7 +61,16 @@ A machine transcript is a draft, not a record. It has no speaker names, so it ca
 
 ### Sidecar files
 
-To record where a document came from, put a small `.yml` file with the same base name next to it, as in `shell-co-annual-report-2023.pdf` and `shell-co-annual-report-2023.yml`:
+A document's details are where it came from (`source`), when you got it (`obtained`), your notes for the extraction model (`notes`) and the [record skill](how-it-works.md#record-skills) it is read with (`skill`). Every one is optional. They live in a small `.yml` file next to the document, called a sidecar.
+
+The simplest way to set them is **Edit details**, which writes the sidecar for you:
+
+- **Before a document is added:** in the strip above **Documents**, the pencil beside a file waiting to be added, or one read and awaiting extraction.
+- **Afterwards:** on the document's **Details** tab.
+
+Changing the source, the date obtained or the notes costs nothing and is saved at once: the document's note shows the new source and date straight away, and its earlier version stays in [history](#history-and-your-notes). Changing the record skill of a document already extracted means extracting it again, which is billed, so Watchdog shows the same estimate and public-records acknowledgement as **Retry extraction** and changes nothing until you agree. That is only possible while the document's text is still kept for a retry (as it is for an extraction flagged as having few facts); otherwise the record skill cannot be changed there.
+
+You can also write a sidecar yourself, before adding the document. Give it the document's name with `.yml` added, as in `shell-co-annual-report-2023.pdf.yml`:
 
 ```yaml
 source: https://www.sedar.com/filing/xyz
@@ -70,7 +79,7 @@ notes: Check the director change on page 12.
 skill: corporate-filings
 ```
 
-`source`, `obtained` and `notes` are kept with the document. `skill` pins that one document's [record skill](how-it-works.md#record-skills) and skips classification for it, so a batch of mixed document types can be pinned one by one; it must name a skill from **Settings → Record skills**. Any other field is dropped. The sidecar is read once, when the document is read, so edit it before adding the document. Files saved by **Fetch Links** and Web research arrive with a sidecar already attached.
+`source`, `obtained` and `notes` are kept with the document. `skill` pins that one document's [record skill](how-it-works.md#record-skills) and skips classification for it, so a batch of mixed document types can be pinned one by one; it must name a skill from **Settings → Record skills**. Any other field is dropped. A sidecar you write yourself is read once, when the document is read, so write it before adding the document; after that, use **Edit details**. Files saved by **Fetch Links** and Web research arrive with a sidecar already attached.
 
 ## Reading a document
 

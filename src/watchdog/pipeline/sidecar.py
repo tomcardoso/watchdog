@@ -15,6 +15,9 @@ ALLOWED_KEYS = {
     "retrieved_by", "source_type", "title", "relevance", "archived", "capture",
 }
 MAX_VALUE_LEN = 2000
+# The fields a reporter sets in the app's Edit details form (D381), in the form's order. Every
+# other allowed key is written by Watchdog itself (Web research, Fetch Links) and left as it is.
+EDITABLE_KEYS = ("source", "obtained", "notes", "skill")
 
 
 def parse(raw_text: str | None) -> dict:
@@ -55,3 +58,25 @@ def skill_pin(sidecar_text: str | None) -> str | None:
     data = parse(sidecar_text)
     value = data.get("skill")
     return str(value) if value else None
+
+
+def edit(raw_text: str | None, values: dict) -> str | None:
+    """`raw_text` with each of `values` set, or removed when its value is empty; every other key
+    is kept as it was. None when nothing is left. Raises ValueError for text that is not a YAML
+    mapping, so a hand-written file is never silently replaced."""
+    data = {}
+    if raw_text and raw_text.strip():
+        try:
+            data = yaml.safe_load(raw_text)
+        except yaml.YAMLError:
+            data = False
+        if data is None:
+            data = {}
+        elif not isinstance(data, dict):
+            raise ValueError("its details file could not be read")
+    for key, value in values.items():
+        if value:
+            data[key] = value
+        else:
+            data.pop(key, None)
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True) if data else None
