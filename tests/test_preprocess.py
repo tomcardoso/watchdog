@@ -1281,6 +1281,27 @@ def test_the_programs_languages_skip_the_heading_and_orientation_data(monkeypatc
     assert preprocess._tesseract_program_languages("tesseract") == []
 
 
+def _easyocr_setting(monkeypatch, installed):
+    pytest.importorskip("docling")
+    from importlib import util
+    from docling.datamodel.base_models import InputFormat
+    real = util.find_spec
+    monkeypatch.setattr(util, "find_spec", lambda name, *a: (object() if installed else None) if name == "easyocr" else real(name, *a))
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "easyocr" if key == "ocr_engine" else default)
+    conv = preprocess.build_converter(False, load_models=False)
+    return type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__
+
+
+def test_the_easyocr_setting_uses_easyocr_not_doclings_own_pick(monkeypatch):
+    """It used to build Docling's `auto`, which reads with Apple Vision or RapidOCR first."""
+    assert _easyocr_setting(monkeypatch, installed=True) == "EasyOcrOptions"
+
+
+def test_the_easyocr_setting_without_easyocr_fails_instead_of_using_another_engine(monkeypatch):
+    with pytest.raises(RuntimeError, match="EasyOCR isn't installed"):
+        _easyocr_setting(monkeypatch, installed=False)
+
+
 # ── each page's own text (D377, #816) ────────────────────────────────────────
 
 class _CrossPageListDoc:

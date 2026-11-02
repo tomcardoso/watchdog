@@ -507,7 +507,7 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.pipeline_options import (
-        PdfPipelineOptions, OcrAutoOptions, AcceleratorOptions, AcceleratorDevice,
+        PdfPipelineOptions, AcceleratorOptions, AcceleratorDevice,
     )
     from docling.datamodel.base_models import InputFormat
 
@@ -529,7 +529,13 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
 
     if ocr_opts is None:
         if engine == "easyocr":
-            ocr_opts = OcrAutoOptions(force_full_page_ocr=force_ocr)
+            # Docling's own `auto` would pick Apple Vision or RapidOCR first, so EasyOCR is named.
+            from importlib.util import find_spec
+            if find_spec("easyocr") is None:
+                raise RuntimeError("The OCR engine is set to EasyOCR, but EasyOCR isn't installed "
+                                   "on this computer. Choose another OCR engine in Settings.")
+            from docling.datamodel.pipeline_options import EasyOcrOptions
+            ocr_opts = EasyOcrOptions(force_full_page_ocr=force_ocr)
         elif engine == "rapidocr" or (engine == "auto" and _rapidocr_installed()):
             from docling.datamodel.pipeline_options import RapidOcrOptions
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)

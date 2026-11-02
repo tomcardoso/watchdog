@@ -3202,9 +3202,11 @@ The first frozen-chew manifest (D372) is written with this, from corpus-v1 chewe
 
 Tradeoff: an arm that repeats the OCR's reading of those entries now scores a miss it used to be credited with, so their figures are not comparable with `keys-v5`. Every arm reads the same chew, so the change cannot move one arm against another.
 
-### D379 — Tesseract runs through its installed program when the Python binding is missing
+### D379 — The `tesseract` and `easyocr` settings use the engine they name, or fail
 
 The `tesseract` setting reached Tesseract only through `tesserocr`, its Python binding, which the desktop app does not ship. On every app install the setting fell through to Docling's own pick of engine without a word, though Settings and the docs tell people to install Tesseract. Without the binding, Watchdog now runs the installed `tesseract` program (Docling's command-line Tesseract option), found on PATH or where its installers put it, since an app started from the Finder does not inherit a shell's PATH, and asks for the languages the program has data for. With the setting chosen and no Tesseract installed, a document now fails with a message saying so.
+
+The `easyocr` setting had the same fault in another form: it built Docling's own `auto`, which picks Apple Vision or RapidOCR before EasyOCR, so EasyOCR never read anything even where it was installed. It now names EasyOCR, and fails the same way when EasyOCR is not installed.
 
 Rejected: shipping `tesserocr` with the app, which needs the system's Tesseract headers to install (`pyproject.toml`'s `tesseract` extra), so the app could not install it on a computer without them.
 
