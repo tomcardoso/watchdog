@@ -896,8 +896,22 @@ def _markdown_pages(doc) -> list[dict]:
     # contains (#560: it broke quote-locator matching on any "X & Y" phrase, and would otherwise
     # show up verbatim in both the model's extraction input and the rendered morgue note).
     # Neither `_PAGE_BREAK` nor the `[image]` placeholder contain "&", so this can't touch them.
-    md = html.unescape(doc.export_to_markdown(**kwargs))
+    # One export per page, of that page's own items (#816, D377). Splitting a single export at its
+    # page-break placeholders filed a list or table that crosses a page break entirely under the
+    # page where it starts: Docling puts the placeholder only between top-level items, so a group
+    # is printed whole before it, though each item's provenance names its own page. A document
+    # with no pages (a Word file, a spreadsheet) still exports whole.
+    page_nos = sorted(getattr(doc, "pages", None) or {})
+    if page_nos:
+        pages = []
+        for n in page_nos:
+            part = html.unescape(doc.export_to_markdown(page_no=n, **kwargs)).replace(_PAGE_BREAK, "").strip()
+            if part:
+                pages.append({"page": n, "markdown": part})
+        if pages:
+            return pages
 
+    md = html.unescape(doc.export_to_markdown(**kwargs))
     parts = [p.strip() for p in md.split(_PAGE_BREAK)]
     pages = [
         {"page": i + 1, "markdown": part}

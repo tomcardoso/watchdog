@@ -3185,3 +3185,11 @@ Haiku 5.5 at `high` sometimes ends its extraction part-way (#804): about one cal
 Rejected: an automatic retry, which would spend money the reporter had not approved; switching enforced JSON off, since 4 of 10 answers without it were invalid JSON and would need a repair step; further prompt changes.
 
 Tradeoff: the three-fact limit and the placeholder test are fitted on three collapses. A placeholder in a full answer is left alone, as a bad locator rather than an answer that stopped. Recovery stays the reporter's call and costs a retry. No migration (I19): records gain the flag only on their next extraction.
+
+### D377 — Each page's text is exported from that page's own items
+
+`_markdown_pages` exported a Docling document once, with a page-break placeholder, and split at it. Docling puts the placeholder only between top-level items, so a list or other group that crosses a page break was printed whole before it and filed under the page where it starts, though each item's provenance names its own page (#816): in a Tesseract chew of a monitor's report, three clauses on page 30 were filed under page 29, so facts from them cited the wrong page. Each page is now exported on its own (`export_to_markdown(page_no=…)`); a document with no pages (a Word file, a spreadsheet) still exports whole.
+
+Measured on corpus-v1 with RapidOCR: every document keeps exactly the same words, only two pages of one document change (a French notice's file-number heading moves from the end of page 22 to the top of page 23, where the page shows it), and `verify_keys.py` gives identical results on the old and new chew. The macOS (Apple Vision) chew the keys mirror could not be checked here; write `keys/chew-manifest.json` (D372) from a chew made after this change.
+
+Tradeoff: a document already in an investigation keeps its old page text until it is added again; no migration (I19), because correcting it means reading and extracting it again, which costs money, and the misfiling touches only groups crossing a page break.

@@ -1217,3 +1217,32 @@ def test_the_tesseract_setting_still_uses_tesseract(monkeypatch):
     monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace())
     conv = preprocess.build_converter(False, load_models=False)
     assert type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__ == "TesseractOcrOptions"
+
+
+# ── each page's own text (D377, #816) ────────────────────────────────────────
+
+class _CrossPageListDoc:
+    """A Docling document whose list runs from page 1 onto page 2. The whole-document export
+    prints the list before the page break, as Docling does; each page's own export is right."""
+    pages = {1: object(), 2: object(), 3: object()}
+    _own = {1: "Intro.\n\n- a) first\n- b) second", 2: "- c) third\n\nAfter the list.", 3: ""}
+
+    def export_to_markdown(self, page_no=None, page_break_placeholder=None, **kw):
+        if page_no is not None:
+            return self._own[page_no]
+        brk = page_break_placeholder or ""
+        return "Intro.\n\n- a) first\n- b) second\n- c) third" + brk + "After the list." + brk
+
+
+def test_a_list_crossing_a_page_break_keeps_each_item_on_its_own_page():
+    pages = preprocess._markdown_pages(_CrossPageListDoc())
+    assert pages == [{"page": 1, "markdown": "Intro.\n\n- a) first\n- b) second"},
+                     {"page": 2, "markdown": "- c) third\n\nAfter the list."}]      # empty page 3 left out
+
+
+def test_a_document_without_pages_is_exported_whole():
+    class Docx:
+        pages = {}
+        def export_to_markdown(self, **kw):
+            return "All of it &amp; more"
+    assert preprocess._markdown_pages(Docx()) == [{"page": 1, "markdown": "All of it & more"}]
