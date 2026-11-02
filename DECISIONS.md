@@ -3201,3 +3201,11 @@ The benchmark keys copied OCR damage into `quote` where a scan was misread (`MSK
 The first frozen-chew manifest (D372) is written with this, from corpus-v1 chewed on macOS by Apple Vision after D377, as `keys-v6`: three Initial Order entries carry the marker (`M1.1`, `M1.3`, `M2`), and `F34`'s quote is cut at a page break D377's export exposed.
 
 Tradeoff: an arm that repeats the OCR's reading of those entries now scores a miss it used to be credited with, so their figures are not comparable with `keys-v5`. Every arm reads the same chew, so the change cannot move one arm against another.
+
+### D379 — Tesseract runs through its installed program when the Python binding is missing
+
+The `tesseract` setting reached Tesseract only through `tesserocr`, its Python binding, which the desktop app does not ship. On every app install the setting fell through to Docling's own pick of engine without a word, though Settings and the docs tell people to install Tesseract. Without the binding, Watchdog now runs the installed `tesseract` program (Docling's command-line Tesseract option), found on PATH or where its installers put it, since an app started from the Finder does not inherit a shell's PATH, and asks for the languages the program has data for. With the setting chosen and no Tesseract installed, a document now fails with a message saying so.
+
+Rejected: shipping `tesserocr` with the app, which needs the system's Tesseract headers to install (`pyproject.toml`'s `tesseract` extra), so the app could not install it on a computer without them.
+
+Tradeoff: Docling starts the program for what it reads, which the binding avoids, so it may be slower, and its version is not recorded in a document's details (D372 reads it from the binding's package). No migration (I19): documents already read keep the engine their details name.
