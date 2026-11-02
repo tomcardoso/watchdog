@@ -48,6 +48,7 @@ import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -424,11 +425,36 @@ def _rapidocr_installed() -> bool:
     return any(find_spec(m) is not None for m in ("rapidocr", "rapidocr_onnxruntime"))
 
 
+# Where Tesseract's installers put the program. An app started from the Finder or the Start menu
+# does not inherit a shell's PATH, so Homebrew's folder is not on it.
+_TESSERACT_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", r"C:\Program Files\Tesseract-OCR")
+
+
+def _tesseract_program() -> str | None:
+    """The installed `tesseract` program, or None."""
+    found = shutil.which("tesseract")
+    for folder in _TESSERACT_DIRS:
+        found = found or shutil.which("tesseract", path=folder)
+    return found
+
+
+def _tesseract_program_languages(program: str) -> list[str]:
+    """The languages the `tesseract` program has data for, orientation data aside."""
+    try:
+        out = subprocess.run([program, "--list-langs"], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    # The first line is a heading ("List of available languages in …").
+    return [line.strip() for line in out.splitlines()[1:] if line.strip() and line.strip() != "osd"]
+
+
 def _make_tesseract_opts(force_ocr: bool, *, required: bool = False):
-    """TesseractOcrOptions when Tesseract is ready, else OcrAutoOptions. With `required` (the
-    `tesseract` setting rather than `auto`), Tesseract is used whenever tesserocr imports, so a
-    missing language pack fails with Tesseract's own message instead of silently reading the
-    document with another engine."""
+    """Tesseract's options when it is ready, else OcrAutoOptions. Through its Python binding
+    (`tesserocr`) when that imports; otherwise through the installed `tesseract` program, which is
+    how the desktop app reaches it, since the app ships no binding. With `required` (the
+    `tesseract` setting rather than `auto`), Tesseract is used whenever it is installed, so a
+    missing language pack fails with Tesseract's own message, and a Tesseract that is not
+    installed fails the conversion: neither silently reads the document with another engine."""
     try:
         import tesserocr  # noqa: F401
         ready = required or _tesseract_ready()
@@ -437,6 +463,18 @@ def _make_tesseract_opts(force_ocr: bool, *, required: bool = False):
     if ready:
         from docling.datamodel.pipeline_options import TesseractOcrOptions
         return TesseractOcrOptions(force_full_page_ocr=force_ocr)
+    program = _tesseract_program()
+    langs = _tesseract_program_languages(program) if program else []
+    if program and (langs or required):
+        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
+        opts = TesseractCliOcrOptions(force_full_page_ocr=force_ocr, tesseract_cmd=program)
+        if langs:
+            # Docling asks for four languages by default; most installs have English only.
+            opts.lang = [lang for lang in opts.lang if lang in langs] or langs
+        return opts
+    if required:
+        raise RuntimeError("The OCR engine is set to Tesseract, but Tesseract isn't installed on "
+                           "this computer. Install it, or choose another OCR engine in Settings.")
     from docling.datamodel.pipeline_options import OcrAutoOptions
     return OcrAutoOptions(force_full_page_ocr=force_ocr)
 
@@ -469,7 +507,7 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.pipeline_options import (
-        PdfPipelineOptions, OcrAutoOptions, AcceleratorOptions, AcceleratorDevice,
+        PdfPipelineOptions, AcceleratorOptions, AcceleratorDevice,
     )
     from docling.datamodel.base_models import InputFormat
 
@@ -491,7 +529,13 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
 
     if ocr_opts is None:
         if engine == "easyocr":
-            ocr_opts = OcrAutoOptions(force_full_page_ocr=force_ocr)
+            # Docling's own `auto` would pick Apple Vision or RapidOCR first, so EasyOCR is named.
+            from importlib.util import find_spec
+            if find_spec("easyocr") is None:
+                raise RuntimeError("The OCR engine is set to EasyOCR, but EasyOCR isn't installed "
+                                   "on this computer. Choose another OCR engine in Settings.")
+            from docling.datamodel.pipeline_options import EasyOcrOptions
+            ocr_opts = EasyOcrOptions(force_full_page_ocr=force_ocr)
         elif engine == "rapidocr" or (engine == "auto" and _rapidocr_installed()):
             from docling.datamodel.pipeline_options import RapidOcrOptions
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)

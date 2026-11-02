@@ -1180,6 +1180,7 @@ def test_auto_passes_over_tesseract_without_language_data_but_the_tesseract_sett
     pytest.importorskip("docling")
     from docling.datamodel.pipeline_options import OcrAutoOptions, TesseractOcrOptions
     monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace(get_languages=lambda: ("./", [])))
+    monkeypatch.setattr(preprocess, "_tesseract_program", lambda: None)
     assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
     assert isinstance(preprocess._make_tesseract_opts(False, required=True), TesseractOcrOptions)
 
@@ -1193,6 +1194,7 @@ def _auto_engine(monkeypatch, *, rapid: bool, tesseract_ready: bool, platform: s
     monkeypatch.setattr(preprocess.sys, "platform", platform)
     monkeypatch.setattr(preprocess, "_rapidocr_installed", lambda: rapid)
     monkeypatch.setattr(preprocess, "_tesseract_ready", lambda: tesseract_ready)
+    monkeypatch.setattr(preprocess, "_tesseract_program", lambda: None)
     import types
     monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace())
     conv = preprocess.build_converter(False, load_models=False)
@@ -1217,6 +1219,87 @@ def test_the_tesseract_setting_still_uses_tesseract(monkeypatch):
     monkeypatch.setitem(sys.modules, "tesserocr", types.SimpleNamespace())
     conv = preprocess.build_converter(False, load_models=False)
     assert type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__ == "TesseractOcrOptions"
+
+
+# ── Tesseract without its Python binding: the installed program ─────────────
+
+def _no_binding(monkeypatch, program, langs):
+    pytest.importorskip("docling")
+    monkeypatch.setitem(sys.modules, "tesserocr", None)        # the app ships no binding
+    monkeypatch.setattr(preprocess, "_tesseract_program", lambda: program)
+    monkeypatch.setattr(preprocess, "_tesseract_program_languages", lambda p: langs)
+
+
+def test_without_the_binding_tesseract_runs_through_the_installed_program(monkeypatch):
+    """The desktop app has no `tesserocr`, so the `tesseract` setting used to fall through to
+    another engine without a word. It now runs the program, with the languages it has."""
+    _no_binding(monkeypatch, "/opt/homebrew/bin/tesseract", ["eng", "snum"])
+    from docling.datamodel.pipeline_options import TesseractCliOcrOptions
+    for required in (True, False):
+        opts = preprocess._make_tesseract_opts(True, required=required)
+        assert isinstance(opts, TesseractCliOcrOptions)
+        assert opts.tesseract_cmd == "/opt/homebrew/bin/tesseract"
+        assert opts.lang == ["eng"] and opts.force_full_page_ocr is True
+
+
+def test_a_program_with_no_language_data_is_passed_over_by_auto_but_not_by_the_setting(monkeypatch):
+    _no_binding(monkeypatch, "/usr/bin/tesseract", [])
+    from docling.datamodel.pipeline_options import OcrAutoOptions, TesseractCliOcrOptions
+    assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
+    assert isinstance(preprocess._make_tesseract_opts(False, required=True), TesseractCliOcrOptions)
+
+
+def test_the_tesseract_setting_without_tesseract_fails_instead_of_using_another_engine(monkeypatch):
+    _no_binding(monkeypatch, None, [])
+    from docling.datamodel.pipeline_options import OcrAutoOptions
+    assert isinstance(preprocess._make_tesseract_opts(False), OcrAutoOptions)
+    with pytest.raises(RuntimeError, match="Tesseract isn't installed"):
+        preprocess._make_tesseract_opts(False, required=True)
+
+
+def test_the_program_is_found_where_its_installer_put_it_when_path_lacks_it(monkeypatch, tmp_path):
+    """An app started from the Finder does not inherit the shell's PATH."""
+    program = tmp_path / "tesseract"
+    program.write_text("#!/bin/sh\n")
+    program.chmod(0o755)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(preprocess, "_TESSERACT_DIRS", (str(tmp_path / "missing"), str(tmp_path)))
+    assert preprocess._tesseract_program() == str(program)
+    monkeypatch.setattr(preprocess, "_TESSERACT_DIRS", (str(tmp_path / "missing"),))
+    assert preprocess._tesseract_program() is None
+
+
+def test_the_programs_languages_skip_the_heading_and_orientation_data(monkeypatch):
+    import types
+    out = 'List of available languages in "/opt/homebrew/share/tessdata/" (3):\neng\nosd\nfra\n'
+    monkeypatch.setattr(preprocess.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout=out))
+    assert preprocess._tesseract_program_languages("tesseract") == ["eng", "fra"]
+
+    def broken(*a, **k):
+        raise OSError("not executable")
+    monkeypatch.setattr(preprocess.subprocess, "run", broken)
+    assert preprocess._tesseract_program_languages("tesseract") == []
+
+
+def _easyocr_setting(monkeypatch, installed):
+    pytest.importorskip("docling")
+    from importlib import util
+    from docling.datamodel.base_models import InputFormat
+    real = util.find_spec
+    monkeypatch.setattr(util, "find_spec", lambda name, *a: (object() if installed else None) if name == "easyocr" else real(name, *a))
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "easyocr" if key == "ocr_engine" else default)
+    conv = preprocess.build_converter(False, load_models=False)
+    return type(conv.format_to_options[InputFormat.PDF].pipeline_options.ocr_options).__name__
+
+
+def test_the_easyocr_setting_uses_easyocr_not_doclings_own_pick(monkeypatch):
+    """It used to build Docling's `auto`, which reads with Apple Vision or RapidOCR first."""
+    assert _easyocr_setting(monkeypatch, installed=True) == "EasyOcrOptions"
+
+
+def test_the_easyocr_setting_without_easyocr_fails_instead_of_using_another_engine(monkeypatch):
+    with pytest.raises(RuntimeError, match="EasyOCR isn't installed"):
+        _easyocr_setting(monkeypatch, installed=False)
 
 
 # ── each page's own text (D377, #816) ────────────────────────────────────────
