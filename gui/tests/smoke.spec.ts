@@ -169,6 +169,14 @@ test('every screen renders against the demo investigation', async () => {
     await expect(factRow).toHaveClass(/is-marked-unverifiable/, { timeout: 10_000 })
     await page.keyboard.press('c')
     await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
+    // A quick second press is saved after the first, so the ledger ends on the clear, made over
+    // Can't verify (saved the other way round, it ended on Can't verify).
+    const markedId = (await factRow.getAttribute('data-fact-id'))!
+    const ledger = join(root, 'vault', '.watchdog', 'registry', 'verification.json')
+    await expect.poll(() => {
+      const entry = JSON.parse(readFileSync(ledger, 'utf8')).marks[markedId]
+      return [entry?.status, entry?.history?.at(-1)?.status]
+    }, { timeout: 10_000 }).toEqual([null, 'unverifiable'])
 
     // Briefings → Current state is written for the reporter: no instructions for Claude, no
     // command lines. What Claude is given (the session primer) is one click away.
