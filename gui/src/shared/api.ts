@@ -433,7 +433,7 @@ export type LinkKind = 'document' | 'entity' | 'briefing' | 'query' | 'wiki' | '
 export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string | null; page: number | null }
 
 /** A document's details: the fields of its `.yml` sidecar a reporter sets (D381). `''` removes one. */
-export type DetailKey = 'source' | 'obtained' | 'notes' | 'skill'
+export type DetailKey = 'source' | 'obtained' | 'notes' | 'skill' | 'language'
 export type DetailValues = Partial<Record<DetailKey, string>>
 export interface DocDetails {
   values: Record<DetailKey, string>
