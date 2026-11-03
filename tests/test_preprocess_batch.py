@@ -830,3 +830,106 @@ def test_unreadable_reasons_forget_files_no_longer_in_failed(tmp_path):
     record_unreadable(tmp_path, "b.pdf", "third")
     stored = json.loads((tmp_path / ".watchdog" / "unreadable.json").read_text(encoding="utf-8"))
     assert {k: v["reason"] for k, v in stored.items()} == {"b.pdf": "third"}
+
+
+# ── each document's language (D383) ─────────────────────────────────────────────
+
+def test_sidecar_language_reaches_the_reader(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "avis.pdf"
+    f.write_bytes(b"")
+    (incoming / "avis.pdf.yml").write_text("language: French\n", encoding="utf-8")
+    seen = {}
+
+    def fake_one(path, *a, **kw):
+        seen["language"] = kw.get("language")
+        return {"sha256": "aabbcc", "pages": [{"markdown": "bonjour"}], "char_count": 7,
+                "source_path": str(path)}
+
+    monkeypatch.setattr(ppb, "preprocess_one", fake_one)
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+    assert seen["language"] == "fr"
+    assert "language: French" in json.loads((queue / "aabbcc.json").read_text())["sidecar"]
+
+
+def test_preprocess_one_passes_the_language_on(monkeypatch, tmp_path):
+    seen = {}
+
+    class FakeProc:
+        stdout = io.StringIO('{"pages": []}')
+        stderr = io.StringIO("")
+        def poll(self):
+            return 0
+
+    def fake_popen(cmd, **kw):
+        seen["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(ppb.subprocess, "Popen", fake_popen)
+    preprocess_one(tmp_path / "a.pdf", language="fr")
+    assert seen["cmd"][-2:] == ["--language", "fr"]
+
+
+def test_ocr_note_says_what_was_read_in_another_language():
+    meta = {"ocr_pages": [2], "language": {"reread": {"fr": [2]}}}
+    assert ppb._ocr_note({"page_count": 3, "metadata": meta}, False) == "OCR on 1 of 3 pages  ·  read in French"
+    assert ppb._ocr_note({"metadata": {"language": {"ask": {"fr": [1]}}}}, False) == "partly in another language"
+
+
+def _queued(vault, sha, source, ask):
+    q = vault / ".watchdog" / "queue"
+    q.mkdir(parents=True, exist_ok=True)
+    (q / f"{sha}.json").write_text(json.dumps({
+        "filename": "mixed.pdf", "sha256": sha, "source_path": str(source), "page_count": 2,
+        "pages": [{"page": 1, "markdown": "English"}, {"page": 2, "markdown": "Francais mal lu"}],
+        "metadata": {"ocr_used": True, "ocr_engine": "ocrmac",
+                     "language": {"code": "en", "mixed": True, "ask": ask}}}))
+
+
+def test_language_questions_lists_queued_documents_with_pages_to_ask_about(tmp_path):
+    _queued(tmp_path, "a" * 64, tmp_path / "x.pdf", {"fr": [2]})
+    _queued(tmp_path, "b" * 64, tmp_path / "y.pdf", {})
+    assert ppb.language_questions(tmp_path) == [
+        {"sha": "a" * 64, "filename": "mixed.pdf", "pages": {"fr": [2]}}]
+    assert ppb.language_questions(tmp_path, ["b" * 64]) == []
+
+
+def test_reread_queued_rewrites_the_queue_descriptor(tmp_path, monkeypatch):
+    from watchdog.pipeline import preprocess, text_positions
+    source = tmp_path / "mixed.pdf"
+    source.write_bytes(b"%PDF")
+    sha = "a" * 64
+    _queued(tmp_path, sha, source, {"fr": [2]})
+    text_positions.write(tmp_path, sha, {"engine": "ocrmac", "pages": {"1": {"width": 1, "height": 1, "lines": []}}})
+    calls = []
+
+    def fake_reread(path, result, by_lang):
+        calls.append((path, by_lang))
+        assert set(result["text_positions"]["pages"]) == {"1"}     # the stored boxes are merged into
+        result["pages"][1]["markdown"] = "Français bien lu"
+        result["text_positions"]["pages"]["2"] = {"width": 1, "height": 1, "lines": []}
+        return {"reread": {"fr": [2]}, "notes": []}
+
+    monkeypatch.setattr(preprocess, "reread", fake_reread)
+    monkeypatch.setattr(ppb, "add_harvest", lambda result, on_start=None: result.__setitem__("harvest", {"ok": 1}))
+    monkeypatch.setattr(ppb, "_compute_near_dup", lambda result, vault, index=None: {"near_duplicates": []})
+    done = ppb.reread_queued(tmp_path, [sha])
+    assert calls == [(source, {"fr": [2]})]
+    assert done == [{"sha": sha, "filename": "mixed.pdf", "reread": {"fr": [2]}}]
+    entry = json.loads((tmp_path / ".watchdog" / "queue" / f"{sha}.json").read_text())
+    assert entry["pages"][1]["markdown"] == "Français bien lu"
+    assert entry["metadata"]["language"]["reread"] == {"fr": [2]} and "ask" not in entry["metadata"]["language"]
+    assert entry["harvest"] == {"ok": 1} and "text_positions" not in entry
+    assert text_positions.available_pages(tmp_path, sha) == [1, 2]
+    assert ppb.language_questions(tmp_path) == []
+    assert not (tmp_path / ".watchdog" / ".preprocessing-lock").exists()
+
+
+def test_reread_queued_without_the_original_keeps_the_first_reading(tmp_path, monkeypatch):
+    from watchdog.pipeline import preprocess
+    sha = "a" * 64
+    _queued(tmp_path, sha, tmp_path / "gone.pdf", {"fr": [2]})
+    monkeypatch.setattr(preprocess, "reread", lambda *a: pytest.fail("nothing to read"))
+    assert ppb.reread_queued(tmp_path, [sha]) == []
+    lang = json.loads((tmp_path / ".watchdog" / "queue" / f"{sha}.json").read_text())["metadata"]["language"]
+    assert "ask" not in lang and "no longer there" in lang["notes"][0]

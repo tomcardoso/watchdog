@@ -17,7 +17,7 @@ runs:
     # two RapidOCR methods D382 replaces runs against the release a fresh install gets.
     - name: Install package and dev dependencies
       shell: bash
-      run: pip install --no-deps -e . && pip install pyyaml pypdf numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser rapidocr
+      run: pip install --no-deps -e . && pip install pyyaml pypdf numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser rapidocr py3langid
 
     - name: Run tests
       shell: bash

@@ -49,11 +49,12 @@ SETTINGS = {
         "choices": ["auto", "apple_vision", "tesseract", "easyocr", "rapidocr"],
     },
     "ocr_languages": {
-        "short": "Apple Vision OCR languages (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
+        "short": "Apple Vision OCR languages when a document's language can't be detected (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
         "help": (
-            "Languages Apple Vision reads scanned documents in, in order of preference.\n"
-            "  Unset, Vision reads English only: it does not detect a page's language itself.\n"
-            "  Set it to read other languages, e.g. en-US,fr-FR for English and French.\n"
+            "Languages Apple Vision first reads scanned pages in. Watchdog then detects each\n"
+            "  document's language from its text and reads its scanned pages again in that language\n"
+            "  when it is another (D383), so this decides the reading only when the language can't be\n"
+            "  detected: pages with too little text to tell. Unset, Vision reads English.\n"
             "  Codes: https://developer.apple.com/documentation/vision/vnrecognizetextrequest"
         ),
         "type": "lang_list",

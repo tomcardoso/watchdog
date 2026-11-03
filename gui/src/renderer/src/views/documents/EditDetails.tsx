@@ -1,6 +1,6 @@
-// Edit details (D381): a document's source, the date it was obtained, the reporter's notes and its
-// record skill, the fields of its `.yml` sidecar, set on a file waiting to be added or on a
-// document afterwards. Every field is optional. The engine writes the sidecar and every copy of it
+// Edit details (D381): a document's source, the date it was obtained, the reporter's notes, its
+// record skill and its language (D383, only before it is read), the fields of its `.yml` sidecar,
+// set on a file waiting to be added or on a document afterwards. Every field is optional. The engine writes the sidecar and every copy of it
 // Watchdog keeps (`set-details`); nothing is billed, except that a new record skill on a document
 // already extracted means extracting it again, which goes through Retry extraction's estimate and
 // acknowledgement and is saved only once the reporter agrees there.
@@ -21,7 +21,8 @@ const FIELDS: { key: DetailKey; label: string; hint: string; kind: 'text' | 'dat
   { key: 'source', label: 'Source', hint: 'Where the document came from: a records request, a court registry, a person.', kind: 'text' },
   { key: 'obtained', label: 'Date obtained', hint: 'When you got it.', kind: 'date' },
   { key: 'notes', label: 'Notes', hint: 'Context the extraction model reads with the document, such as what it is part of.', kind: 'textarea' },
-  { key: 'skill', label: 'Record skill', hint: 'The kind of record this is, which decides what is looked for. Left on detect, Watchdog chooses.', kind: 'skill' }
+  { key: 'skill', label: 'Record skill', hint: 'The kind of record this is, which decides what is looked for. Left on detect, Watchdog chooses.', kind: 'skill' },
+  { key: 'language', label: 'Language', hint: 'The language its scanned pages are read in, such as French or fr. Left empty, Watchdog detects it.', kind: 'text' }
 ]
 
 const MAX = 2000
@@ -126,9 +127,11 @@ function EditDetailsModal({ onClose, target, label }: { onClose: () => void; tar
     }
     // A date picker, unless a hand-written sidecar holds a date it cannot show ("June 2024").
     const date = f.kind === 'date' && (!value || ISO_DATE.test(value))
-    return <input className="input" type={date ? 'date' : 'text'} maxLength={MAX} value={value} onChange={(e) => set(f.key, e.target.value)} />
+    return <input className="input" type={date ? 'date' : 'text'} maxLength={MAX} value={value} disabled={f.key === 'language' && !!sha} onChange={(e) => set(f.key, e.target.value)} />
   }
   const hint = (f: (typeof FIELDS)[number]) => {
+    // The language decides how a document is read (D383), so it is set only before that.
+    if (f.key === 'language' && sha) return 'Used when the document is read, which it has been. Its Details tab says the language it was read in.'
     if (f.kind !== 'skill' || !d?.skill_costs) return f.hint
     return skillLocked
       ? 'Changing it means extracting the document again, and its text is no longer kept for that.'

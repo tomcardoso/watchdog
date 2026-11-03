@@ -27,7 +27,9 @@ Outputs a single JSON object to stdout:
     "ocr_engine_configured": str,  # the `ocr_engine` setting as written (`auto`...)
     "ocr_engine_version": str,     # that engine's package version, when installed as one
     "docling_version": str,
-    "platform": str                # sys.platform: `darwin`, `linux`, `win32`
+    "platform": str,               # sys.platform: `darwin`, `linux`, `win32`
+    "language": {...}              # the document's language and what was read again in it
+                                   # (D383, see apply_language); absent for a recording
   },
   "text_positions": {...},    # where each OCR'd line sits on its page, for pages read by a
                               # full-page OCR pass and for images; absent when there are none.
@@ -56,6 +58,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from watchdog import config as user_config
+from watchdog.pipeline import language as _language
 from watchdog.pipeline import text_positions as _text_positions
 from watchdog.pipeline import transcribe as _transcribe
 
@@ -520,6 +523,16 @@ def _tesseract_program() -> str | None:
     return found
 
 
+def _tesseract_languages() -> list[str]:
+    """The languages Tesseract has data for here, through its binding or its program."""
+    try:
+        import tesserocr
+        return [lang for lang in tesserocr.get_languages()[1] if lang != "osd"]
+    except Exception:  # noqa: BLE001
+        program = _tesseract_program()
+        return _tesseract_program_languages(program) if program else []
+
+
 def _tesseract_program_languages(program: str) -> list[str]:
     """The languages the `tesseract` program has data for, orientation data aside."""
     try:
@@ -575,11 +588,13 @@ def _load_models(converter, fmt) -> None:
         pass
 
 
-def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: float | None = None):
+def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: float | None = None,
+                    ocr_lang: list[str] | None = None):
     """Build a Docling DocumentConverter with the configured OCR engine.
 
     `ocr_scale` sets a forced-OCR conversion's OCR (and render) scale, in pixels per point; unset,
-    Docling's default (3) stands.
+    Docling's default (3) stands. `ocr_lang` is the engine's own language codes for a page read
+    again in its language (D383, `language.ocr_codes`); unset, the engine reads as configured.
 
     Engine selection (auto mode, D373):
       1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
@@ -626,6 +641,8 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
             ocr_opts = _make_tesseract_opts(force_ocr, required=engine == "tesseract")
     if force_ocr and ocr_scale:
         ocr_opts.scale = ocr_scale
+    if ocr_lang:
+        ocr_opts.lang = list(ocr_lang)
 
     # Force CPU: Docling's layout model (RT-DETR-v2) computes a position embedding in
     # float64, which PyTorch's MPS backend cannot handle — on Apple Silicon, where
@@ -828,9 +845,10 @@ def ocr_provenance(engine: str) -> dict:
     return out
 
 
-def build_image_converter():
+def build_image_converter(ocr_lang: list[str] | None = None):
     """The converter for an image file: Docling's defaults, plus the parsed pages kept so the
-    OCR'd lines' positions can be read (D289)."""
+    OCR'd lines' positions can be read (D289). With `ocr_lang` (an image read again in its
+    language, D383), the configured engine reads it, given those codes."""
     from docling.document_converter import DocumentConverter
     from docling.datamodel.base_models import InputFormat
     converter = None
@@ -838,17 +856,24 @@ def build_image_converter():
         from docling.document_converter import ImageFormatOption
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         keep = _keep_parsed_pages(PdfPipelineOptions)
-        if keep:
+        extra = {}
+        if ocr_lang:
+            pdf = build_converter(True, load_models=False, ocr_lang=ocr_lang)
+            extra["ocr_options"] = pdf.format_to_options[InputFormat.PDF].pipeline_options.ocr_options
+        if keep or extra:
             converter = DocumentConverter(format_options={
-                InputFormat.IMAGE: ImageFormatOption(pipeline_options=PdfPipelineOptions(**keep))})
+                InputFormat.IMAGE: ImageFormatOption(pipeline_options=PdfPipelineOptions(**keep, **extra))})
     except Exception:
+        if ocr_lang:
+            raise
         converter = None
     converter = converter or DocumentConverter()
     _load_models(converter, InputFormat.IMAGE)
     return converter
 
 
-def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: bool) -> dict:
+def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: bool,
+                          ocr_lang: list[str] | None = None) -> dict:
     """Process one slice PDF in a subprocess and return results renumbered to
     the original document's pages.
 
@@ -861,6 +886,8 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
     """
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(slice_path),
            "--force-ocr" if force_ocr else "--no-force-ocr"]
+    if ocr_lang:
+        cmd += ["--ocr-lang", ",".join(ocr_lang)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
                            timeout=_config_get("chunk_timeout", CHUNK_TIMEOUT))
@@ -891,8 +918,10 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
         return {"error": str(e)}
 
 
-def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict:
-    """Convert each slice in a parallel subprocess and merge into one page list.
+def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]],
+                       ocr_lang: list[str] | None = None) -> dict:
+    """Convert each slice in a parallel subprocess and merge into one page list. `ocr_lang` reads
+    every slice in those languages (D383).
 
     Returns {"pages": [...]} in page order, or {"error": ...}. Metadata is the
     caller's to assemble: the parent made the OCR decision, so a child's report
@@ -908,7 +937,7 @@ def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict
         except Exception as e:
             return {"error": f"Failed to extract pages {_page_range(pages)}: {e}"}
         try:
-            return _run_slice_subprocess(slice_path, pages, force)
+            return _run_slice_subprocess(slice_path, pages, force, ocr_lang)
         finally:
             if slice_path.exists():
                 slice_path.unlink()
@@ -1129,12 +1158,14 @@ def _budget_slices(pages: list[int], scales: list[float], budget: int) -> list[l
     return [sorted(c) for c in cuts]
 
 
-def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = True) -> dict:
+def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = True,
+                         ocr_lang: list[str] | None = None) -> dict:
     """Convert a document to per-page markdown.
 
     force_ocr forces OCR on every page and skips detection; detect=False says
     the caller has already decided and no page needs it (see
-    _run_slice_subprocess).
+    _run_slice_subprocess). ocr_lang is the OCR engine's language codes for a
+    slice read again in its language (D383).
     """
     is_pdf = path.suffix.lower() == ".pdf"
     total_pages = pdf_page_count(path) if is_pdf else 0
@@ -1211,7 +1242,8 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
         return {"error": "Docling is not installed. Open Settings → Setup and choose Repair or reinstall the engine."}
     if is_pdf:
         try:
-            converter = build_converter(force_ocr, ocr_scale=pdf_ocr_scale(path) if force_ocr else None)
+            converter = build_converter(force_ocr, ocr_scale=pdf_ocr_scale(path) if force_ocr else None,
+                                        ocr_lang=ocr_lang)
         except Exception as e:
             return {"error": f"Failed to build converter: {e}"}
     elif path.suffix.lower() in IMAGE_SUFFIXES:
@@ -1256,6 +1288,129 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
                            text_positions=positions, ocr_engine=ocr_engine_used(converter))
 
 
+def _ocr_engine_of(result: dict) -> str:
+    """The engine that read a result's OCR'd pages (the first, where slices differed)."""
+    engine = str((result.get("metadata") or {}).get("ocr_engine") or "unknown")
+    return engine.split("+")[0]
+
+
+def _scanned_pages(path: Path, result: dict) -> list[int]:
+    """The 1-indexed pages whose text is OCR's: an image, a PDF's forced pages, or all of them."""
+    if path.suffix.lower() in IMAGE_SUFFIXES:
+        return [1]
+    meta = result.get("metadata") or {}
+    if not meta.get("ocr_used"):
+        return []
+    return list(meta.get("ocr_pages") or range(1, (result.get("page_count") or 0) + 1))
+
+
+def _language_codes(result: dict, code: str) -> tuple[list[str] | None, str | None]:
+    """The OCR engine's codes for reading `code` plus English, or (None, why not)."""
+    engine = _ocr_engine_of(result)
+    return _language.ocr_codes(engine, code, _tesseract_languages() if engine == "tesseract" else None)
+
+
+def _read_pages(path: Path, pages: list[int], ocr_lang: list[str]) -> dict:
+    """OCR the 1-indexed `pages` of a PDF, or an image, again with `ocr_lang`: {"pages",
+    "text_positions"} or {"error"}."""
+    if path.suffix.lower() in IMAGE_SUFFIXES:
+        try:
+            converter = build_image_converter(ocr_lang)
+            conv = converter.convert(str(path))
+        except Exception as e:  # noqa: BLE001
+            return {"error": str(e)}
+        return {"pages": _markdown_pages(conv.document),
+                "text_positions": _text_positions.block(_text_positions.from_conversion(conv),
+                                                        _ocr_engine_name(converter))}
+    chunk_size = _config_get("chunk_size", CHUNK_SIZE)
+    slices = [(cut, True) for cut in _budget_slices([p - 1 for p in pages], pdf_page_ocr_scales(path),
+                                                    chunk_size)]
+    return process_pdf_slices(path, slices, ocr_lang=ocr_lang)
+
+
+def _merge_reading(result: dict, fresh: dict) -> None:
+    """Put a reread's pages and their text positions in place of the first reading's. A page the
+    reread found no text on keeps its first reading."""
+    new = {p["page"]: p for p in fresh.get("pages") or [] if (p.get("markdown") or "").strip()}
+    have = {p["page"] for p in result.get("pages") or []}
+    pages = [new.get(p["page"], p) for p in result.get("pages") or []]
+    pages += [p for n, p in new.items() if n not in have]
+    result["pages"] = sorted(pages, key=lambda p: p["page"])
+    tp = fresh.get("text_positions")
+    if isinstance(tp, dict) and tp.get("pages"):
+        old = result.get("text_positions") or tp
+        result["text_positions"] = {**old, "pages": {**(old.get("pages") or {}), **tp["pages"]}}
+
+
+def reread(path: Path, result: dict, by_lang: dict[str, list[int]]) -> dict:
+    """Read the scanned pages in `by_lang` (language -> 1-indexed pages) again, each in its
+    language plus English, in place in `result` (D383). Returns {"reread": {language: pages}} for
+    the pages read again, and "notes" for any that could not be: an engine that can't read the
+    language, missing language data, a failed conversion. Nothing is downloaded."""
+    done: dict[str, list[int]] = {}
+    notes: list[str] = []
+    for code, pages in sorted(by_lang.items()):
+        codes, why = _language_codes(result, code)
+        if codes is None:
+            if why:
+                notes.append(why)
+            continue
+        if _ocr_engine_of(result) == "ocrmac" and codes[0] in _ocr_languages():
+            continue   # the OCR languages setting already read it in this language
+        fresh = _read_pages(path, pages, codes)
+        if "error" in fresh:
+            notes.append(f"Its {_language.name(code)} pages could not be read again in "
+                         f"{_language.name(code)} ({fresh['error']}), so they keep their first reading.")
+            continue
+        _merge_reading(result, fresh)
+        done[code] = sorted(pages)
+    return {"reread": done, "notes": notes}
+
+
+def apply_language(path: Path, result: dict, declared: str | None = None) -> None:
+    """Detect the document's language and record it in `metadata.language` (D383): `code` (ISO
+    639-1, None when no page could be judged), `source` (`detected`, `sidecar` for a document's
+    `language:`, which skips detection, or `undetermined`), `mixed`, `pages` (page numbers by
+    language), and, for a scan, `reread` (pages read again in their language, with no question:
+    the document is mostly that language), `ask` (a mixed document's other-language scanned pages,
+    which the reporter is asked about before processing) and `notes` (why pages could not be)."""
+    pages = result.get("pages") or []
+    if declared:
+        decision = {"code": declared, "mixed": False, "pages": {p["page"]: declared for p in pages}}
+        source = "sidecar"
+    else:
+        try:
+            decision = _language.decide({p["page"]: _language.page_language(p.get("markdown") or "")
+                                         for p in pages})
+        except ImportError:   # an engine installed before py3langid: read as configured
+            decision = _language.decide({})
+        source = "detected" if decision["code"] else "undetermined"
+    now, ask = _language.reread_plan(decision, _scanned_pages(path, result))
+    by_lang: dict[str, list[int]] = {}
+    for p, code in decision["pages"].items():
+        by_lang.setdefault(code, []).append(p)
+    info: dict = {"code": decision["code"], "source": source, "mixed": decision["mixed"],
+                  "pages": by_lang}
+    notes: list[str] = []
+    if now:
+        done = reread(path, result, now)
+        notes += done["notes"]
+        if done["reread"]:
+            info["reread"] = done["reread"]
+    offer = {}
+    for code, codes_pages in ask.items():
+        codes, why = _language_codes(result, code)
+        if codes is not None:
+            offer[code] = codes_pages
+        elif why:
+            notes.append(why)
+    if offer:
+        info["ask"] = offer
+    if notes:
+        info["notes"] = notes
+    result.setdefault("metadata", {})["language"] = info
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Watchdog document preprocessor")
     parser.add_argument("file", help="Path to the document")
@@ -1267,7 +1422,15 @@ def main() -> None:
                           "verdict the parent process already made")
     parser.add_argument("--chunk-workers", type=int, metavar="N",
                         help="Override chunk_workers config for this run")
+    parser.add_argument("--language", metavar="CODE",
+                        help="The document's language from its sidecar (D383), which skips detection")
+    parser.add_argument("--ocr-lang", metavar="CODES",
+                        help="A slice read again in its language: the OCR engine's own codes, "
+                             "comma-separated (D383)")
     args = parser.parse_args()
+    ocr_lang = [c for c in (args.ocr_lang or "").split(",") if c] or None
+    # A slice is told its OCR verdict; only the whole document is read for its language.
+    whole = not (args.force_ocr or args.no_force_ocr)
 
     if args.chunk_workers is not None:
         _config_force("chunk_workers", args.chunk_workers)
@@ -1286,7 +1449,7 @@ def main() -> None:
         result = _transcribe.process_media(path, emit=_transcribe.stderr_emitter)
     elif suffix in DOCLING_SUFFIXES:
         result = process_with_docling(path, force_ocr=args.force_ocr,
-                                      detect=not args.no_force_ocr)
+                                      detect=not args.no_force_ocr, ocr_lang=ocr_lang)
     else:
         try:
             result = process_direct_text(path, encoding_errors="strict")
@@ -1299,6 +1462,9 @@ def main() -> None:
     if "error" in result:
         print(json.dumps(result))
         sys.exit(1)
+
+    if whole and suffix not in MEDIA_SUFFIXES:
+        apply_language(path, result, _language.normalize(args.language))
 
     # Embedded file metadata (#369) — always read from the ORIGINAL source path, never a
     # Ghostscript-cleaned or chunk temp file: pdf_preprocess() re-renders problem PDFs through

@@ -12,6 +12,7 @@ import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtDateTime, plural } from '@renderer/lib/format'
 import { navigate, useVault } from '@renderer/lib/store'
 import { fmtDuration, pageLabel } from '@renderer/lib/media'
+import { readIn } from '@renderer/lib/readIn'
 import { readWith } from '@renderer/lib/readWith'
 import type { DocumentDetail, MediaInfo } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
@@ -167,7 +168,10 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
                   ['Transcribed with', d.media.model ? `${d.media.model} (on this computer)` : 'On this computer'],
                   ['Language', d.media.language || '—']
                 ] as [string, ReactNode][])
-              : ([['Text read with', readWith(d.metadata) ?? '—']] as [string, ReactNode][])),
+              : ([
+                  ['Text read with', readWith(d.metadata) ?? '—'],
+                  ['Language', d.language ? [`${readIn(d.language)}.`, ...(d.language.notes ?? [])].join(' ') : '—']
+                ] as [string, ReactNode][])),
             [
               'SHA-256',
               <div className="det-sha" key="sha">
