@@ -9,6 +9,7 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { removeTestFolder } from './cleanup'
 import { join, resolve } from 'node:path'
 
 const python = process.env.WATCHDOG_PYTHON ?? 'python3'
@@ -396,7 +397,7 @@ test('every screen renders against the demo investigation', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
 
@@ -455,7 +456,7 @@ test('adding documents waits for the background setup', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
 
@@ -478,7 +479,7 @@ test('the gate lifts when the background setup finishes', async () => {
     expect(ready).toEqual({ ready: true })
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
 
@@ -557,7 +558,7 @@ test('the pause names its investigation after a switch', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
 
@@ -605,7 +606,7 @@ test('a run on this computer skips the acknowledgement', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
 
@@ -643,6 +644,6 @@ test('run state is refetched when a job ends, on screen or not', async () => {
     }, vault), { timeout: 15_000 }).toBeGreaterThan(before)
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })

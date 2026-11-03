@@ -5,8 +5,9 @@
 // WATCHDOG_PYTHON, and xvfb-run on headless Linux.
 
 import { _electron as electron, expect, test } from '@playwright/test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { removeTestFolder } from './cleanup'
 import { join, resolve } from 'node:path'
 
 const python = process.env.WATCHDOG_PYTHON ?? 'python3'
@@ -145,6 +146,6 @@ test('the sample builds from the welcome card and every tour step points at some
     expect(errors).toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    removeTestFolder(root)
   }
 })
