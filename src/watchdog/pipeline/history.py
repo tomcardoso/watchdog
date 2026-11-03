@@ -547,6 +547,8 @@ def label(cause: dict | None) -> str:
         text = "Your notes edited in the app"
     elif kind == "edit":
         text = f"{c.get('file') or 'File'} edited in the app"
+    elif kind == "details":
+        text = f"Details of {c.get('name') or 'a document'} changed (by you)"
     elif kind == "review":
         n = int(c.get("count") or 0)
         verb = "marked handled" if c.get("resolved", True) else "reopened"
