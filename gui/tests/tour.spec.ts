@@ -15,8 +15,9 @@ const repoSrc = resolve(__dirname, '..', '..', 'src')
 const STEPS = 14
 
 test('the sample builds from the welcome card and every tour step points at something on screen', async () => {
-  // The real path: on macOS the temporary folder is reached through a link, and the app stores real paths.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wd-tour-')))
+  // The real path, as the app stores it: on macOS the temporary folder is reached through a link,
+  // and on Windows through a short name (RUNNER~1).
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'wd-tour-')))
   const home = join(root, 'home')
   const investigations = join(root, 'Investigations')
   try {
