@@ -177,12 +177,34 @@ def test_a_new_skill_on_an_added_document_needs_its_text_kept(vault):
     assert sidecar.skill_pin(json.loads(kept.read_text())["sidecar"]) == "court-documents"
 
 
+def test_a_waiting_file_takes_a_language_written_as_its_name(vault):
+    """D383: the language is read with the file, so it is set before then, and checked."""
+    path = _waiting(vault)
+    side = vault / f"{path}.yml"
+    side.unlink(missing_ok=True)
+    assert _set(vault, {"language": "fr"}, path=path)["changed"] == ["language"]
+    assert yaml.safe_load(side.read_text()) == {"language": "French"}
+    assert sidecar.language(side.read_text()) == "fr"
+    with pytest.raises(SystemExit, match="doesn.t know the language"):
+        _set(vault, {"language": "Klingon"}, path=path)
+
+
+def test_a_read_document_keeps_its_language(vault):
+    """D383: changing the language of a document already read could not change its text."""
+    sha = "b" * 64
+    _queue(vault, sha, "language: French\n")
+    assert call("vault.details", vault=str(vault), sha=sha)["values"]["language"] == "French"
+    with pytest.raises(SystemExit, match="used when it is read"):
+        _set(vault, {"language": "German"}, sha=sha)
+    assert _set(vault, {"language": "French", "source": "Clerk"}, sha=sha)["changed"] == ["source"]
+
+
 def test_a_queued_document_takes_any_change_for_free(vault):
     sha = "b" * 64
     qf = _queue(vault, sha, "source: Clerk\nretrieved_by: fetch\n")
     info = call("vault.details", vault=str(vault), sha=sha)
     assert info["stage"] == "queued" and info["skill_costs"] is False
-    assert info["values"] == {"source": "Clerk", "obtained": "", "notes": "", "skill": ""}
+    assert info["values"] == {"source": "Clerk", "obtained": "", "notes": "", "skill": "", "language": ""}
     out = _set(vault, {"skill": "court-documents", "source": ""}, sha=sha)
     assert out["skill_changed"] is True
     assert yaml.safe_load(json.loads(qf.read_text())["sidecar"]) == {"retrieved_by": "fetch", "skill": "court-documents"}

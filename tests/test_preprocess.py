@@ -225,7 +225,7 @@ def test_process_pdf_slices_all_slices_fail_returns_error(tmp_path, monkeypatch)
 
     monkeypatch.setattr(preprocess_mod, "pdf_extract_pages", _fake_extract(tmp_path))
     monkeypatch.setattr(preprocess_mod, "_run_slice_subprocess",
-                        lambda slice_path, page_numbers, force_ocr: {"error": "simulated failure"})
+                        lambda slice_path, page_numbers, force_ocr, ocr_lang=None: {"error": "simulated failure"})
 
     result = process_pdf_slices(_Path("/fake/doc.pdf"), [(list(range(10)), False)])
     assert "error" in result
@@ -239,7 +239,7 @@ def test_process_pdf_slices_partial_failure_returns_error(tmp_path, monkeypatch)
 
     call_count = {"n": 0}
 
-    def fake_slice(slice_path, page_numbers, force_ocr):
+    def fake_slice(slice_path, page_numbers, force_ocr, ocr_lang=None):
         call_count["n"] += 1
         if call_count["n"] == 1:
             return {"error": "slice 1 failed"}
@@ -260,7 +260,7 @@ def test_process_pdf_slices_merges_interleaved_pages_in_order(tmp_path, monkeypa
     from pathlib import Path as _Path
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    def fake_slice(slice_path, page_numbers, force_ocr):
+    def fake_slice(slice_path, page_numbers, force_ocr, ocr_lang=None):
         tag = "ocr" if force_ocr else "text"
         return {"pages": [{"page": n + 1, "markdown": f"{tag} {n + 1}"} for n in page_numbers]}
 
@@ -1151,7 +1151,7 @@ def test_slices_report_the_engines_they_used(tmp_path, monkeypatch):
     from pathlib import Path as _Path
     engines = iter(["tesseract", "rapidocr", "none"])
 
-    def fake_slice(slice_path, page_numbers, force_ocr):
+    def fake_slice(slice_path, page_numbers, force_ocr, ocr_lang=None):
         return {"pages": [{"page": page_numbers[0] + 1, "markdown": "text"}],
                 "metadata": {"ocr_engine": next(engines)}}
 
@@ -1452,3 +1452,125 @@ def test_a_changed_rapidocr_is_left_as_it_is(monkeypatch, capsys):
     preprocess._orient_rapidocr_by_page()
     assert RapidOCR.detect_and_crop is original and not RapidOCR._watchdog_page_orientation
     assert "cls_and_rotate has changed" in capsys.readouterr().err
+
+
+# ── each document's language (D383) ─────────────────────────────────────────────
+
+_FR = ("Attendu que la débitrice a déposé une demande visant l'obtention d'une ordonnance initiale "
+       "en vertu de la Loi, le tribunal a pris connaissance de la déclaration sous serment du "
+       "directeur financier ainsi que des pièces qui y sont jointes, et le contrôleur proposé a "
+       "consenti à agir à ce titre.")
+_EN = ("The applicant filed an application seeking an initial order under the Act, and the court "
+       "has reviewed the affidavit of the chief financial officer together with the exhibits "
+       "attached to it, and the proposed monitor has consented to act in that capacity.")
+
+
+def _scan(texts: list[str], engine: str = "ocrmac", ocr_pages: list[int] | None = None) -> dict:
+    return {"page_count": len(texts),
+            "pages": [{"page": i + 1, "markdown": t} for i, t in enumerate(texts)],
+            "metadata": {"ocr_used": True, "ocr_engine": engine,
+                         **({"ocr_pages": ocr_pages} if ocr_pages else {})}}
+
+
+def test_a_scan_mostly_in_another_language_is_read_again_in_it_without_a_question(monkeypatch):
+    pytest.importorskip("py3langid")
+    asked = []
+
+    def fake_read(path, pages, ocr_lang):
+        asked.append((pages, ocr_lang))
+        return {"pages": [{"page": p, "markdown": f"relu {p}"} for p in pages],
+                "text_positions": {"engine": "ocrmac", "pages": {str(p): {"lines": []} for p in pages}}}
+
+    monkeypatch.setattr(preprocess, "_read_pages", fake_read)
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: default)
+    result = _scan([_FR, _FR, "Signé"])
+    preprocess.apply_language(Path("doc.pdf"), result)
+    assert asked == [([1, 2, 3], ["fr-FR", "en-US"])]
+    lang = result["metadata"]["language"]
+    assert lang["code"] == "fr" and lang["source"] == "detected" and lang["mixed"] is False
+    assert lang["reread"] == {"fr": [1, 2, 3]} and "ask" not in lang
+    assert [p["markdown"] for p in result["pages"]] == ["relu 1", "relu 2", "relu 3"]
+    assert set(result["text_positions"]["pages"]) == {"1", "2", "3"}
+
+
+def test_born_digital_french_is_recorded_and_nothing_is_read_again(monkeypatch):
+    pytest.importorskip("py3langid")
+    monkeypatch.setattr(preprocess, "_read_pages", lambda *a: pytest.fail("nothing is scanned"))
+    result = {"pages": [{"page": 1, "markdown": _FR}], "metadata": {"ocr_used": False, "ocr_engine": "ocrmac"}}
+    preprocess.apply_language(Path("doc.pdf"), result)
+    assert result["metadata"]["language"] == {"code": "fr", "source": "detected", "mixed": False,
+                                              "pages": {"fr": [1]}}
+
+
+def test_a_mixed_scan_asks_about_its_other_language_pages_and_reads_nothing_yet(monkeypatch):
+    pytest.importorskip("py3langid")
+    monkeypatch.setattr(preprocess, "_read_pages", lambda *a: pytest.fail("the reporter is asked first"))
+    result = _scan([_EN, _EN, _EN, _FR, _FR], ocr_pages=[4])
+    preprocess.apply_language(Path("doc.pdf"), result)
+    lang = result["metadata"]["language"]
+    assert lang["code"] == "en" and lang["mixed"] is True
+    assert lang["pages"] == {"en": [1, 2, 3], "fr": [4, 5]}
+    assert lang["ask"] == {"fr": [4]}
+
+
+def test_a_sidecar_language_skips_detection(monkeypatch):
+    monkeypatch.setattr(preprocess._language, "page_language", lambda text: pytest.fail("not detected"))
+    monkeypatch.setattr(preprocess, "_read_pages", lambda path, pages, ocr_lang: {"pages": []})
+    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: default)
+    result = _scan([_EN])
+    preprocess.apply_language(Path("doc.pdf"), result, "fr")
+    lang = result["metadata"]["language"]
+    assert lang["source"] == "sidecar" and lang["code"] == "fr" and lang["reread"] == {"fr": [1]}
+    assert result["pages"][0]["markdown"] == _EN   # a page the reread found nothing on keeps its text
+
+
+def test_reread_reports_what_it_could_not_read_and_keeps_the_first_reading(monkeypatch):
+    monkeypatch.setattr(preprocess, "_tesseract_languages", lambda: ["eng"])
+    result = _scan([_FR], engine="tesseract")
+    out = preprocess.reread(Path("doc.pdf"), result, {"fr": [1]})
+    assert out["reread"] == {} and "no French language data" in out["notes"][0]
+    assert result["pages"][0]["markdown"] == _FR
+
+    monkeypatch.setattr(preprocess, "_read_pages", lambda *a: {"error": "boom"})
+    out = preprocess.reread(Path("doc.pdf"), _scan([_FR]), {"fr": [1]})
+    assert out["reread"] == {} and "boom" in out["notes"][0]
+
+
+def test_reread_skips_a_language_the_ocr_languages_setting_already_read_in(monkeypatch):
+    monkeypatch.setattr(preprocess, "_read_pages", lambda *a: pytest.fail("already read in French"))
+    monkeypatch.setattr(preprocess, "_config_get",
+                        lambda key, default=None: ["fr-FR", "en-US"] if key == "ocr_languages" else default)
+    assert preprocess.reread(Path("doc.pdf"), _scan([_FR]), {"fr": [1]}) == {"reread": {}, "notes": []}
+
+
+def test_merge_reading_adds_a_page_the_first_reading_missed():
+    result = {"pages": [{"page": 1, "markdown": "a"}, {"page": 3, "markdown": "c"}],
+              "text_positions": {"engine": "ocrmac", "pages": {"1": {"old": True}}}}
+    preprocess._merge_reading(result, {"pages": [{"page": 2, "markdown": "b"}, {"page": 3, "markdown": "C"}],
+                                       "text_positions": {"engine": "ocrmac", "pages": {"3": {"new": True}}}})
+    assert [(p["page"], p["markdown"]) for p in result["pages"]] == [(1, "a"), (2, "b"), (3, "C")]
+    assert result["text_positions"]["pages"] == {"1": {"old": True}, "3": {"new": True}}
+
+
+def test_slice_subprocess_is_given_the_language_codes(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        import types
+        return types.SimpleNamespace(stdout=json.dumps({"pages": [{"page": 1, "markdown": "x"}]}), stderr="")
+
+    monkeypatch.setattr(preprocess.subprocess, "run", fake_run)
+    preprocess._run_slice_subprocess(tmp_path / "s.pdf", [4], True, ["fra", "eng"])
+    assert seen["cmd"][-2:] == ["--ocr-lang", "fra,eng"]
+    preprocess._run_slice_subprocess(tmp_path / "s.pdf", [4], True)
+    assert "--ocr-lang" not in seen["cmd"]
+
+
+def test_stamp_document_carries_language():
+    from watchdog.pipeline import orchestrate
+    lang = {"code": "fr", "source": "detected", "mixed": False, "pages": {"fr": [1]}}
+    ex = {"document": {}}
+    orchestrate._stamp_document(ex, sha="s" * 64, skill_label="general-records", pf={
+        "filename": "a.pdf", "pages": [], "processing": {"source_type": "docling", "language": lang}})
+    assert ex["document"]["language"] == lang

@@ -13,11 +13,12 @@ import yaml
 ALLOWED_KEYS = {
     "source", "obtained", "notes", "skill",
     "retrieved_by", "source_type", "title", "relevance", "archived", "capture",
+    "language",
 }
 MAX_VALUE_LEN = 2000
 # The fields a reporter sets in the app's Edit details form (D381), in the form's order. Every
 # other allowed key is written by Watchdog itself (Web research, Fetch Links) and left as it is.
-EDITABLE_KEYS = ("source", "obtained", "notes", "skill")
+EDITABLE_KEYS = ("source", "obtained", "notes", "skill", "language")
 
 
 def parse(raw_text: str | None) -> dict:
@@ -58,6 +59,13 @@ def skill_pin(sidecar_text: str | None) -> str | None:
     data = parse(sidecar_text)
     value = data.get("skill")
     return str(value) if value else None
+
+
+def language(raw_text: str | None) -> str | None:
+    """The `language:` a sidecar declares, as an ISO 639-1 code (D383), or None when it declares
+    none or one Watchdog can't read. Declared, it replaces detection for the document."""
+    from watchdog.pipeline.language import normalize
+    return normalize(parse(raw_text).get("language"))
 
 
 def edit(raw_text: str | None, values: dict) -> str | None:

@@ -148,7 +148,19 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "ack_note": local_only,
         "sample": None,
         "spending_limit": _spending(v),
+        "language_questions": _language_questions(v, to_send),
     }
+
+
+def _language_questions(v, to_send: list) -> list[dict]:
+    """Documents about to be sent that are partly in another language (D383), with the names of
+    their languages, for the question the app asks before processing."""
+    from watchdog.pipeline.language import name
+    from watchdog.pipeline.preprocess_batch import language_questions
+    out = language_questions(v, [q["sha256"] for q in to_send])
+    for q in out:
+        q["names"] = {code: name(code) for code in q["pages"]}
+    return out
 
 
 # The Add documents form's model and effort fields, by the `Plan` value each one sets.
@@ -230,6 +242,7 @@ def _sample_preflight(v, opts: RunOptions) -> dict:
         "ack_note": sample.NOTE,
         "sample": {"unprepared": sample.unprepared(v, to_send), "refusal": sample.REFUSAL},
         "spending_limit": None,
+        "language_questions": [],
     }
 
 

@@ -143,6 +143,17 @@ def test_document_detail(rich_vault):
     assert [x["sha"] for x in d["duplicates"]] == [SHA3]
 
 
+def test_document_language_from_the_registry(rich_vault):
+    """D383: the language a document was read in, kept in the registry once committed."""
+    assert call("vault.document", vault=V(rich_vault), sha=SHA1)["language"] is None
+    docs_path = rich_vault / ".watchdog" / "registry" / "documents.json"
+    docs = json.loads(docs_path.read_text())
+    lang = {"code": "fr", "source": "detected", "mixed": False, "pages": {"fr": [1, 2]}, "reread": {"fr": [2]}}
+    docs[SHA1]["language"] = lang
+    docs_path.write_text(json.dumps(docs))
+    assert call("vault.document", vault=V(rich_vault), sha=SHA1)["language"] == lang
+
+
 def test_document_duplicates_both_ways(rich_vault):
     copy = call("vault.document", vault=V(rich_vault), sha=SHA3)
     assert [x["sha"] for x in copy["duplicates"]] == [SHA1]

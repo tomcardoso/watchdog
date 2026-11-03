@@ -1338,6 +1338,19 @@ def chew(rep, vault: Path, *, paths: list[str] = (), chew_workers: int | None = 
     return {"queued": count_queued(vault) - before}
 
 
+@op("reread-language", engine="add")
+def reread_language(rep, vault: Path, *, shas: list[str]) -> dict:
+    """Read the other-language scanned pages of these queued documents again, in their language
+    (D383): the reporter's answer to Add documents' question about a document partly in another
+    language. Pre-processing, on this computer; never calls a model."""
+    require_vault(vault)
+    from watchdog.pipeline.preprocess_batch import reread_queued
+    done = reread_queued(vault, list(shas))
+    n = sum(1 for d in done if d["reread"])
+    rep.log(f"{n} document{'s' if n != 1 else ''} read again." if n else "Nothing was read again.")
+    return {"reread": done}
+
+
 @op("add", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
 def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_warning: bool = False,
         extractor_model: str | None = None, classifier_model: str | None = None,

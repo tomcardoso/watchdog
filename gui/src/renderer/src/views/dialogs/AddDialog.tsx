@@ -2,6 +2,8 @@
 // → Public-records gate → Run. Nothing is sent to a model before the gate has been acknowledged
 // (or auto-approve, which the run itself honours, applies). A run with every stage on a model
 // server on this computer has no gate (D306): the preflight says so and the run decides it again.
+// A document partly in another language always stops at the gate (D383): it asks whether to read
+// those scanned pages again in their language, on this computer, before anything is sent.
 
 import {
   ArrowRight, Check, ChevronDown, ChevronRight, Circle, FilePlus2, FolderInput, RefreshCw, ShieldAlert, X, CircleCheck, CircleX, Calculator
@@ -18,7 +20,8 @@ import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { ElsewhereNote } from '@renderer/components/ElsewhereNote'
 import { investigationName, isElsewhere, switchTo } from '@renderer/lib/investigation'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
-import type { Effort, Estimate, Job, Preflight, RunOptions } from '@shared/api'
+import { pageRanges } from '@renderer/lib/readIn'
+import type { Effort, Estimate, Job, LanguageQuestion, Preflight, RunOptions } from '@shared/api'
 
 type Phase = 'choose' | 'reading' | 'gate' | 'running' | 'done'
 const STEPS = ['Choose', 'Read', 'Confirm', 'Add']
@@ -56,6 +59,7 @@ export function AddDialog() {
   const [autoNote, setAutoNote] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [rereading, setRereading] = useState(false)
   // Files dropped while documents are read or a run is under way: they cannot join that step, so
   // they are held and read next.
   const [later, setLater] = useState<string[]>([])
@@ -199,10 +203,11 @@ export function AddDialog() {
       // The sample (D307) runs only its own example files; anything else stops at the pause.
       const local = !pf.ack_required && ready && !pf.sample?.unprepared.length
       const somethingToRun = countFor(pf, retry, dirs.length) > 0 || !!pf.pending_finalization || pf.staged > 0
-      if (local && somethingToRun) {
+      const askLanguage = (pf.language_questions?.length ?? 0) > 0
+      if (local && somethingToRun && !askLanguage) {
         setAutoNote(pf.ack_note)
         await run(pf, dirs, false)
-      } else if (auto && somethingToRun) {
+      } else if (auto && somethingToRun && !askLanguage) {
         setAutoNote('Auto-approve is on for this investigation, so the public-records notice was not repeated. Change it in Settings.')
         await run(pf, dirs)
       } else {
@@ -216,6 +221,23 @@ export function AddDialog() {
       setError(errorMessage(e))
       setPhase('choose')
       setBusy(false)
+    }
+  }
+
+  // ── Step 3: the answer to the language question (D383) ──────────────────────
+  const reread = async (shas: string[]) => {
+    setError('')
+    setRereading(true)
+    try {
+      const j = await startJob('reread-language', { shas }, 'Reading pages again in their language', 'reread-language', flowVault.current)
+      const fin = await waitForJob(j.id)
+      if (fin.state !== 'done') setError(lastError(useApp.getState().jobs[j.id]?.log ?? []) || 'The pages could not be read again. They keep their first reading.')
+      const pf = await call('ingest.preflight', { vault: flowVault.current, options: cleanOptions(options) })
+      setGate((g) => (g ? { ...g, pf } : g))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setRereading(false)
     }
   }
 
@@ -312,7 +334,7 @@ export function AddDialog() {
     body = (
       <>
         <ElsewhereNote vault={flowPath} what="This pause" />
-        <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} />
+        <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} rereading={rereading} onReread={(shas) => void reread(shas)} />
       </>
     )
     const n = countFor(gate.pf, retry, folders.length)
@@ -324,8 +346,8 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing) || !!gate.pf.sample?.unprepared.length} onClick={() => void run(gate.pf, folders)}>
-            Acknowledge and add
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={rereading || !gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing) || !!gate.pf.sample?.unprepared.length} onClick={() => void run(gate.pf, folders, gate.pf.ack_required)}>
+            {gate.pf.ack_required ? 'Acknowledge and add' : 'Add'}
           </Button>
         )}
       </>
@@ -683,7 +705,7 @@ function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions:
 }
 
 // ── Step 3 ───────────────────────────────────────────────────────────────────
-function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflight; blocked: Blocked[] }; retry: boolean; folders: string[]; issues: string[]; error: string }) {
+function GateStep({ gate, retry, folders, issues, error, rereading, onReread }: { gate: { pf: Preflight; blocked: Blocked[] }; retry: boolean; folders: string[]; issues: string[]; error: string; rereading: boolean; onReread: (shas: string[]) => void }) {
   const { pf, blocked } = gate
   // A set-aside file with a reason is a duplicate; one without had no readable text.
   const failed = blocked.filter((b) => b.failed)
@@ -740,10 +762,16 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
 
           {auto.enabled && !auto.approve && auto.blocker && <Callout tone="info" title="Auto-approve is on, but not for this run">{auto.blocker}</Callout>}
 
-          <div className="add-warning" role="alert">
-            <ShieldAlert />
-            <pre>{pf.warning_text.trim()}</pre>
-          </div>
+          {(pf.language_questions?.length ?? 0) > 0 && <LanguageQuestions questions={pf.language_questions!} busy={rereading} onReread={onReread} />}
+
+          {pf.ack_required ? (
+            <div className="add-warning" role="alert">
+              <ShieldAlert />
+              <pre>{pf.warning_text.trim()}</pre>
+            </div>
+          ) : (
+            pf.ack_note && <div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{pf.ack_note}</div>
+          )}
 
           <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />
 
@@ -778,6 +806,29 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
       )}
       {error && <Callout tone="danger">{error}</Callout>}
     </div>
+  )
+}
+
+// The question a document partly in another language asks (D383). Reading again is pre-processing:
+// on this computer, free, and nothing is sent. Not answering keeps the pages as first read.
+function LanguageQuestions({ questions, busy, onReread }: { questions: LanguageQuestion[]; busy: boolean; onReread: (shas: string[]) => void }) {
+  const langs = [...new Set(questions.flatMap((q) => Object.keys(q.pages).map((c) => q.names[c] ?? c)))]
+  const many = questions.length > 1
+  return (
+    <Callout
+      tone="info"
+      title={`${many ? 'Some documents are' : 'A document is'} partly in ${langs.join(' and ')}`}
+      action={<Button size="sm" icon={RefreshCw} loading={busy} onClick={() => onReread(questions.map((q) => q.sha))}>Read again in {langs.join(' and ')}</Button>}
+    >
+      Their scanned pages in {langs.join(' and ')} were read as English. Watchdog can read those pages again in their language, on this computer, before anything is sent. It costs nothing and takes about as long as reading them did. Otherwise they are added as they are.
+      <ul className="add-issues">
+        {questions.map((q) => (
+          <li key={q.sha}>
+            {q.filename}: {Object.entries(q.pages).map(([code, pages]) => `${q.names[code] ?? code} on ${pageRanges(pages)}`).join('; ')}
+          </li>
+        ))}
+      </ul>
+    </Callout>
   )
 }
 

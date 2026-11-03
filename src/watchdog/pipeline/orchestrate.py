@@ -750,6 +750,11 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     media = (pf.get("processing") or {}).get("media")
     if isinstance(media, dict):
         doc["media"] = media
+    # The language its pages were read in (D383), for the document's details after commit, when
+    # the queue descriptor that held it is gone.
+    language = (pf.get("processing") or {}).get("language")
+    if isinstance(language, dict):
+        doc["language"] = language
     doc["near_duplicate_of"] = _near_duplicate_of(pf.get("near_dup"))
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
