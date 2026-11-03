@@ -3258,4 +3258,10 @@ Tradeoff: the job covers Linux only, and #838's failure happened only on macOS (
 
 D384 put the end-to-end tests in pull-request CI on Linux only, but #838's failure happened only on macOS, so a platform-specific break could still reach a release. A new workflow, `e2e.yml`, runs them on macOS arm64, macOS x64 (an Intel runner, so the x64 app is the one tested), Windows and Linux. It can be run by hand on any branch, and App release calls it as a job that every installer build `needs`. A failure on any platform stops every build, and the release with them. Running the tests in their own workflow means a branch can be checked on every platform without building, signing and notarizing installers.
 
-Tradeoff: a release waits for the slowest platform's tests before any build starts, a few minutes. A Mac- or Windows-only break is still found only when someone runs the workflow or releases, not on its pull request. The workflow's first run on Windows found the backend's Python was not in UTF-8 mode, so building the sample investigation failed there; the backend now sets `PYTHONUTF8`, as the engine's own setup Python already did.
+Tradeoff: a release waits for the slowest platform's tests before any build starts, a few minutes. A Mac- or Windows-only break is still found only when someone runs the workflow or releases, not on its pull request. The first runs on Windows found two app bugs, both fixed:
+- The backend's Python was not in UTF-8 mode, so building the sample investigation failed. The backend now sets `PYTHONUTF8`, as the engine's own setup Python already did.
+- `wdfile://` refused a file inside a vault when the two paths named one folder differently, because Node's JavaScript realpath keeps an 8.3 short name (`RUNNER~1`) as given. It now resolves paths through the OS (`realpathSync.native`).
+
+The tests themselves also had to change:
+- Each test app now sets `USERPROFILE` beside `HOME`, since Windows takes the home folder from it.
+- On Windows, a test folder still locked by the closed app's helper processes is left to the system's temporary-files cleanup.
