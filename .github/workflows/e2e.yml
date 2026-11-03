@@ -1,0 +1,73 @@
+name: End-to-end tests
+
+# The app's end-to-end tests (gui/tests) on every platform a release ships for, against the sample
+# investigation, which runs on canned model answers, so nothing is billed. App release calls this
+# before it builds any installer, so a failure on one platform stops every build and the release
+# (D385). Run it by hand (Actions → End-to-end tests → Run workflow) to check a branch on every
+# platform without building installers. Pull requests run the Linux leg only, in ci.yml (D384).
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS arm64
+          # An Intel runner, so the x64 app is the one tested.
+          - os: macos-15-intel
+            name: macOS x64
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-latest
+            name: Linux
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: gui
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the engine
+        # The test suite's light dependency list (.github/actions/run-tests): no docling, no torch.
+        shell: bash
+        run: pip install --no-deps -e .. && pip install pyyaml pypdf numpy jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - name: Build the app
+        run: npm ci && npm run build
+
+      - name: Run the end-to-end tests
+        shell: bash
+        run: |
+          # The interpreter's own path, which on Windows is a Windows path that Electron can start.
+          export WATCHDOG_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
+
+      - name: Keep the failures' traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: e2e-results-${{ matrix.os }}
+          path: gui/test-results
+          retention-days: 5
+          if-no-files-found: ignore

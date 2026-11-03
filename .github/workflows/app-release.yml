@@ -92,12 +92,19 @@ jobs:
           cache: pip
       - uses: ./.github/actions/run-tests
 
+  e2e:
+    # The app's end-to-end tests on every platform (e2e.yml).
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+
   app:
     # Built, and signed where the secrets exist, on each platform from the same tag. It runs
     # alongside `test` rather than after it: nothing is published until `release`, which waits
     # for both. The two Mac architectures build in separate jobs so their notarizations, each
     # about three minutes of waiting on Apple, run at once; `release` merges their update feeds.
-    needs: [version]
+    # No build starts until the end-to-end tests have passed on every platform (D385).
+    needs: [version, e2e]
     strategy:
       fail-fast: false
       matrix:
@@ -147,37 +154,6 @@ jobs:
       - run: npm run typecheck
 
       - run: npm run test:unit
-
-      # The end-to-end tests run on each platform before its installer is built, so a failure stops
-      # that platform's job before the slow build and nothing is published (D385). The sample
-      # investigation runs on canned model answers, so the test suite's light dependency list is
-      # enough (.github/actions/run-tests): no docling, no torch.
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install the engine
-        shell: bash
-        run: pip install --no-deps -e .. && pip install pyyaml pypdf numpy jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser
-
-      - run: npx electron-vite build
-
-      - name: End-to-end tests
-        shell: bash
-        run: |
-          # The interpreter's own path, which on Windows is a Windows path that Electron can start.
-          export WATCHDOG_PYTHON="$(python -c 'import sys; print(sys.executable)')"
-          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
-
-      - name: Keep the end-to-end failures' traces
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: e2e-results-${{ runner.os }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
-          path: gui/test-results
-          retention-days: 5
-          if-no-files-found: ignore
 
       - name: Import signing certificate (macOS)
         if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
