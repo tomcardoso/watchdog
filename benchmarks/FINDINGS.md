@@ -890,6 +890,8 @@ Every page of corpus-v1 read by Apple Vision (with and without its language corr
 
 **What it does not show.** One Mac, one run; the scanned identifiers are few and cluster on two backsheets that print the same counsel block. English only, so RapidOCR's accents (D373) are still unmeasured. Docling also joins an identifier broken at a line end and drops its hyphen (`81000-2-` / `175` becomes `81000-2175`) for every engine, a pre-processing finding rather than an engine one.
 
+**Follow-up (D382).** RapidOCR's dropped lines came from its line-direction classifier turning upright lines upside down one at a time. With one orientation per page it loses 1.34% of words on clean pages and 1.36% on scans, 2 passages truly lost (Vision's figure), every scanned identifier still exact.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
