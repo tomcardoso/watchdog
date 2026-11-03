@@ -1193,6 +1193,7 @@ def _auto_engine(monkeypatch, *, rapid: bool, tesseract_ready: bool, platform: s
     monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: "auto" if key == "ocr_engine" else default)
     monkeypatch.setattr(preprocess.sys, "platform", platform)
     monkeypatch.setattr(preprocess, "_rapidocr_installed", lambda: rapid)
+    monkeypatch.setattr(preprocess, "_orient_rapidocr_by_page", lambda: None)
     monkeypatch.setattr(preprocess, "_tesseract_ready", lambda: tesseract_ready)
     monkeypatch.setattr(preprocess, "_tesseract_program", lambda: None)
     import types
@@ -1329,3 +1330,125 @@ def test_a_document_without_pages_is_exported_whole():
         def export_to_markdown(self, **kw):
             return "All of it &amp; more"
     assert preprocess._markdown_pages(Docx()) == [{"page": 1, "markdown": "All of it & more"}]
+
+
+# ── RapidOCR orients a page's lines together (D382) ──────────────────────────
+
+def test_a_group_is_upside_down_only_when_its_average_says_so():
+    # One confident "180" among upright lines is the false flip that dropped whole lines.
+    assert not preprocess._page_upside_down([("0", 0.9), ("0", 0.95), ("180", 0.95), ("0", 0.8)])
+    assert preprocess._page_upside_down([("180", 1.0), ("180", 0.99), ("0", 0.6), ("180", 0.91)])
+    assert not preprocess._page_upside_down([("180", 0.5)])     # a tie stays as printed
+    assert not preprocess._page_upside_down([])
+
+
+def test_tall_boxes_are_the_ones_rapidocr_crops_a_quarter_turn():
+    assert preprocess._tall_box([[0, 0], [10, 0], [10, 15], [0, 15]])
+    assert not preprocess._tall_box([[0, 0], [10, 0], [10, 14], [0, 14]])
+    assert not preprocess._tall_box([[0, 0], [300, 0], [300, 20], [0, 20]])
+
+
+def test_rapidocrs_patched_methods_keep_their_shape():
+    """The fix replaces two of RapidOCR's own methods. If an upgrade renames one or changes what
+    it takes, Watchdog falls back to RapidOCR's line-by-line turning, so this fails first."""
+    pytest.importorskip("cv2")
+    import inspect
+    from rapidocr import RapidOCR
+    for name, params in preprocess._RAPIDOCR_PATCHED.items():
+        assert list(inspect.signature(getattr(RapidOCR, name)).parameters) == params, name
+    assert callable(getattr(RapidOCR, "_load_cls_model", None))
+    from rapidocr.ch_ppocr_cls import TextClsOutput
+    out = TextClsOutput(img_list=[], cls_res=[])
+    assert out.img_list == [] and out.cls_res == []
+
+
+def _patched_rapidocr(monkeypatch):
+    pytest.importorskip("cv2")
+    from rapidocr import RapidOCR
+    for name in preprocess._RAPIDOCR_PATCHED:
+        monkeypatch.setattr(RapidOCR, name, getattr(RapidOCR, name))
+    monkeypatch.setattr(RapidOCR, "_watchdog_page_orientation", False, raising=False)
+    preprocess._orient_rapidocr_by_page()
+    assert RapidOCR._watchdog_page_orientation
+    return RapidOCR
+
+
+class _Classifier:
+    """RapidOCR's classifier as the patch uses it: verdicts given, lines turned above cls_thresh."""
+
+    def __init__(self, verdicts):
+        self.verdicts, self.cls_thresh = verdicts, 0.9
+
+    def __call__(self, imgs):
+        import cv2
+        from rapidocr.ch_ppocr_cls import TextClsOutput
+        out = [cv2.rotate(im, cv2.ROTATE_180) if "180" in lab and s > self.cls_thresh else im
+               for im, (lab, s) in zip(imgs, self.verdicts)]
+        return TextClsOutput(img_list=out, cls_res=list(self.verdicts))
+
+
+def _lines(n):
+    import numpy as np
+    return [np.arange(6, dtype=np.uint8).reshape(2, 3) + 10 * i for i in range(n)]
+
+
+def _turned(before, after):
+    import numpy as np
+    return [not np.array_equal(b, a) for b, a in zip(before, after)]
+
+
+def test_lines_are_turned_only_when_the_page_majority_says_so(monkeypatch):
+    RapidOCR = _patched_rapidocr(monkeypatch)
+    ocr = object.__new__(RapidOCR)
+    # An upright page with one confident false "180": nothing turns (RapidOCR turned it).
+    classifier = _Classifier([("0", 0.99), ("180", 0.95), ("0", 0.9)])
+    ocr._load_cls_model = lambda: classifier
+    ocr._watchdog_tall = [False, False, False]
+    lines = _lines(3)
+    out, _ = ocr.cls_and_rotate(lines)
+    assert _turned(lines, out) == [False, False, False]
+    assert classifier.cls_thresh == 0.9                  # the classifier's own setting is restored
+    # A sideways page: its tall lines mostly read upside down, so all of them turn, the one the
+    # classifier doubted too; the wide line beside them is judged on its own.
+    classifier = _Classifier([("180", 1.0), ("0", 0.6), ("180", 0.99), ("0", 0.99)])
+    ocr._load_cls_model = lambda: classifier
+    ocr._watchdog_tall = [True, True, True, False]
+    lines = _lines(4)
+    out, res = ocr.cls_and_rotate(lines)
+    assert _turned(lines, out) == [True, True, True, False]
+    assert res.img_list == out
+
+
+def test_detection_notes_which_boxes_are_tall(monkeypatch):
+    import numpy as np
+    pytest.importorskip("cv2")
+    from rapidocr import RapidOCR
+    boxes = np.array([[[0, 0], [300, 0], [300, 20], [0, 20]], [[0, 0], [20, 0], [20, 300], [0, 300]]])
+    det = type("Det", (), {"boxes": boxes})()
+    monkeypatch.setattr(RapidOCR, "detect_and_crop", lambda self, img, op_record: (["a", "b"], det))
+    RapidOCR = _patched_rapidocr(monkeypatch)
+    ocr = object.__new__(RapidOCR)
+    crops, got = ocr.detect_and_crop(None, {})
+    assert crops == ["a", "b"] and got is det and ocr._watchdog_tall == [False, True]
+
+
+def test_a_rapidocr_without_its_classifier_loader_is_left_as_it_is(monkeypatch, capsys):
+    pytest.importorskip("cv2")
+    from rapidocr import RapidOCR
+    monkeypatch.setattr(RapidOCR, "_watchdog_page_orientation", False, raising=False)
+    monkeypatch.setattr(RapidOCR, "_load_cls_model", None, raising=False)
+    original = RapidOCR.cls_and_rotate
+    preprocess._orient_rapidocr_by_page()
+    assert RapidOCR.cls_and_rotate is original
+    assert "_load_cls_model has changed" in capsys.readouterr().err
+
+
+def test_a_changed_rapidocr_is_left_as_it_is(monkeypatch, capsys):
+    pytest.importorskip("cv2")
+    from rapidocr import RapidOCR
+    monkeypatch.setattr(RapidOCR, "_watchdog_page_orientation", False, raising=False)
+    monkeypatch.setattr(RapidOCR, "cls_and_rotate", lambda self, img, extra: None)
+    original = RapidOCR.detect_and_crop
+    preprocess._orient_rapidocr_by_page()
+    assert RapidOCR.detect_and_crop is original and not RapidOCR._watchdog_page_orientation
+    assert "cls_and_rotate has changed" in capsys.readouterr().err
