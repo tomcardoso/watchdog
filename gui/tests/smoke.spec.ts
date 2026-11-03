@@ -58,6 +58,10 @@ test('every screen renders against the demo investigation', async () => {
     const page = await app.firstWindow()
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
+    page.on('console', (m) => console.log('CONSOLE', m.type(), m.text()))
+    await page.waitForTimeout(20_000)
+    console.log('BODY', await page.evaluate(() => document.body.innerText.slice(0, 3000)))
+    console.log('MAIN', await app.evaluate(async ({ app: a }) => JSON.stringify({ userData: a.getPath('userData'), logs: a.getPath('logs') })))
     await page.waitForSelector('.app', { timeout: 90_000 })
     await page.evaluate(async (s) => {
       const w = window as unknown as { watchdog: { rpc: (m: string, p: unknown) => Promise<unknown> }; __watchdogApp: { getState: () => { setProject: (p: unknown) => void } } }
