@@ -25,21 +25,33 @@ export function DisputedBadge() {
 }
 
 /** Marks with optimistic updates: what the reporter just did shows at once, and is rolled back
- * with a message if it could not be saved. */
+ * with a message if it could not be saved. One fact's saves go one after another, and only the
+ * latest one's answer is shown: the server handles requests in parallel, so a quick second press
+ * (set, then clear) could otherwise be written, or answered, before the first. */
 export function useMarks() {
   const vault = useVault()
   const [local, setLocal] = useState<Record<string, FactMark | null>>({})
+  const queue = useRef(new Map<string, Promise<unknown>>())
+  const latest = useRef(new Map<string, number>())
   const get = useCallback((id: string, server: FactMark | null) => (id in local ? local[id] : server), [local])
   const set = useCallback(
     async (id: string, status: VerifyStatus | null, note: string | null | undefined, prev: FactMark | null) => {
       const optimistic: FactMark | null = status ? { status, note: note === undefined ? prev?.note ?? null : note || null, by: prev?.by ?? null, at: new Date().toISOString() } : null
       setLocal((m) => ({ ...m, [id]: optimistic }))
+      const seq = (latest.current.get(id) ?? 0) + 1
+      latest.current.set(id, seq)
+      const save = (queue.current.get(id) ?? Promise.resolve())
+        .catch(() => undefined)
+        .then(() => call('verify.mark', { vault, id, status, note: note === undefined ? prev?.note ?? null : note }))
+      queue.current.set(id, save)
       try {
-        const saved = await call('verify.mark', { vault, id, status, note: note === undefined ? prev?.note ?? null : note })
-        setLocal((m) => ({ ...m, [id]: saved.status ? { status: saved.status, note: saved.note, by: saved.by, at: saved.at } : null }))
+        const saved = await save
+        if (latest.current.get(id) === seq) {
+          setLocal((m) => ({ ...m, [id]: saved.status ? { status: saved.status, note: saved.note, by: saved.by, at: saved.at } : null }))
+        }
         invalidate('vault.document', 'vault.entity', 'vault.summary', 'vault.citations', 'verify.')
       } catch (e) {
-        setLocal((m) => ({ ...m, [id]: prev }))
+        if (latest.current.get(id) === seq) setLocal((m) => ({ ...m, [id]: prev }))
         toast({ kind: 'error', title: 'Could not save your check', body: errorMessage(e) })
       }
     },
