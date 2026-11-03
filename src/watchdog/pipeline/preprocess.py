@@ -425,6 +425,88 @@ def _rapidocr_installed() -> bool:
     return any(find_spec(m) is not None for m in ("rapidocr", "rapidocr_onnxruntime"))
 
 
+# RapidOCR decides each line's direction on its own: its classifier squeezes the line into
+# 48x192 pixels and turns it 180 degrees when it reads "upside down" at over 0.9. On clean pages
+# it says so of long upright lines, and the recogniser then reads the turned line as junk that
+# passes its score threshold, so whole lines vanish without a gap (D382). Here the classifier's
+# verdicts are pooled over the page instead, and every line of a group is turned or none is.
+# Wide and tall boxes are pooled apart: RapidOCR turns a tall crop a quarter-turn before the
+# classifier sees it, so a sideways page needs its tall lines corrected on their own.
+_RAPIDOCR_PATCHED = {"detect_and_crop": ["self", "img", "op_record"], "cls_and_rotate": ["self", "img"]}
+
+
+def _tall_box(box) -> bool:
+    """A detected box RapidOCR crops a quarter-turn (`get_rotate_crop_image`: height at least
+    1.5 times the width)."""
+    import numpy as np
+    p = np.asarray(box, dtype=np.float32)
+    width = max(np.linalg.norm(p[0] - p[1]), np.linalg.norm(p[2] - p[3]))
+    height = max(np.linalg.norm(p[0] - p[3]), np.linalg.norm(p[1] - p[2]))
+    return width > 0 and height / width >= 1.5
+
+
+def _page_upside_down(verdicts) -> bool:
+    """Whether a group of a page's lines reads upside down: the classifier's (label, score)
+    verdicts, averaged as the probability of "180", come to over one half."""
+    if not verdicts:
+        return False
+    p180 = [score if "180" in label else 1 - score for label, score in verdicts]
+    return sum(p180) / len(p180) > 0.5
+
+
+def _orient_rapidocr_by_page() -> None:
+    """Make RapidOCR turn a page's lines together (D382). Patches its class once per process; a
+    RapidOCR whose two methods have changed shape is left as it is, with a warning, since a
+    patch fitted to other code could misread every page."""
+    try:
+        import inspect
+        from rapidocr import RapidOCR
+    except Exception:  # noqa: BLE001 — Docling reports a missing or broken RapidOCR itself
+        return
+    if getattr(RapidOCR, "_watchdog_page_orientation", False):
+        return
+    for name, params in _RAPIDOCR_PATCHED.items():
+        method = getattr(RapidOCR, name, None)
+        if method is None or list(inspect.signature(method).parameters) != params:
+            print(f"Warning: RapidOCR's {name} has changed; its lines are oriented one by one "
+                  "(D382).", file=sys.stderr)
+            return
+    if not callable(getattr(RapidOCR, "_load_cls_model", None)):
+        print("Warning: RapidOCR's _load_cls_model has changed; its lines are oriented one by one "
+              "(D382).", file=sys.stderr)
+        return
+    detect_and_crop = RapidOCR.detect_and_crop
+
+    def detect_and_crop_noting_tall(self, img, op_record):
+        crops, det_res = detect_and_crop(self, img, op_record)
+        self._watchdog_tall = [_tall_box(box) for box in det_res.boxes]
+        return crops, det_res
+
+    def cls_and_rotate_by_page(self, img):
+        import cv2
+        classifier = self._load_cls_model()
+        threshold, classifier.cls_thresh = classifier.cls_thresh, 2.0   # verdicts, no turning
+        try:
+            res = classifier(img)
+        finally:
+            classifier.cls_thresh = threshold
+        tall = getattr(self, "_watchdog_tall", None)
+        if tall is None or len(tall) != len(res.img_list):
+            tall = [False] * len(res.img_list)
+        lines = list(res.img_list)
+        for group in (False, True):
+            members = [i for i, t in enumerate(tall) if t == group]
+            if _page_upside_down([res.cls_res[i] for i in members]):
+                for i in members:
+                    lines[i] = cv2.rotate(lines[i], cv2.ROTATE_180)
+        res.img_list = lines
+        return lines, res
+
+    RapidOCR.detect_and_crop = detect_and_crop_noting_tall
+    RapidOCR.cls_and_rotate = cls_and_rotate_by_page
+    RapidOCR._watchdog_page_orientation = True
+
+
 # Where Tesseract's installers put the program. An app started from the Finder or the Start menu
 # does not inherit a shell's PATH, so Homebrew's folder is not on it.
 _TESSERACT_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", r"C:\Program Files\Tesseract-OCR")
@@ -539,6 +621,7 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
         elif engine == "rapidocr" or (engine == "auto" and _rapidocr_installed()):
             from docling.datamodel.pipeline_options import RapidOcrOptions
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
+            _orient_rapidocr_by_page()
         else:  # tesseract, or auto without RapidOCR
             ocr_opts = _make_tesseract_opts(force_ocr, required=engine == "tesseract")
     if force_ocr and ocr_scale:
