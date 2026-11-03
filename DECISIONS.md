@@ -3230,7 +3230,7 @@ Rejected for now: editing several documents at once (one source for a batch from
 
 Tradeoff: a reporter who cancels the retry keeps the old skill; one whose retry fails keeps the new pin with the old extraction until a retry succeeds. The docs' sidecar example named the file `<name>.yml`, but pre-processing has always read `<name>.<ext>.yml`; the docs now say so. No migration (I19): no stored record changes shape; the edit only writes values into fields that already exist.
 
-### D382 — Each document is read in its own language
+### D383 — Each document is read in its own language
 
 Every scanned page was read with the OCR languages setting, English unless set, and nothing said what language a document was in (#831). Pre-processing now detects each page's language from its text (the text layer, or the first OCR reading) with `py3langid`, offline and deterministic, and decides per document (`pipeline/language.py`): a page under 30 words or below 0.9 probability takes the majority, so stamps, signatures and bilingual headings never make a document mixed; one language with 80% of judged pages decides it. A document mostly in another language has every scanned page read again in that language plus English, with no question; a mixed one is asked about at the Add documents confirmation, before anything is sent, and only its other-language scanned pages are read again (`reread-language`). A sidecar's `language:` replaces detection. The result is `metadata.language`, carried to `documents.json` at commit, since the queue descriptor is removed then, and shown on the Details tab. The OCR languages setting stays, as the first reading and so the fallback when no page can be judged.
 

@@ -1341,7 +1341,7 @@ def chew(rep, vault: Path, *, paths: list[str] = (), chew_workers: int | None = 
 @op("reread-language", engine="add")
 def reread_language(rep, vault: Path, *, shas: list[str]) -> dict:
     """Read the other-language scanned pages of these queued documents again, in their language
-    (D382): the reporter's answer to Add documents' question about a document partly in another
+    (D383): the reporter's answer to Add documents' question about a document partly in another
     language. Pre-processing, on this computer; never calls a model."""
     require_vault(vault)
     from watchdog.pipeline.preprocess_batch import reread_queued

@@ -1,6 +1,6 @@
-// The language a document's pages were read in, for the Documents screen (D382): what
+// The language a document's pages were read in, for the Documents screen (D383): what
 // pre-processing detected (or the document's sidecar said), and which scanned pages were read
-// again in their language. Documents pre-processed before D382 have nothing recorded.
+// again in their language. Documents pre-processed before D383 have nothing recorded.
 
 import type { DocumentLanguage } from '@shared/api'
 

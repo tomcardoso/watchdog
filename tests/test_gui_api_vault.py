@@ -144,7 +144,7 @@ def test_document_detail(rich_vault):
 
 
 def test_document_language_from_the_registry(rich_vault):
-    """D382: the language a document was read in, kept in the registry once committed."""
+    """D383: the language a document was read in, kept in the registry once committed."""
     assert call("vault.document", vault=V(rich_vault), sha=SHA1)["language"] is None
     docs_path = rich_vault / ".watchdog" / "registry" / "documents.json"
     docs = json.loads(docs_path.read_text())

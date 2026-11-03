@@ -29,7 +29,7 @@ Outputs a single JSON object to stdout:
     "docling_version": str,
     "platform": str,               # sys.platform: `darwin`, `linux`, `win32`
     "language": {...}              # the document's language and what was read again in it
-                                   # (D382, see apply_language); absent for a recording
+                                   # (D383, see apply_language); absent for a recording
   },
   "text_positions": {...},    # where each OCR'd line sits on its page, for pages read by a
                               # full-page OCR pass and for images; absent when there are none.
@@ -512,7 +512,7 @@ def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: flo
 
     `ocr_scale` sets a forced-OCR conversion's OCR (and render) scale, in pixels per point; unset,
     Docling's default (3) stands. `ocr_lang` is the engine's own language codes for a page read
-    again in its language (D382, `language.ocr_codes`); unset, the engine reads as configured.
+    again in its language (D383, `language.ocr_codes`); unset, the engine reads as configured.
 
     Engine selection (auto mode, D373):
       1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
@@ -765,7 +765,7 @@ def ocr_provenance(engine: str) -> dict:
 def build_image_converter(ocr_lang: list[str] | None = None):
     """The converter for an image file: Docling's defaults, plus the parsed pages kept so the
     OCR'd lines' positions can be read (D289). With `ocr_lang` (an image read again in its
-    language, D382), the configured engine reads it, given those codes."""
+    language, D383), the configured engine reads it, given those codes."""
     from docling.document_converter import DocumentConverter
     from docling.datamodel.base_models import InputFormat
     converter = None
@@ -838,7 +838,7 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
 def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]],
                        ocr_lang: list[str] | None = None) -> dict:
     """Convert each slice in a parallel subprocess and merge into one page list. `ocr_lang` reads
-    every slice in those languages (D382).
+    every slice in those languages (D383).
 
     Returns {"pages": [...]} in page order, or {"error": ...}. Metadata is the
     caller's to assemble: the parent made the OCR decision, so a child's report
@@ -1082,7 +1082,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
     force_ocr forces OCR on every page and skips detection; detect=False says
     the caller has already decided and no page needs it (see
     _run_slice_subprocess). ocr_lang is the OCR engine's language codes for a
-    slice read again in its language (D382).
+    slice read again in its language (D383).
     """
     is_pdf = path.suffix.lower() == ".pdf"
     total_pages = pdf_page_count(path) if is_pdf else 0
@@ -1261,7 +1261,7 @@ def _merge_reading(result: dict, fresh: dict) -> None:
 
 def reread(path: Path, result: dict, by_lang: dict[str, list[int]]) -> dict:
     """Read the scanned pages in `by_lang` (language -> 1-indexed pages) again, each in its
-    language plus English, in place in `result` (D382). Returns {"reread": {language: pages}} for
+    language plus English, in place in `result` (D383). Returns {"reread": {language: pages}} for
     the pages read again, and "notes" for any that could not be: an engine that can't read the
     language, missing language data, a failed conversion. Nothing is downloaded."""
     done: dict[str, list[int]] = {}
@@ -1285,7 +1285,7 @@ def reread(path: Path, result: dict, by_lang: dict[str, list[int]]) -> dict:
 
 
 def apply_language(path: Path, result: dict, declared: str | None = None) -> None:
-    """Detect the document's language and record it in `metadata.language` (D382): `code` (ISO
+    """Detect the document's language and record it in `metadata.language` (D383): `code` (ISO
     639-1, None when no page could be judged), `source` (`detected`, `sidecar` for a document's
     `language:`, which skips detection, or `undetermined`), `mixed`, `pages` (page numbers by
     language), and, for a scan, `reread` (pages read again in their language, with no question:
@@ -1340,10 +1340,10 @@ def main() -> None:
     parser.add_argument("--chunk-workers", type=int, metavar="N",
                         help="Override chunk_workers config for this run")
     parser.add_argument("--language", metavar="CODE",
-                        help="The document's language from its sidecar (D382), which skips detection")
+                        help="The document's language from its sidecar (D383), which skips detection")
     parser.add_argument("--ocr-lang", metavar="CODES",
                         help="A slice read again in its language: the OCR engine's own codes, "
-                             "comma-separated (D382)")
+                             "comma-separated (D383)")
     args = parser.parse_args()
     ocr_lang = [c for c in (args.ocr_lang or "").split(",") if c] or None
     # A slice is told its OCR verdict; only the whole document is read for its language.

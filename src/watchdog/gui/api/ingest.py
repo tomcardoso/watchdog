@@ -153,7 +153,7 @@ def preflight(vault: str, options: dict | None = None) -> dict:
 
 
 def _language_questions(v, to_send: list) -> list[dict]:
-    """Documents about to be sent that are partly in another language (D382), with the names of
+    """Documents about to be sent that are partly in another language (D383), with the names of
     their languages, for the question the app asks before processing."""
     from watchdog.pipeline.language import name
     from watchdog.pipeline.preprocess_batch import language_questions

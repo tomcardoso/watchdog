@@ -2,7 +2,7 @@
 // → Public-records gate → Run. Nothing is sent to a model before the gate has been acknowledged
 // (or auto-approve, which the run itself honours, applies). A run with every stage on a model
 // server on this computer has no gate (D306): the preflight says so and the run decides it again.
-// A document partly in another language always stops at the gate (D382): it asks whether to read
+// A document partly in another language always stops at the gate (D383): it asks whether to read
 // those scanned pages again in their language, on this computer, before anything is sent.
 
 import {
@@ -224,7 +224,7 @@ export function AddDialog() {
     }
   }
 
-  // ── Step 3: the answer to the language question (D382) ──────────────────────
+  // ── Step 3: the answer to the language question (D383) ──────────────────────
   const reread = async (shas: string[]) => {
     setError('')
     setRereading(true)
@@ -809,7 +809,7 @@ function GateStep({ gate, retry, folders, issues, error, rereading, onReread }: 
   )
 }
 
-// The question a document partly in another language asks (D382). Reading again is pre-processing:
+// The question a document partly in another language asks (D383). Reading again is pre-processing:
 // on this computer, free, and nothing is sent. Not answering keeps the pages as first read.
 function LanguageQuestions({ questions, busy, onReread }: { questions: LanguageQuestion[]; busy: boolean; onReread: (shas: string[]) => void }) {
   const langs = [...new Set(questions.flatMap((q) => Object.keys(q.pages).map((c) => q.names[c] ?? c)))]

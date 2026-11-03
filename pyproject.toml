@@ -64,7 +64,7 @@ dependencies = [
     # Reads the dates documents print in words in ~200 languages (D329); pure Python, with
     # regex, pytz and tzlocal, so it installs in the engine's first phase.
     "dateparser>=1.2",
-    # Detects each page's language offline (D382): a 4.4 MB model inside the package, numpy only,
+    # Detects each page's language offline (D383): a 4.4 MB model inside the package, numpy only,
     # the same answer every time, so it installs in the engine's first phase.
     "py3langid>=0.3",
 ]

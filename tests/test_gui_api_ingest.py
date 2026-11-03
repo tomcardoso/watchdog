@@ -53,7 +53,7 @@ def test_preflight_defaults_on_subscription(rich_vault, wdg_home):
 
 
 def test_preflight_lists_documents_partly_in_another_language(rich_vault, wdg_home):
-    """D382: a document about to be sent with other-language scanned pages to ask about is named,
+    """D383: a document about to be sent with other-language scanned pages to ask about is named,
     with its languages; a staged one is not about to be sent, so it is not asked about."""
     credentials(wdg_home, "subscription")
     queue = rich_vault / ".watchdog" / "queue"

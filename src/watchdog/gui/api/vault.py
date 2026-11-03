@@ -266,7 +266,7 @@ def document(vault: str, sha: str) -> dict:
 
     queue = vaultio.read_json(v / ".watchdog" / "queue" / f"{full}.json", {})
     metadata = queue.get("metadata") if isinstance(queue, dict) else None
-    # Read in which language (D382): kept in the registry once committed, in the queue until then.
+    # Read in which language (D383): kept in the registry once committed, in the queue until then.
     language = rec.get("language") or (metadata or {}).get("language")
     file_metadata = rec.get("file_metadata") or ex_doc.get("file_metadata") or {}
 

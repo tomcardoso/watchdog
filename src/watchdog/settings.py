@@ -53,7 +53,7 @@ SETTINGS = {
         "help": (
             "Languages Apple Vision first reads scanned pages in. Watchdog then detects each\n"
             "  document's language from its text and reads its scanned pages again in that language\n"
-            "  when it is another (D382), so this decides the reading only when the language can't be\n"
+            "  when it is another (D383), so this decides the reading only when the language can't be\n"
             "  detected: pages with too little text to tell. Unset, Vision reads English.\n"
             "  Codes: https://developer.apple.com/documentation/vision/vnrecognizetextrequest"
         ),

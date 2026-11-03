@@ -1,4 +1,4 @@
-"""Each document's language (D382): page detection, the document's decision, which scanned pages
+"""Each document's language (D383): page detection, the document's decision, which scanned pages
 are read again, what each OCR engine is given, and a sidecar's `language:`."""
 
 import pytest

@@ -178,7 +178,7 @@ def test_a_new_skill_on_an_added_document_needs_its_text_kept(vault):
 
 
 def test_a_waiting_file_takes_a_language_written_as_its_name(vault):
-    """D382: the language is read with the file, so it is set before then, and checked."""
+    """D383: the language is read with the file, so it is set before then, and checked."""
     path = _waiting(vault)
     side = vault / f"{path}.yml"
     side.unlink(missing_ok=True)
@@ -190,7 +190,7 @@ def test_a_waiting_file_takes_a_language_written_as_its_name(vault):
 
 
 def test_a_read_document_keeps_its_language(vault):
-    """D382: changing the language of a document already read could not change its text."""
+    """D383: changing the language of a document already read could not change its text."""
     sha = "b" * 64
     _queue(vault, sha, "language: French\n")
     assert call("vault.details", vault=str(vault), sha=sha)["values"]["language"] == "French"

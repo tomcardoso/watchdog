@@ -623,7 +623,7 @@ def test_registry_json_counts_updated(tmp_path):
 
 
 def test_documents_registry_keeps_the_language_read_in(tmp_path):
-    """D382: the language a document was read in outlives its queue descriptor."""
+    """D383: the language a document was read in outlives its queue descriptor."""
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     ex = json.loads(make_extraction(tmp_path).read_text())

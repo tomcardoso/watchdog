@@ -62,7 +62,7 @@ def skill_pin(sidecar_text: str | None) -> str | None:
 
 
 def language(raw_text: str | None) -> str | None:
-    """The `language:` a sidecar declares, as an ISO 639-1 code (D382), or None when it declares
+    """The `language:` a sidecar declares, as an ISO 639-1 code (D383), or None when it declares
     none or one Watchdog can't read. Declared, it replaces detection for the document."""
     from watchdog.pipeline.language import normalize
     return normalize(parse(raw_text).get("language"))

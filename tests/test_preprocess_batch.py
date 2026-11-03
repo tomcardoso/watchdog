@@ -832,7 +832,7 @@ def test_unreadable_reasons_forget_files_no_longer_in_failed(tmp_path):
     assert {k: v["reason"] for k, v in stored.items()} == {"b.pdf": "third"}
 
 
-# ── each document's language (D382) ─────────────────────────────────────────────
+# ── each document's language (D383) ─────────────────────────────────────────────
 
 def test_sidecar_language_reaches_the_reader(tmp_path, monkeypatch):
     vault, incoming, queue, staging = _make_vault(tmp_path)

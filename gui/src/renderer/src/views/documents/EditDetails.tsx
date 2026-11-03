@@ -1,5 +1,5 @@
 // Edit details (D381): a document's source, the date it was obtained, the reporter's notes, its
-// record skill and its language (D382, only before it is read), the fields of its `.yml` sidecar,
+// record skill and its language (D383, only before it is read), the fields of its `.yml` sidecar,
 // set on a file waiting to be added or on a document afterwards. Every field is optional. The engine writes the sidecar and every copy of it
 // Watchdog keeps (`set-details`); nothing is billed, except that a new record skill on a document
 // already extracted means extracting it again, which goes through Retry extraction's estimate and
@@ -130,7 +130,7 @@ function EditDetailsModal({ onClose, target, label }: { onClose: () => void; tar
     return <input className="input" type={date ? 'date' : 'text'} maxLength={MAX} value={value} disabled={f.key === 'language' && !!sha} onChange={(e) => set(f.key, e.target.value)} />
   }
   const hint = (f: (typeof FIELDS)[number]) => {
-    // The language decides how a document is read (D382), so it is set only before that.
+    // The language decides how a document is read (D383), so it is set only before that.
     if (f.key === 'language' && sha) return 'Used when the document is read, which it has been. Its Details tab says the language it was read in.'
     if (f.kind !== 'skill' || !d?.skill_costs) return f.hint
     return skillLocked

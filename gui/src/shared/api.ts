@@ -227,7 +227,7 @@ export interface DocumentDetail extends DocumentRow {
   duplicates: { sha: string; filename: string; note: string | null }[]
   /** Audio and video only (D273). */
   media: MediaInfo | null
-  /** The language its pages were read in (D382); null for a document read before it was recorded. */
+  /** The language its pages were read in (D383); null for a document read before it was recorded. */
   language: DocumentLanguage | null
   /** Pages with saved positions of OCR'd text, fetched with `vault.textPositions` (D289). */
   positions_pages: number[]
@@ -538,16 +538,16 @@ export interface Preflight {
   /** The investigation's spending limit (D324), or null when it has none. `warning` is set once
    * it is reached: the run would stop before sending anything. Never a reason to skip the pause. */
   spending_limit?: (SpendingStatus & { warning: string | null }) | null
-  /** Documents about to be sent that are partly in another language (D382): their scanned pages
+  /** Documents about to be sent that are partly in another language (D383): their scanned pages
    * in that language can be read again in it, on this computer, before anything is sent. */
   language_questions?: LanguageQuestion[]
 }
 
-/** A document partly in another language (D382): 1-indexed scanned pages by language code, and
+/** A document partly in another language (D383): 1-indexed scanned pages by language code, and
  * each language's name. */
 export interface LanguageQuestion { sha: string; filename: string; pages: Record<string, number[]>; names: Record<string, string> }
 
-/** The language a document's pages were read in (D382), from pre-processing. */
+/** The language a document's pages were read in (D383), from pre-processing. */
 export interface DocumentLanguage {
   /** ISO 639-1 code; null when no page had enough text to judge. */
   code: string | null

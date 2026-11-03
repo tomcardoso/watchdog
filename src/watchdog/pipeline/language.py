@@ -1,5 +1,5 @@
 """Each document's language, detected from its pages' text, and what that means for reading its
-scanned pages again (D382).
+scanned pages again (D383).
 
 Detection is `py3langid` (offline, numpy, the same answer every time) over each page's text, the
 file's own text layer or a first OCR reading. A detector reads character patterns, so French read

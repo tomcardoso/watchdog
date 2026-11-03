@@ -472,7 +472,7 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) 
 
 def language_questions(vault: Path, shas: list[str] | None = None) -> list[dict]:
     """The queued documents partly in another language whose scanned pages could be read again
-    in it (D382), for the question Add documents asks before processing: sha, filename and
+    in it (D383), for the question Add documents asks before processing: sha, filename and
     `pages` (language -> 1-indexed pages). `shas` limits it to those documents."""
     out = []
     for qf in sorted((vault / ".watchdog" / "queue").glob("*.json")):
@@ -490,7 +490,7 @@ def language_questions(vault: Path, shas: list[str] | None = None) -> list[dict]
 
 def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
     """Read the other-language scanned pages of these queued documents again, each in its
-    language plus English (D382): the reporter's yes to the question Add documents asks. Local
+    language plus English (D383): the reporter's yes to the question Add documents asks. Local
     only. The queue descriptor gets the new page text, its candidate harvest and near-duplicate
     check again, and the text positions file the new lines' boxes. Under the pre-processing lock,
     as everything else that writes the queue. Returns, per document, what was read again."""
@@ -640,7 +640,7 @@ def _run_ingest_inner(
             with _MEDIA_SLOT:
                 return preprocess_one(path, timeout=transcribe.media_timeout(path, DEFAULT_FILE_TIMEOUT),
                                       chunk_workers=chunk_workers)
-        # A sidecar's `language:` replaces detection (D382); it sits beside the file until staged.
+        # A sidecar's `language:` replaces detection (D383); it sits beside the file until staged.
         side = path.with_name(path.name + ".yml")
         try:
             declared = sidecar.language(side.read_text(encoding="utf-8")) if side.exists() else None

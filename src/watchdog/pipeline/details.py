@@ -43,7 +43,7 @@ def _skill(value: str) -> str:
 
 
 def _language(value: str) -> str:
-    """A language Watchdog can read a scan in (D382), written as its name."""
+    """A language Watchdog can read a scan in (D383), written as its name."""
     from watchdog.pipeline import language
     if not value:
         return ""
@@ -220,7 +220,7 @@ def set_document(vault: Path, sha: str, values: dict) -> dict:
         before = editable(_current_text(vault, r))
         changed = _changed(before, values)
         if "language" in changed:
-            # The language decides how a document is read (D382), and this one has been read.
+            # The language decides how a document is read (D383), and this one has been read.
             raise DetailsError("A document’s language is used when it is read, and this one has "
                                "been read. Its Details tab says the language it was read in.")
         skill_changed = "skill" in changed and not _same_skill(before["skill"], values["skill"])

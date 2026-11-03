@@ -1227,7 +1227,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         if isinstance(doc.get("media"), dict):
             documents_reg[doc_sha256]["media"] = doc["media"]   # audio/video only (D273)
         if isinstance(doc.get("language"), dict):
-            documents_reg[doc_sha256]["language"] = doc["language"]   # what it was read in (D382)
+            documents_reg[doc_sha256]["language"] = doc["language"]   # what it was read in (D383)
 
         # ── 2b. Record document requests ──────────────────────────────────────
         #

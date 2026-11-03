@@ -1,4 +1,4 @@
-# Language detection on French pages read with English OCR settings (#831, D382)
+# Language detection on French pages read with English OCR settings (#831, D383)
 
 Measured 2026-11-02 on one Mac (macOS 27, Apple silicon), with the app's engine (Docling 2.138,
 ocrmac 1.0.1, RapidOCR 3.10.0 with its PP-OCRv6 small models) and Homebrew Tesseract with

@@ -750,7 +750,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     media = (pf.get("processing") or {}).get("media")
     if isinstance(media, dict):
         doc["media"] = media
-    # The language its pages were read in (D382), for the document's details after commit, when
+    # The language its pages were read in (D383), for the document's details after commit, when
     # the queue descriptor that held it is gone.
     language = (pf.get("processing") or {}).get("language")
     if isinstance(language, dict):
