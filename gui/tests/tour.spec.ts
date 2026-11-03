@@ -28,7 +28,7 @@ test('the sample builds from the welcome card and every tour step points at some
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+      env: { ...process.env, HOME: home, USERPROFILE: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
