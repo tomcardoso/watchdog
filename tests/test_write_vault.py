@@ -622,6 +622,20 @@ def test_registry_json_counts_updated(tmp_path):
     assert reg["entity_count"] == 2
 
 
+def test_documents_registry_keeps_the_language_read_in(tmp_path):
+    """D382: the language a document was read in outlives its queue descriptor."""
+    vault = make_vault(tmp_path)
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
+    ex = json.loads(make_extraction(tmp_path).read_text())
+    lang = {"code": "fr", "source": "detected", "mixed": False, "pages": {"fr": [1]}}
+    ex["document"]["language"] = lang
+    path = tmp_path / "with-language.json"
+    path.write_text(json.dumps(ex))
+    run(path, vault)
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert docs["abc123"]["language"] == lang
+
+
 def test_ingest_log_appended(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")

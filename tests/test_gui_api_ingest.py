@@ -52,6 +52,20 @@ def test_preflight_defaults_on_subscription(rich_vault, wdg_home):
     json.dumps(p)
 
 
+def test_preflight_lists_documents_partly_in_another_language(rich_vault, wdg_home):
+    """D382: a document about to be sent with other-language scanned pages to ask about is named,
+    with its languages; a staged one is not about to be sent, so it is not asked about."""
+    credentials(wdg_home, "subscription")
+    queue = rich_vault / ".watchdog" / "queue"
+    for sha in ("a" * 64, "b" * 64):
+        entry = json.loads((queue / f"{sha}.json").read_text())
+        entry.setdefault("metadata", {})["language"] = {"code": "en", "mixed": True, "ask": {"fr": [2, 3]}}
+        (queue / f"{sha}.json").write_text(json.dumps(entry))
+    p = call("ingest.preflight", vault=V(rich_vault))
+    assert p["language_questions"] == [{"sha": "b" * 64, "filename": "queued-new.pdf",
+                                        "pages": {"fr": [2, 3]}, "names": {"fr": "French"}}]
+
+
 def test_preflight_warning_text_is_plain(rich_vault, wdg_home):
     credentials(wdg_home, "subscription")
     w = call("ingest.preflight", vault=V(rich_vault))["warning_text"]

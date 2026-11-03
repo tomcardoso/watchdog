@@ -112,6 +112,19 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   written, the engine's and Docling's versions and the platform. `auto` is Apple Vision on
   macOS and RapidOCR elsewhere (D373); Tesseract is its fallback only where RapidOCR is missing,
   and then only when it finds language data.
+- **Each document's language (D382, `pipeline/language.py`).** After conversion, the whole
+  document's process (never a slice) detects each page's language with `py3langid` from its text
+  (text layer or first OCR reading); a page under 30 words or below 0.9 confidence takes the
+  majority. One language with 80% of judged pages decides the document; less is `mixed`. A
+  document mostly in another language has every scanned page read again in that language plus
+  English (`preprocess.reread`: forced slices with the engine's own codes, `--ocr-lang`); a mixed
+  one records its other-language scanned pages as `ask`, which the app's preflight lists
+  (`language_questions`) and the `reread-language` operation reads again on the reporter's yes,
+  rewriting the queue descriptor, harvest, near-dup check and text positions. A sidecar's
+  `language:` replaces detection. `language.ocr_codes` is the only place that knows an engine's
+  language support: Apple Vision by its codes, Tesseract only with installed data (never
+  downloaded), RapidOCR not at all (its one model reads Latin scripts as they are). Recorded as
+  `metadata.language` and carried to `documents.json` at commit.
 
 ---
 
@@ -705,6 +718,11 @@ at the vault root. The ledger never changes a fact, and the app writes it throug
 **Recordings in the registry (D273).** A recording's `documents.json` entry carries the `media`
 block from pre-processing (stamped on the document at extraction): readers use the fields they
 know and ignore the rest, whatever its `format`.
+
+**Language in the registry (D382).** A document's `documents.json` entry carries `language`, the
+queue descriptor's `metadata.language` (code, source, mixed, pages by language, pages read again,
+pages left as asked, notes), stamped at extraction like `media`, since the queue descriptor is
+removed at commit. Documents committed before D382 have none.
 
 **Investigation settings (D290).** `.watchdog/settings.json` (`schema_version` 1) holds what belongs
 to the investigation rather than the computer, and travels with the folder: `keys`,

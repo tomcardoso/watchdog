@@ -118,7 +118,7 @@ def test_process_pdf_slices_merges_positions_from_the_ocr_slices(tmp_path, monke
         p.write_bytes(b"")
         return p
 
-    def fake_slice(slice_path, page_numbers, force_ocr):
+    def fake_slice(slice_path, page_numbers, force_ocr, ocr_lang=None):
         out = {"pages": [{"page": n + 1, "markdown": str(n + 1)} for n in page_numbers]}
         if force_ocr:
             out["text_positions"] = tp.block({str(n + 1): {"width": 1, "height": 1, "lines": []}
@@ -132,7 +132,7 @@ def test_process_pdf_slices_merges_positions_from_the_ocr_slices(tmp_path, monke
     assert result["text_positions"]["engine"] == "rapidocr"
 
     monkeypatch.setattr(preprocess_mod, "_run_slice_subprocess",
-                        lambda s, pages, f: {"pages": [{"page": n + 1, "markdown": "x"} for n in pages]})
+                        lambda s, pages, f, ocr_lang=None: {"pages": [{"page": n + 1, "markdown": "x"} for n in pages]})
     assert "text_positions" not in preprocess_mod.process_pdf_slices(Path("/fake.pdf"), [([0, 1], False)])
 
 

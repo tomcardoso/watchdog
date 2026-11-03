@@ -97,6 +97,16 @@ Recordings are transcribed on your computer during pre-processing. What goes wro
 - **Names or figures are wrong.** Speech recognition mishears uncommon names and numbers; this is the normal failure, not a fault. Click the timestamp beside the passage to hear it, and correct the fact in your own notes. A larger model makes fewer of these mistakes.
 - **The player says the format can't be played.** The transcript is still there. Some formats (`.avi`, and some `.mkv` files) cannot be played inside Watchdog; use **Open original** to play the recording in another app.
 
+## A scanned document in another language reads badly
+
+Watchdog reads a scanned page again in its own language when it can tell what that is ([how](how-it-works.md#the-documents-language)). The document's **Details** tab says which language it is in and which pages were read in it, and why not, when they could not be:
+
+- **"Tesseract has no French language data on this computer."** Install Tesseract's data for that language (with [Homebrew](https://brew.sh) on a Mac, `brew install tesseract-lang`). Documents added after that are read in it.
+- **The language was not detected.** Its pages had too little text to tell. Before adding such a document, add a `language:` line to its [sidecar file](using-watchdog.md#sidecar-files).
+- **A document partly in another language was added as first read.** Choosing **Read again in French** (or the language named) at the confirmation step, before the document is sent, reads those pages in their language.
+
+A document already added keeps the text it was first read with.
+
 ## A file was set aside
 
 Two things set a file aside, and neither is an error. The **Documents** screen lists these under **Set aside**:

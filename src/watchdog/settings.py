@@ -49,11 +49,12 @@ SETTINGS = {
         "choices": ["auto", "apple_vision", "tesseract", "easyocr", "rapidocr"],
     },
     "ocr_languages": {
-        "short": "Apple Vision OCR languages (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
+        "short": "Apple Vision OCR languages when a document's language can't be detected (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
         "help": (
-            "Languages Apple Vision should try when reading scanned documents.\n"
-            "  Leave unset to auto-detect from the image (macOS 13+).\n"
-            "  Set explicitly if auto-detection produces poor results or you are on macOS 12.\n"
+            "Languages Apple Vision first reads scanned pages in. Watchdog then detects each\n"
+            "  document's language from its text and reads its scanned pages again in that language\n"
+            "  when it is another (D382), so this decides the reading only when the language can't be\n"
+            "  detected: pages with too little text to tell. Unset, Vision reads English.\n"
             "  Codes: https://developer.apple.com/documentation/vision/vnrecognizetextrequest"
         ),
         "type": "lang_list",
@@ -788,7 +789,7 @@ def display_value(key: str, value, cfg: dict | None = None) -> str:
         return _auto_resolved(key, cfg) if cfg is not None else "auto"
     if value is None:
         if key == "ocr_languages":
-            return "auto-detect (default)"
+            return "English (default)"
         d = default_value(key)
         if d is None:
             return "(not set)"
@@ -796,7 +797,7 @@ def display_value(key: str, value, cfg: dict | None = None) -> str:
             return f"{d} (default)"
         value = d
     if key == "ocr_languages":
-        return ", ".join(value) if value else "auto-detect (default)"
+        return ", ".join(value) if value else "English (default)"
     if isinstance(value, bool):
         return "true" if value else "false"
     if meta.get("secret") and value:
@@ -811,7 +812,7 @@ def coerce(cfg: dict, key: str, value: str) -> str:
     if key == "ocr_languages":
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
         cfg[key] = langs
-        return ", ".join(langs) if langs else "auto-detect"
+        return ", ".join(langs) if langs else "English"
     if key == "projects_dir":
         path = Path(value).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)

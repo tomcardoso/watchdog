@@ -266,6 +266,8 @@ def document(vault: str, sha: str) -> dict:
 
     queue = vaultio.read_json(v / ".watchdog" / "queue" / f"{full}.json", {})
     metadata = queue.get("metadata") if isinstance(queue, dict) else None
+    # Read in which language (D382): kept in the registry once committed, in the queue until then.
+    language = rec.get("language") or (metadata or {}).get("language")
     file_metadata = rec.get("file_metadata") or ex_doc.get("file_metadata") or {}
 
     return {
@@ -279,6 +281,7 @@ def document(vault: str, sha: str) -> dict:
         "sidecar": _sidecar(ex_doc.get("sidecar") or (queue.get("sidecar") if isinstance(queue, dict) else None)),
         "metadata": vaultio.plain(metadata) if isinstance(metadata, dict) else None,
         "media": vaultio.media_info(rec),
+        "language": vaultio.plain(language) if isinstance(language, dict) else None,
         "extract_model": rec.get("extract_model") or None,
         "extract_effort": rec.get("extract_effort") or None,
         "record_skill_hash": rec.get("record_skill_hash") or None,

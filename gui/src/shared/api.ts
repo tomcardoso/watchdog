@@ -227,6 +227,8 @@ export interface DocumentDetail extends DocumentRow {
   duplicates: { sha: string; filename: string; note: string | null }[]
   /** Audio and video only (D273). */
   media: MediaInfo | null
+  /** The language its pages were read in (D382); null for a document read before it was recorded. */
+  language: DocumentLanguage | null
   /** Pages with saved positions of OCR'd text, fetched with `vault.textPositions` (D289). */
   positions_pages: number[]
 }
@@ -524,6 +526,29 @@ export interface Preflight {
   /** The investigation's spending limit (D324), or null when it has none. `warning` is set once
    * it is reached: the run would stop before sending anything. Never a reason to skip the pause. */
   spending_limit?: (SpendingStatus & { warning: string | null }) | null
+  /** Documents about to be sent that are partly in another language (D382): their scanned pages
+   * in that language can be read again in it, on this computer, before anything is sent. */
+  language_questions?: LanguageQuestion[]
+}
+
+/** A document partly in another language (D382): 1-indexed scanned pages by language code, and
+ * each language's name. */
+export interface LanguageQuestion { sha: string; filename: string; pages: Record<string, number[]>; names: Record<string, string> }
+
+/** The language a document's pages were read in (D382), from pre-processing. */
+export interface DocumentLanguage {
+  /** ISO 639-1 code; null when no page had enough text to judge. */
+  code: string | null
+  source: 'detected' | 'sidecar' | 'undetermined'
+  mixed: boolean
+  /** 1-indexed page numbers by language. */
+  pages: Record<string, number[]>
+  /** Scanned pages read again in their language, by language. */
+  reread?: Record<string, number[]>
+  /** A mixed document's other-language scanned pages, not (yet) read again. */
+  ask?: Record<string, number[]>
+  /** Why some pages could not be read in their language. */
+  notes?: string[]
 }
 
 /** An investigation's spending limit and the processing spend recorded since its last reset
@@ -681,6 +706,7 @@ type NoParams = Record<string, never>
 export interface OpParams {
   add: RunOptions & { paths?: string[]; retry?: boolean; skip_warning?: boolean }
   chew: { paths?: string[]; chew_workers?: number; chunk_workers?: number }
+  'reread-language': { shas: string[] }
   dig: IngestModels & { skip_warning?: boolean; limit?: number; force?: boolean }
   bark: FinalizerModels
   requeue: NoParams

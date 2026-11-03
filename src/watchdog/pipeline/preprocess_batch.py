@@ -16,6 +16,7 @@ from pathlib import Path
 
 from watchdog import progress
 from watchdog.pipeline import harvest, sidecar, text_positions, transcribe
+from watchdog.pipeline.language import name as language_name
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
@@ -161,11 +162,20 @@ def _ocr_note(result: dict, is_garbled: bool) -> str:
     Names the page count when OCR was page-scoped (#605) — "garbled OCR" alone
     would read as though the whole document had been re-read off its page images.
     """
-    ocr_pages = result.get("metadata", {}).get("ocr_pages") or []
+    meta = result.get("metadata", {})
+    ocr_pages = meta.get("ocr_pages") or []
     if ocr_pages:
         scope = f"{len(ocr_pages)} of {result.get('page_count', 0)} pages"
-        return f"garbled OCR on {scope}" if is_garbled else f"OCR on {scope}"
-    return "garbled OCR" if is_garbled else ""
+        note = f"garbled OCR on {scope}" if is_garbled else f"OCR on {scope}"
+    else:
+        note = "garbled OCR" if is_garbled else ""
+    lang = meta.get("language") or {}
+    words = [language_name(c) for c in lang.get("reread") or {}]
+    if words:
+        note = "  ·  ".join(n for n in (note, f"read in {' and '.join(words)}") if n)
+    if lang.get("ask"):
+        note = "  ·  ".join(n for n in (note, "partly in another language") if n)
+    return note
 
 
 def _count_pdf_pages(path: Path) -> int:
@@ -316,11 +326,14 @@ def preprocess_one(
     path: Path,
     timeout: int = DEFAULT_FILE_TIMEOUT,
     chunk_workers: int | None = None,
+    language: str | None = None,
 ) -> dict:
     t0 = time.time()
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
     if chunk_workers is not None:
         cmd += ["--chunk-workers", str(chunk_workers)]
+    if language:
+        cmd += ["--language", language]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 encoding="utf-8", errors="replace")
@@ -457,6 +470,80 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) 
     return keep
 
 
+def language_questions(vault: Path, shas: list[str] | None = None) -> list[dict]:
+    """The queued documents partly in another language whose scanned pages could be read again
+    in it (D382), for the question Add documents asks before processing: sha, filename and
+    `pages` (language -> 1-indexed pages). `shas` limits it to those documents."""
+    out = []
+    for qf in sorted((vault / ".watchdog" / "queue").glob("*.json")):
+        if shas is not None and qf.stem not in shas:
+            continue
+        try:
+            data = json.loads(qf.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        ask = ((data.get("metadata") or {}).get("language") or {}).get("ask")
+        if isinstance(ask, dict) and ask:
+            out.append({"sha": qf.stem, "filename": data.get("filename", qf.stem), "pages": ask})
+    return out
+
+
+def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
+    """Read the other-language scanned pages of these queued documents again, each in its
+    language plus English (D382): the reporter's yes to the question Add documents asks. Local
+    only. The queue descriptor gets the new page text, its candidate harvest and near-duplicate
+    check again, and the text positions file the new lines' boxes. Under the pre-processing lock,
+    as everything else that writes the queue. Returns, per document, what was read again."""
+    from watchdog.pipeline import locks as _locks
+    from watchdog.pipeline import preprocess
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS, busy_message
+    from watchdog.vault_paths import preprocessing_lock
+    lock_file = preprocessing_lock(vault)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    if not _locks.acquire_or_take_stale(lock_file, _locks.lock_contents("chew"), STALE_SECONDS):
+        sys.exit(f"Error: {busy_message(_locks.held(lock_file, STALE_SECONDS))}")
+    done = []
+    try:
+        for q in language_questions(vault, shas):
+            qf = vault / ".watchdog" / "queue" / f"{q['sha']}.json"
+            result = json.loads(qf.read_text(encoding="utf-8"))
+            source = Path(result.get("source_path") or "")
+            info = result["metadata"]["language"]
+            if not source.is_file():
+                info.setdefault("notes", []).append(
+                    "Its original file was no longer there to read again, so its pages keep their first reading.")
+                info.pop("ask", None)
+                qf.write_text(json.dumps(result, ensure_ascii=False))
+                continue
+            stored = text_positions.path_for(vault, q["sha"])
+            try:
+                result["text_positions"] = json.loads(stored.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                result.pop("text_positions", None)
+            ask = {code: [int(p) for p in pages] for code, pages in info.pop("ask").items()}
+            print(f"  Reading {result.get('filename')} again: "
+                  + "; ".join(f"{language_name(c)} on {len(p)} page{'s' if len(p) != 1 else ''}"
+                              for c, p in ask.items()))
+            outcome = preprocess.reread(source, result, ask)
+            if outcome["reread"]:
+                info["reread"] = {**(info.get("reread") or {}), **outcome["reread"]}
+            if outcome["notes"]:
+                info["notes"] = (info.get("notes") or []) + outcome["notes"]
+                for note in outcome["notes"]:
+                    print(f"     ⚠  {note}")
+            result["char_count"] = sum(len(p.get("markdown", "")) for p in result.get("pages", []))
+            result.pop("harvest", None)
+            add_harvest(result)
+            result["near_dup"] = _compute_near_dup(result, vault)
+            text_positions.write(vault, q["sha"], result.pop("text_positions", None))
+            qf.write_text(json.dumps(result, ensure_ascii=False))
+            done.append({"sha": q["sha"], "filename": result.get("filename"),
+                         "reread": outcome["reread"]})
+    finally:
+        _locks.release_lock(lock_file)
+    return done
+
+
 def run_ingest(
     vault: Path,
     workers: int | None = None,
@@ -553,7 +640,14 @@ def _run_ingest_inner(
             with _MEDIA_SLOT:
                 return preprocess_one(path, timeout=transcribe.media_timeout(path, DEFAULT_FILE_TIMEOUT),
                                       chunk_workers=chunk_workers)
-        return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
+        # A sidecar's `language:` replaces detection (D382); it sits beside the file until staged.
+        side = path.with_name(path.name + ".yml")
+        try:
+            declared = sidecar.language(side.read_text(encoding="utf-8")) if side.exists() else None
+        except OSError:
+            declared = None
+        return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers,
+                              language=declared)
 
     def _chew(path: Path) -> dict:
         result = _read(path)
@@ -606,6 +700,8 @@ def _run_ingest_inner(
 
             # Settle this file's row: print its result above the live region, clearing the in-flight row.
             live.finish(str(path), f"  {status}  {rel}{label_str}{garb_str}")
+            for note in ((result.get("metadata") or {}).get("language") or {}).get("notes") or []:
+                live.note(f"       ⚠  {note}")
 
             # A sidecar sits beside `path` under the original filename, whatever `path`'s own
             # outcome — read here, while it still does, before `path` (and possibly the sidecar)
