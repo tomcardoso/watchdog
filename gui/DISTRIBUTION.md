@@ -7,7 +7,9 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 - **The app**: a tag `v<semver>` runs `.github/workflows/app-release.yml`. `v1.0.5` is a stable
   release, `v1.1.0-beta.1` a beta. It tests the Python package and, at the same time, builds the
   app on macOS (Apple silicon and Intel, in separate jobs so their notarizations overlap), Windows
-  and Linux with the tag's version. Once the tests and every build pass, it publishes:
+  and Linux with the tag's version. Each platform's job runs the app's end-to-end tests (`gui/tests`)
+  before building its installer, so a failure stops that platform before the build (D385). Once
+  the tests and every build pass, it publishes:
   1. a stable release as the repository's **latest release**, titled "Watchdog 1.0.5". It is the
      page to send people (https://github.com/tomcardoso/watchdog/releases/latest) and the feed
      installed stable copies read for updates;

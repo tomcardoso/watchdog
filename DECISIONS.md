@@ -3243,3 +3243,9 @@ Tradeoff: a single genuinely upside-down line on an upright page is now read upr
 The end-to-end tests (`gui/tests`) ran only on a developer's machine through `scripts/check.sh`, so a failure on `main` went unnoticed until a later change tripped over it (#838). Development increasingly happens in cloud sessions, where a local-only check effectively never runs. CI gains a blocking `e2e` job on `ubuntu-latest`, set up like App release's screenshots job: the engine with the test suite's light dependencies, the app built, Playwright under `xvfb-run`. The sample investigation runs on canned answers, so the job calls no model.
 
 Tradeoff: the job covers Linux only, and #838's failure happened only on macOS (Electron's preferences folder ignores `HOME` there), so a Mac-specific break still needs a local run; a `macos-latest` job would catch it, at a slower start. A flaky step is fixed, not made non-blocking.
+
+### D385 — App release runs the end-to-end tests on every platform before building
+
+D384 put the end-to-end tests in pull-request CI on Linux only, but #838's failure happened only on macOS, so a platform-specific break could still reach a release. Each platform job in App release (macOS arm64 and x64, Windows, Linux) now runs them after the unit tests and before `npm run dist:*`, against the same light engine install as CI (`xvfb-run` on Linux; the macOS and Windows runners have a desktop session). A failure fails that job before its installer build and notarization, and `release` waits on every job, so nothing is published. No runner is added.
+
+Tradeoff: every release and test build takes a few minutes longer, and a Mac- or Windows-only break is found at release time rather than on its pull request. `dist:*` compiles the app again after the tests, and the macOS x64 job runs on an Apple silicon runner, so its tests repeat the arm64 job's rather than exercising an Intel build.
