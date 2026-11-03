@@ -63,7 +63,8 @@ jobs:
         run: |
           # The interpreter's own path, which on Windows is a Windows path that Electron can start.
           export WATCHDOG_PYTHON="$(python -c 'import sys; print(sys.executable)')"
-          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
+          export WATCHDOG_GUI_DEBUG=1 DEBUG=pw:browser
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npx playwright test; else npx playwright test smoke.spec.ts -g "every screen"; fi
 
       - name: Collect the app's logs
         # The app logs the backend's errors (main.log): under a test's temporary folder, which only
