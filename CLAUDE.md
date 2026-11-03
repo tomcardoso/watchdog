@@ -113,7 +113,7 @@ python3 -m venv .venv
 
 Tests use `tmp_path` and `monkeypatch` to move Watchdog's own folder away from the real home directory: patch `watchdog.config.HOME`, the one place `~/.watchdog` is decided (settings, the list of investigations, credentials, chats). See the `wdg_home` fixture in `tests/gui_support.py` for the pattern.
 
-CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml`, `app-release.yml` and `pages.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
+CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. It runs lint, the Python suite, the app's typecheck, unit tests and build, and the end-to-end tests (the `e2e` job, Linux only, D384). Third-party actions in `ci.yml`, `app-release.yml` and `pages.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
 
 ## Linting
 

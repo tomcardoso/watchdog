@@ -51,7 +51,7 @@ test('every screen renders against the demo investigation', async () => {
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
@@ -395,7 +395,7 @@ test('every screen renders against the demo investigation', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
 
@@ -417,7 +417,7 @@ test('adding documents waits for the background setup', async () => {
     const slug = Object.keys(projects)[0]
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: phase1, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume,slow-phase2' }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: phase1, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume,slow-phase2' }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
@@ -454,7 +454,7 @@ test('adding documents waits for the background setup', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
 
@@ -467,7 +467,7 @@ test('the gate lifts when the background setup finishes', async () => {
     execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume' }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume' }
     })
     const page = await app.firstWindow()
     await page.waitForSelector('.app', { timeout: 90_000 })
@@ -477,7 +477,7 @@ test('the gate lifts when the background setup finishes', async () => {
     expect(ready).toEqual({ ready: true })
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
 
@@ -504,7 +504,7 @@ test('the pause names its investigation after a switch', async () => {
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
@@ -556,7 +556,7 @@ test('the pause names its investigation after a switch', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
 
@@ -579,7 +579,7 @@ test('a run on this computer skips the acknowledgement', async () => {
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, LOCAL_BASE_URL: '' }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, LOCAL_BASE_URL: '' }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
@@ -604,7 +604,7 @@ test('a run on this computer skips the acknowledgement', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
 
@@ -618,7 +618,7 @@ test('run state is refetched when a job ends, on screen or not', async () => {
     const slug = Object.keys(JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8')))[0]
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
     })
     const page = await app.firstWindow()
     await page.waitForSelector('.app', { timeout: 90_000 })
@@ -642,6 +642,6 @@ test('run state is refetched when a job ends, on screen or not', async () => {
     }, vault), { timeout: 15_000 }).toBeGreaterThan(before)
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })

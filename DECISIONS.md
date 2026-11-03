@@ -3237,3 +3237,9 @@ RapidOCR decided each line's direction on its own: its classifier shrinks the li
 Rejected: switching the classifier off, which read the sideways backsheet upside down (97 of its 100 words lost) and cut scanned identifiers to 81%; raising `cls_thresh` to 0.99, which still lost a third of that page, since its genuine flips (0.91–1.0) overlap the false ones (0.91–0.95); shipping Tesseract instead, which needs a system install and language data.
 
 Tradeoff: a single genuinely upside-down line on an upright page is now read upright and lost. The sideways case rests on one page of one corpus, and every measurement is English. No migration (I19): documents already read keep their text until they are added again.
+
+### D384 — CI runs the app's end-to-end tests
+
+The end-to-end tests (`gui/tests`) ran only on a developer's machine through `scripts/check.sh`, so a failure on `main` went unnoticed until a later change tripped over it (#838). Development increasingly happens in cloud sessions, where a local-only check effectively never runs. CI gains a blocking `e2e` job on `ubuntu-latest`, set up like App release's screenshots job: the engine with the test suite's light dependencies, the app built, Playwright under `xvfb-run`. The sample investigation runs on canned answers, so the job calls no model.
+
+Tradeoff: the job covers Linux only, and #838's failure happened only on macOS (Electron's preferences folder ignores `HOME` there), so a Mac-specific break still needs a local run; a `macos-latest` job would catch it, at a slower start. A flaky step is fixed, not made non-blocking.

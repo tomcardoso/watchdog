@@ -5,7 +5,7 @@
 // WATCHDOG_PYTHON, and xvfb-run on headless Linux.
 
 import { _electron as electron, expect, test } from '@playwright/test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -14,7 +14,8 @@ const repoSrc = resolve(__dirname, '..', '..', 'src')
 const STEPS = 14
 
 test('the sample builds from the welcome card and every tour step points at something on screen', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'wd-tour-'))
+  // The real path: on macOS the temporary folder is reached through a link, and the app stores real paths.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wd-tour-')))
   const home = join(root, 'home')
   const investigations = join(root, 'Investigations')
   try {
@@ -26,7 +27,7 @@ test('the sample builds from the welcome card and every tour step points at some
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
-      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+      env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
     })
     const page = await app.firstWindow()
     const errors: string[] = []
@@ -144,6 +145,6 @@ test('the sample builds from the welcome card and every tour step points at some
     expect(errors).toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
 })
