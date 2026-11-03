@@ -72,7 +72,10 @@ async function candidates(engine: Engine): Promise<Candidate[]> {
 }
 
 function pythonPathEnv(src: string | null, engine?: Engine, managed = false): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
+  // UTF-8 mode, as for the engine's own Python: the engine reads and writes text files without
+  // naming an encoding, which on Windows would otherwise mean the system code page (cp1252), and
+  // building the sample investigation failed there on its first template.
+  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
   delete env[PENDING_ENV]
   // While the engine's background phase is unfinished the backend refuses to add documents
   // (D272). The simulated engine sets it too, so the gated screens can be exercised.
