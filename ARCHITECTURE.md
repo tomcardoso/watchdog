@@ -87,7 +87,12 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   signature is stored in `documents.json`.
 - **Sidecars (D121).** A document's `.yml` sidecar is read only here: filtered to an allowlist,
   values length-capped, embedded in the queue JSON, and the file deleted. Every later reader takes
-  it from the queue JSON.
+  it from the queue JSON. The app's **Edit details** (D381, `pipeline/details.py`, the
+  `set-details` operation) writes the sidecar beside a file waiting in `incoming/`, or, once read,
+  every filtered copy: the queue, kept and failed descriptors, the stored extraction (with its
+  `source`/`obtained`), the `.yml` beside the original in `morgue/`, then the document note. The
+  fields it sets are `sidecar.EDITABLE_KEYS`; a new skill on an extracted document is acted on only
+  by Retry extraction.
 - **Embedded file metadata.** PDF DocumentInfo, Office properties, EXIF and container tags are
   read from the original file, normalized to a small allowlist and capped at 200 characters
   (untrusted input, I6). Stored as `file_metadata`, separate from `metadata` (how the pipeline

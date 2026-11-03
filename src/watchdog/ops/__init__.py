@@ -138,7 +138,8 @@ RUN_OPTIONS = frozenset({
 
 
 def _type_name(tp) -> tuple[str, bool]:
-    """('str' | 'int' | 'bool' | 'list[str]' | 'float', optional?) for an annotation."""
+    """('str' | 'int' | 'bool' | 'list[str]' | 'dict[str, str]' | 'float', optional?) for an
+    annotation."""
     optional = False
     origin = typing.get_origin(tp)
     if origin in (typing.Union, types.UnionType):
@@ -149,6 +150,8 @@ def _type_name(tp) -> tuple[str, bool]:
     if origin is list:
         (inner,) = typing.get_args(tp) or (str,)
         return f"list[{inner.__name__}]", optional
+    if origin is dict and typing.get_args(tp) == (str, str):
+        return "dict[str, str]", optional
     if tp in (str, int, bool, float):
         return tp.__name__, optional
     raise TypeError(f"unsupported parameter type {tp!r}")
@@ -198,7 +201,9 @@ def _check(name: str, key: str, value, spec: dict):
           "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
           "float": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
           "bool": lambda v: isinstance(v, bool),
-          "list[str]": lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v)}[t]
+          "list[str]": lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v),
+          "dict[str, str]": lambda v: isinstance(v, dict) and all(
+              isinstance(k, str) and isinstance(i, str) for k, i in v.items())}[t]
     if t == "int" and isinstance(value, str) and value.strip().lstrip("-").isdigit():
         value = int(value)
     if not ok(value):
@@ -246,7 +251,7 @@ def exit_code(name: str, result) -> int:
     return spec.exit_code(result) if spec.exit_code else 0
 
 
-_MODULES = ("ingest", "projects", "reindex", "export", "troubleshoot", "diagnostics", "merge", "entities", "maintenance", "research", "setup", "sample", "migrate")
+_MODULES = ("ingest", "documents", "projects", "reindex", "export", "troubleshoot", "diagnostics", "merge", "entities", "maintenance", "research", "setup", "sample", "migrate")
 _loaded = False
 
 

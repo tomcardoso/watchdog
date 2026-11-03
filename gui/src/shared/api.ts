@@ -432,6 +432,18 @@ export interface Note {
 export type LinkKind = 'document' | 'entity' | 'briefing' | 'query' | 'wiki' | 'note' | 'original' | 'fulltext' | 'missing'
 export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string | null; page: number | null }
 
+/** A document's details: the fields of its `.yml` sidecar a reporter sets (D381). `''` removes one. */
+export type DetailKey = 'source' | 'obtained' | 'notes' | 'skill'
+export type DetailValues = Partial<Record<DetailKey, string>>
+export interface DocDetails {
+  values: Record<DetailKey, string>
+  stage: 'waiting' | 'queued' | 'staged' | 'added'
+  /** A new record skill means extracting again, which is billed. */
+  skill_costs: boolean
+  /** The document's text is kept, so it can be extracted again (D367). */
+  reextract: boolean
+}
+
 export interface PipelineState {
   incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
   chew_failed: { name: string; path: string; size: number; reason: string | null }[]
@@ -720,6 +732,7 @@ export interface OpParams {
   'merge-entities': { keep: string; merge: string }
   'merge-entity-pairs': { keep: string[]; merge: string[] }
   'undo-merge': { id: string }
+  'set-details': { values: DetailValues; sha?: string; path?: string }
   'hide-entities': { ids: string[] }
   'unhide-entities': { ids: string[] }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
@@ -755,7 +768,7 @@ export interface ReasoningRun {
 export interface ReasoningRuns { enabled: boolean; folder: string; runs: ReasoningRun[] }
 /** What a copy for troubleshooting would hold, before compression (D323). */
 export interface TroubleshootingSize { files: number; bytes: number; originals_files: number; originals_bytes: number }
-export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
+export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]' | 'dict[str, str]'; required: boolean; default: unknown; nullable: boolean }
 export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; engine: 'add' | 'index' | null; kind: 'job' | 'action' }
 
 // ── the sample investigation and its tour (D303) ─────────────────────────────
@@ -1049,6 +1062,7 @@ export interface Methods {
   'vault.diagnosticsReport': [{ vault: string }, { text: string }]
   'vault.reasoningRuns': [{ vault: string }, ReasoningRuns]
   'vault.pipeline': [{ vault: string }, PipelineState]
+  'vault.details': [{ vault: string; sha?: string; path?: string }, DocDetails]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]
   'vault.readFile': [{ vault: string; path: string }, { text: string; exists: boolean }]

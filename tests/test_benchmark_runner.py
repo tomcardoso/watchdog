@@ -45,6 +45,19 @@ def _fin(stub):
 import watchdog.ops.ingest as wd_ops_ingest  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_watchdog_home(tmp_path, monkeypatch):
+    """Point Watchdog's own folder at an empty one, so the runner's backend lookup
+    (`auth.resolve_auth`) never reads the developer's stored keys or secure storage."""
+    home = tmp_path / "wdg-home"
+    home.mkdir()
+    monkeypatch.setattr("watchdog.config.HOME", home)
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
+                "LOCAL_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    return home
+
+
 # ── load_config ───────────────────────────────────────────────────────────────
 
 def _write_config(tmp_path, **overrides):

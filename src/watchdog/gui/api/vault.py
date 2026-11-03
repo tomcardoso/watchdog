@@ -290,6 +290,24 @@ def document(vault: str, sha: str) -> dict:
     }
 
 
+@method("vault.details")
+def details_(vault: str, sha: str | None = None, path: str | None = None) -> dict:
+    """The Edit details form's starting values (D381) for a document Watchdog has read (`sha`) or
+    a file waiting to be added (`path`): the sidecar's editable fields, the document's stage, and
+    whether a new record skill means extracting again (`skill_costs`) and can be (`reextract`)."""
+    from watchdog.pipeline import details
+    v = require_vault(vault)
+    try:
+        if sha:
+            return details.read_document(v, sha)
+        if path:
+            return {"values": details.read_waiting(v, path), "stage": "waiting",
+                    "skill_costs": False, "reextract": False}
+    except details.DetailsError as e:
+        raise RpcError(str(e), code="not_found") from None
+    raise RpcError("Name a document or a waiting file.", code="bad_params")
+
+
 @method("vault.textPositions")
 def text_positions_(vault: str, sha: str, pages: list | None = None) -> dict:
     """Where the OCR'd lines sit on the requested pages of a scanned document (D289), read from

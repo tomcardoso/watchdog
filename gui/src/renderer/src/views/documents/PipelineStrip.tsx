@@ -14,16 +14,18 @@ import { EngineWait } from '@renderer/components/EngineWait'
 import { errorMessage, invalidate } from '@renderer/lib/rpc'
 import { toast, useApp } from '@renderer/lib/store'
 import type { PipelineState } from '@shared/api'
+import { EditDetailsButton, type DetailsTarget } from './EditDetails'
 
 const SHOW = 40
 
-function FileList({ rows }: { rows: { key: string; name: string; why?: string | null; err?: boolean }[] }) {
+function FileList({ rows }: { rows: { key: string; name: string; why?: string | null; err?: boolean; edit?: DetailsTarget }[] }) {
   return (
     <div className="pipe-files selectable">
       {rows.slice(0, SHOW).map((r) => (
         <div className="pipe-file" key={r.key}>
           <span className="name truncate" title={r.name}>{r.name}</span>
           {r.why && <span className={'why truncate' + (r.err ? ' err' : '')} title={r.why}>{r.why}</span>}
+          {r.edit && <EditDetailsButton small target={r.edit} label={r.name} />}
         </div>
       ))}
       {rows.length > SHOW && <div className="pipe-more">and {rows.length - SHOW} more</div>}
@@ -143,8 +145,8 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
           {p.incoming.length > 0 && (
             <div className="pipe-group">
               <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting to be added <span className="n">{p.incoming.length}</span></div>
-              <p>Files you have added or downloaded that haven't been read yet.</p>
-              <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with sidecar' : ''].filter(Boolean).join(' · ') }))} />
+              <p>Files you have added or downloaded that haven't been read yet. Edit details sets where one came from before it is added.</p>
+              <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with details' : ''].filter(Boolean).join(' · '), edit: { path: f.path } }))} />
               <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Add them</Button></div>
             </div>
           )}
@@ -153,7 +155,7 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
             <div className="pipe-group">
               <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Read, awaiting extraction <span className="n">{waiting.length}</span></div>
               <p>Converted to text on this computer and queued. The model hasn't extracted facts from them yet.</p>
-              <FileList rows={waiting.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />
+              <FileList rows={waiting.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null, edit: { sha: q.sha } }))} />
               <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Extract them</Button></div>
             </div>
           )}

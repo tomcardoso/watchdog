@@ -16,6 +16,7 @@ import { readIn } from '@renderer/lib/readIn'
 import { readWith } from '@renderer/lib/readWith'
 import type { DocumentDetail, MediaInfo } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
+import { EditDetailsButton } from './EditDetails'
 
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
 
@@ -137,7 +138,10 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
   return (
     <>
       <section className="det-section">
-        <h4>Document</h4>
+        <div className="det-head">
+          <h4>Document</h4>
+          <EditDetailsButton target={{ sha: d.sha }} label={d.title || d.filename} />
+        </div>
         <KV
           rows={[
             ['Title', d.title || '—'],
