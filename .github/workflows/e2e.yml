@@ -65,6 +65,20 @@ jobs:
           export WATCHDOG_PYTHON="$(python -c 'import sys; print(sys.executable)')"
           if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
 
+      - name: Collect the app's logs
+        # The app logs the backend's errors (main.log): under a test's temporary folder, which only
+        # a test that left its folder behind still has, or in the app's default log folder.
+        if: failure()
+        shell: bash
+        run: |
+          tmp="$(node -p "require('os').tmpdir()")"
+          n=0
+          for log in $(find "$tmp" "$HOME/AppData/Roaming/Watchdog" "$HOME/Library/Logs/Watchdog" "$HOME/.config/Watchdog" -name main.log 2>/dev/null); do
+            n=$((n + 1))
+            mkdir -p "test-results/app-logs/$n" && cp "$log" "test-results/app-logs/$n/" && echo "$log" > "test-results/app-logs/$n/from.txt"
+          done
+          echo "Kept $n app log(s)."
+
       - name: Keep the failures' traces
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
