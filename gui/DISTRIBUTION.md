@@ -63,8 +63,9 @@ To check a change builds on every platform before tagging, run the workflow by h
 App release → Run workflow, on a branch): it builds and signs as a release does, keeps the
 installers as the run's artifacts for five days, and publishes nothing. It takes the screenshots
 too, and keeps them as the `screenshots` artifact rather than opening a pull request.
-To run only the end-to-end tests on every platform, without building installers, run Actions →
-End-to-end tests → Run workflow on the branch.
+To run only the end-to-end tests, without building installers, run Actions → End-to-end tests →
+Run workflow on the branch. **Platform** picks one (`linux`, `windows`, `macos-arm64` or
+`macos-x64`, the last on an Intel runner) or `all`, the default.
 
 ## Signing
 

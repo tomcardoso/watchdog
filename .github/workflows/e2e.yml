@@ -8,25 +8,27 @@ name: End-to-end tests
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to test
+        type: choice
+        options: [all, linux, windows, macos-arm64, macos-x64]
+        default: all
   workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: all
 
 jobs:
   e2e:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            name: macOS arm64
-          # An Intel runner, so the x64 app is the one tested.
-          - os: macos-15-intel
-            name: macOS x64
-          - os: windows-latest
-            name: Windows
-          - os: ubuntu-latest
-            name: Linux
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+        platform: ${{ fromJSON(inputs.platform == 'all' && '["macos-arm64", "macos-x64", "windows", "linux"]' || format('["{0}"]', inputs.platform)) }}
+    name: ${{ matrix.platform }}
+    # macos-x64 runs on an Intel runner, so the x64 app is the one tested.
+    runs-on: ${{ fromJSON('{"macos-arm64":"macos-latest","macos-x64":"macos-15-intel","windows":"windows-latest","linux":"ubuntu-latest"}')[matrix.platform] }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -67,7 +69,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: e2e-results-${{ matrix.os }}
+          name: e2e-results-${{ matrix.platform }}
           path: gui/test-results
           retention-days: 5
           if-no-files-found: ignore

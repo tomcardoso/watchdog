@@ -95,6 +95,8 @@ jobs:
   e2e:
     # The app's end-to-end tests on every platform (e2e.yml).
     uses: ./.github/workflows/e2e.yml
+    with:
+      platform: all
     permissions:
       contents: read
 
