@@ -92,12 +92,21 @@ jobs:
           cache: pip
       - uses: ./.github/actions/run-tests
 
+  e2e:
+    # The app's end-to-end tests on every platform (e2e.yml).
+    uses: ./.github/workflows/e2e.yml
+    with:
+      platform: all
+    permissions:
+      contents: read
+
   app:
     # Built, and signed where the secrets exist, on each platform from the same tag. It runs
     # alongside `test` rather than after it: nothing is published until `release`, which waits
     # for both. The two Mac architectures build in separate jobs so their notarizations, each
     # about three minutes of waiting on Apple, run at once; `release` merges their update feeds.
-    needs: [version]
+    # No build starts until the end-to-end tests have passed on every platform (D385).
+    needs: [version, e2e]
     strategy:
       fail-fast: false
       matrix:

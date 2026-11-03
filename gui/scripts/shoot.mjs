@@ -29,6 +29,7 @@ const [w, h] = opt('size', '1440x900').split('x').map(Number)
 const env = { ...process.env, WATCHDOG_GUI_DEBUG: process.env.WATCHDOG_GUI_DEBUG ?? '' }
 if (opt('home')) {
   env.HOME = resolve(opt('home'))
+  env.USERPROFILE = env.HOME
   env.WATCHDOG_USER_DATA = join(env.HOME, 'user-data')
 }
 

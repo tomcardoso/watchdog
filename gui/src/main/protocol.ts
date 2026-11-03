@@ -12,11 +12,15 @@ export const SCHEME = 'wdfile'
 
 let roots: string[] = []
 
+// The OS's own resolution: on Windows it also expands 8.3 short names (RUNNER~1) and settles case,
+// which Node's JavaScript realpath leaves as given, so one folder reached two ways still matches.
+const canonical = (p: string): string => realpathSync.native(p)
+
 export function setAllowedRoots(paths: string[]): void {
   roots = paths
     .map((p) => {
       try {
-        return realpathSync(p)
+        return canonical(p)
       } catch {
         return null
       }
@@ -33,7 +37,7 @@ export function registerSchemePrivileges(): void {
 function allowed(abs: string): boolean {
   let real: string
   try {
-    real = realpathSync(abs)
+    real = canonical(abs)
   } catch {
     return false
   }
