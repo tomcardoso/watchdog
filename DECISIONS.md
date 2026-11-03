@@ -3247,3 +3247,9 @@ Every scanned page was read with the OCR languages setting, English unless set, 
 Rejected: `lingua` (170 MB) and fastText's larger model, which downloads while running; asking about every non-English document, which would make the question routine; reading every scan in several languages at once, which Tesseract does slower and less accurately.
 
 Tradeoff: a reread costs another OCR pass on those pages, and on current macOS buys nothing for French; it is kept because older macOS versions and Tesseract do depend on the language, unmeasured on real scans. A mostly-English document with one French scanned page keeps that page's English reading, as asked. The thresholds are judgement, on synthetic pages. No migration (I19): documents added earlier have no language recorded, the Details tab says nothing for them, and reading them again would cost a full pre-processing run.
+
+### D384 — CI runs the app's end-to-end tests
+
+The end-to-end tests (`gui/tests`) ran only on a developer's machine through `scripts/check.sh`, so a failure on `main` went unnoticed until a later change tripped over it (#838). Development increasingly happens in cloud sessions, where a local-only check effectively never runs. CI gains a blocking `e2e` job on `ubuntu-latest`, set up like App release's screenshots job: the engine with the test suite's light dependencies, the app built, Playwright under `xvfb-run`. The sample investigation runs on canned answers, so the job calls no model.
+
+Tradeoff: the job covers Linux only, and #838's failure happened only on macOS (Electron's preferences folder ignores `HOME` there), so a Mac-specific break still needs a local run; a `macos-latest` job would catch it, at a slower start. A flaky step is fixed, not made non-blocking.

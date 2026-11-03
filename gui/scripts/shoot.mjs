@@ -27,7 +27,10 @@ const out = resolve(opt('out', 'shots'))
 mkdirSync(out, { recursive: true })
 const [w, h] = opt('size', '1440x900').split('x').map(Number)
 const env = { ...process.env, WATCHDOG_GUI_DEBUG: process.env.WATCHDOG_GUI_DEBUG ?? '' }
-if (opt('home')) env.HOME = resolve(opt('home'))
+if (opt('home')) {
+  env.HOME = resolve(opt('home'))
+  env.WATCHDOG_USER_DATA = join(env.HOME, 'user-data')
+}
 
 const app = await electron.launch({ args: [resolve('.'), '--no-sandbox'], env })
 const page = await app.firstWindow()
