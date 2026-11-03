@@ -16,6 +16,10 @@ import { provideSecrets } from './secrets'
 
 registerSchemePrivileges()
 app.setName('Watchdog')
+// The end-to-end tests give each app its own preferences folder. On macOS the default ignores the
+// HOME they set, so without this they read the reporter's own preferences, and side by side every
+// app but the first loses the single-instance lock below and quits.
+if (process.env.WATCHDOG_USER_DATA) app.setPath('userData', process.env.WATCHDOG_USER_DATA)
 
 // One copy of the app at a time: two would run two backends over the same investigations and race
 // on the same files. A second launch focuses the window that's already open.
