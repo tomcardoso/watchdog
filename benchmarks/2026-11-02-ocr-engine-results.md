@@ -112,8 +112,43 @@ flatters every engine alike and does not change the ranking.
 
 - The default for Macs: the data favour keeping Apple Vision; whether its identifier misreads on
   scans justify another choice is the owner's call (#818).
-- Why RapidOCR drops lines on clean pages, and whether a setting fixes it (D373's default rests on
-  it).
+- ~~Why RapidOCR drops lines on clean pages~~: answered below (D382).
 - Accents: no French pages yet.
 - PaddleOCR's larger models (RapidOCR loading PP-OCR's server-size models, run locally) were not
   tried.
+
+## RapidOCR, one orientation per page (2026-11-02, D382)
+
+**Why RapidOCR dropped lines.** Its line-direction classifier (PP-OCRv4 mobile, on by default)
+judges each detected line from a 48×192 pixel squeeze of it and turns it 180° when it reads
+"upside down" at over 0.9. On some long upright lines it did, and the recogniser read the turned
+line as junk that still cleared `text_score` (0.5): page 3 of the pension order came out
+`ossssss  sd  d    s   0        n` where the page prints "on March 30, 2021 in the amount of
+$842,018.34 in respect of". The lines were detected; they were lost at recognition, and the same
+false turns cost words on four pages of the scanned Initial Order. Docling's assembly was not
+involved.
+
+**The fix.** The classifier's verdicts are averaged over a page, wide and tall boxes apart, and a
+group's lines are turned together or not at all (`preprocess._orient_rapidocr_by_page`). Re-run
+with `ocr_engine_compare.py run --engines rapidocr` on the committed code, other engines' readings
+as above:
+
+| RapidOCR | Clean: text lost | Clean: identifiers | Clean: passages truly lost / only reordered | Scans: text lost | Scans: identifiers | Sideways backsheet (Initial Order p17): words lost of 100 |
+|---|---|---|---|---|---|---|
+| Before (line by line) | 2.70% | 99.44% | 11 / 7 | 2.17% | 100% | 0 |
+| Classifier off | 1.34% | 99.96% | 2 / 6 | 2.67% | 80.9% | 97 |
+| `cls_thresh` 0.99 | 1.43% | 99.86% | 2 / 6 | 1.78% | 97.75% | 31 |
+| **One orientation per page** | **1.34%** | **99.96%** | **2 / 6** | **1.36%** | **100%** | **0** |
+| Vision, for comparison | 0.93% | 99.89% | 2 / 1 | 1.12% | 91.0% | 5 |
+| Tesseract, for comparison | 1.15% | 99.65% | 1 / 2 | 1.15% | 95.5% | 2 |
+
+- *Passages truly lost*: dropped passages (as above) of which under 80% of the words appear
+  anywhere on the page. The rest are only reordered: the words are there, in another reading
+  order. The 18 dropped passages above were 11 lost and 7 reordered.
+- The classifier-off and 0.99 rows were read with Docling's `RapidOcrOptions` (`use_cls=False`)
+  and `rapidocr_params` (`Cls.cls_thresh`) on the same code, not committed.
+- 2.9 seconds a page, against 2.8 before.
+
+On the sideways backsheet the 27 tall lines average 99% "upside down" and all turn; on the
+pension order page the 30 wide lines average 18% and none does. The sideways case is one page;
+a single genuinely upside-down line on an upright page is now read upright and lost.

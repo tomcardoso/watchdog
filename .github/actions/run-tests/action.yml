@@ -13,9 +13,11 @@ runs:
     # here for the same reason (#563): test_model_client.py's rate-limit header capture tests are
     # the first to call _api_complete_async against the real SDK's classes rather than bypassing
     # it via _ABACKENDS.
+    # rapidocr (without onnxruntime: nothing here runs a model) is here so the test that pins the
+    # two RapidOCR methods D382 replaces runs against the release a fresh install gets.
     - name: Install package and dev dependencies
       shell: bash
-      run: pip install --no-deps -e . && pip install pyyaml pypdf numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser
+      run: pip install --no-deps -e . && pip install pyyaml pypdf numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser rapidocr
 
     - name: Run tests
       shell: bash
