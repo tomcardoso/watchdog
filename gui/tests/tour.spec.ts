@@ -145,6 +145,6 @@ test('the sample builds from the welcome card and every tour step points at some
     expect(errors).toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })

@@ -37,8 +37,9 @@ test('every screen renders against the demo investigation', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
+    // In UTF-8 mode, as the app runs Python (python.ts), or Windows reads the templates as cp1252.
     execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], {
-      env: { ...process.env, PYTHONPATH: repoSrc },
+      env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' },
       stdio: 'inherit'
     })
     const projects = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))
@@ -395,7 +396,7 @@ test('every screen renders against the demo investigation', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
 
@@ -410,7 +411,7 @@ test('adding documents waits for the background setup', async () => {
   const phase1 = process.env.WATCHDOG_PHASE1_PYTHON ?? python
   try {
     execFileSync(phase1, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], {
-      env: { ...process.env, PYTHONPATH: repoSrc },
+      env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' },
       stdio: 'inherit'
     })
     const projects = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))
@@ -454,7 +455,7 @@ test('adding documents waits for the background setup', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
 
@@ -464,7 +465,7 @@ test('the gate lifts when the background setup finishes', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
-    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
       env: { ...process.env, HOME: home, WATCHDOG_USER_DATA: join(home, 'user-data'), WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume' }
@@ -477,7 +478,7 @@ test('the gate lifts when the background setup finishes', async () => {
     expect(ready).toEqual({ ready: true })
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
 
@@ -489,7 +490,7 @@ test('the pause names its investigation after a switch', async () => {
   const home = join(root, 'home')
   try {
     const build = (dir: string, h: string) =>
-      execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, dir), '--home', h], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+      execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, dir), '--home', h], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
     build('first', join(root, 'home-first'))
     build('second', home)
     // One home that knows both: the second demo renamed, the first added beside it.
@@ -556,7 +557,7 @@ test('the pause names its investigation after a switch', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
 
@@ -567,7 +568,7 @@ test('a run on this computer skips the acknowledgement', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
-    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
     const cfgFile = join(home, '.watchdog', 'config.json')
     const cfg = existsSync(cfgFile) ? JSON.parse(readFileSync(cfgFile, 'utf8')) : {}
     // Nothing listens on port 9: the run fails at its first call, after the gate.
@@ -604,7 +605,7 @@ test('a run on this computer skips the acknowledgement', async () => {
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
 
@@ -614,7 +615,7 @@ test('run state is refetched when a job ends, on screen or not', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
-    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
     const slug = Object.keys(JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8')))[0]
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
@@ -642,6 +643,6 @@ test('run state is refetched when a job ends, on screen or not', async () => {
     }, vault), { timeout: 15_000 }).toBeGreaterThan(before)
     await app.close()
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
   }
 })
