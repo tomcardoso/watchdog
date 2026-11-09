@@ -18,6 +18,7 @@ const LABELS: Record<string, string> = {
   extract_token_budget: 'Extraction token budget',
   empty_extraction_min_words: 'Empty-extraction minimum words',
   thin_extraction_words_per_fact: 'Thin-extraction words per fact',
+  unreadable_text_letter_share: 'Unreadable-text letter share',
   save_reasoning: 'Save model reasoning',
   local_base_url: 'Local model URL',
   openrouter_base_url: 'OpenRouter URL',

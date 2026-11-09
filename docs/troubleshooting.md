@@ -130,6 +130,10 @@ Open the original and check that it is readable. If it is not, remove the docume
 
 A model sometimes stops early and keeps a single fact from a long report. Watchdog adds the document anyway and marks it **Few facts**; choose **Retry all…** at the top of the Documents screen, or open the document and choose **Retry extraction**. Either shows the cost before anything is sent. See [Few facts and Retry extraction](using-watchdog.md#few-facts-and-retry-extraction). If it keeps happening with the same document, [save the model's reasoning](#sharing-debugging-information) for a retry and send it with your report.
 
+## A document is marked Unreadable text
+
+The text Watchdog took from some of its pages is codes or symbols rather than words, so the model had nothing to read there, and a retry would not help. Open the original: if those pages read normally, save or scan the file as an image and add that copy, so Watchdog reads it with OCR. See [Text could not be read](using-watchdog.md#text-could-not-be-read).
+
 ## Hitting rate limits
 
 A rate limit is a cap on how much work the AI provider lets you do in a window of time. On a metered API key it is counted in tokens per minute, not documents, so a handful of large documents extracted at once can use it up even when the number of documents looks modest: one document can cost ten times the tokens of another. On a Claude subscription it is your plan's usage limit, which is shared with the rest of your Claude use.

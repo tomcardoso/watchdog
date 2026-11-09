@@ -229,8 +229,11 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
    OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
    `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
-   than one per `thin_extraction_words_per_fact` words of source text, default 1,000), both
-   advisory, stored on the record and logged as `WARN` lines; stages raw timeline NDJSON; and
+   than one per `thin_extraction_words_per_fact` words of source text, default 1,000) and
+   unreadable source text (`unreadable_text`, D392: pages whose text, outside tables, is codes
+   or symbols rather than words or figures; their words count towards neither the thin warning
+   nor the empty-extraction guard), all advisory, stored on the record and logged as `WARN`
+   lines; stages raw timeline NDJSON; and
    writes the validated extraction to `.watchdog/extracted/<sha>.json` (D126). That artifact is
    kept as an audit record.
 

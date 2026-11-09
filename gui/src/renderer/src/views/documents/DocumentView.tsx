@@ -4,10 +4,11 @@
 import { ArrowLeft, BookOpen, ExternalLink, FileText, FolderOpen, Link2, MessageSquare, Quote, Users, ListChecks, Info, StickyNote } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Badge, Button, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
+import { Badge, Button, Callout, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
 import { HistoryButton } from '@renderer/components/FileHistory'
 import { fmtDate, plural } from '@renderer/lib/format'
 import { fmtDuration } from '@renderer/lib/media'
+import { unreadableText } from '@renderer/lib/readIn'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentDetail } from '@shared/api'
@@ -156,6 +157,11 @@ export default function DocumentView() {
             {d.thin_extraction && (
               <div className="docv-thin">
                 <ThinExtractionNote sha={d.sha} filename={d.filename} thin={d.thin_extraction} />
+              </div>
+            )}
+            {d.unreadable_text && (
+              <div className="docv-thin">
+                <Callout tone="warning" title="Text could not be read">{unreadableText(d.unreadable_text)}</Callout>
               </div>
             )}
           </div>

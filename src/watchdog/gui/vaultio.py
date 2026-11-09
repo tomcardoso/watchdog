@@ -451,6 +451,7 @@ def document_row(vault: Path, sha: str, rec: dict, verdicts: dict[str, str] | No
         "media_kind": (media_info(rec) or {}).get("kind"),
         "duration_seconds": (media_info(rec) or {}).get("duration_seconds"),
         "thin_extraction": thin_extraction(vault, sha, rec),
+        "unreadable_text": unreadable_text(rec),
     }
 
 
@@ -470,6 +471,20 @@ def thin_extraction(vault: Path, sha: str, rec: dict) -> dict | None:
     retry = (queue / "_kept" / f"{sha}.json").exists() or (queue / f"{sha}.json").exists()
     return {"facts": n("facts"), "words": n("words"), "expected_min": n("expected_min"),
             "ended_early": thin.get("ended_early") is True, "retry": retry}
+
+
+def unreadable_text(rec: dict) -> dict | None:
+    """A document whose converted text is, on some pages, codes or symbols rather than words
+    (D392), as the app shows it: those pages and how many pages the text has. None otherwise."""
+    u = rec.get("unreadable_text") if isinstance(rec, dict) else None
+    if not isinstance(u, dict) or not isinstance(u.get("pages"), list):
+        return None
+    pages = [p for p in u["pages"] if isinstance(p, int) and not isinstance(p, bool)]
+    if not pages:
+        return None
+    total = u.get("page_count")
+    return {"pages": pages,
+            "page_count": total if isinstance(total, int) and not isinstance(total, bool) else None}
 
 
 def media_info(rec: dict) -> dict | None:

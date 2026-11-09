@@ -102,6 +102,19 @@ When any documents are marked this way, the Documents screen says so at the top,
 
 **Retry extraction** (or **Retry all…**) sends the document again to the extraction model, with your current models and effort, then runs the finishing step. It shows the estimated cost and, where it applies, the public-records warning first, and nothing is sent until you confirm. Anything else waiting to be added stays where it is. The earlier facts stay until the new extraction has been checked and saved; if the new one still has few facts, the warning stays. A short document with few facts is flagged only when its answer stopped part-way, and you can change when the other warning appears under [Settings → Processing](models-and-cost.md#thin-extraction-words-per-fact).
 
+### Text could not be read
+
+Some files carry a broken text layer: the page looks normal when you open it, but the text Watchdog takes from it is a string of codes, usually long runs of digits or symbols, instead of words. A model given that text has nothing to work with, so the document comes back with no facts, or only a note that its text is unreadable.
+
+Watchdog checks each page's text for this before it accepts the extraction. A page is counted as unreadable when hardly any of its words contain a letter, in any alphabet, and most of the rest are not shaped like amounts, dates or counts. Tables are left out of the check, so a financial statement or a spreadsheet full of figures is not flagged. The document is still added, but it is marked **Unreadable text** in the list, and its page shows a **Text could not be read** warning naming the pages affected. The [processing log](#activity-and-maintenance) records it too.
+
+Retrying the extraction will not help, because the model would receive the same codes, so no **Retry extraction** button is offered for those pages. Instead, open the original and look at the pages named:
+
+- **If they read normally**, the file's text layer is broken. Save or print the file as an image (most PDF readers can print to a PDF as an image), or scan the paper copy, and add that copy. Watchdog then reads its pages with OCR (optical character recognition), as it does any scan.
+- **If they are blank, or really are codes**, there is nothing more to get from this copy. Ask the source for a better one.
+
+You can change when the warning appears under [Settings → Processing](models-and-cost.md#unreadable-text-letter-share).
+
 ## Checking facts
 
 Every fact Watchdog extracts is a claim to check, not a finding. The app gives you what you need to check it, and a place to record that you did.

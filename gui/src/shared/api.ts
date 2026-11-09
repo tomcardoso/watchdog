@@ -94,6 +94,14 @@ export interface DocumentRow {
   /** Set when the extraction kept implausibly few facts for the document's length (D367);
    * `retry` is whether Retry extraction can send its text again. */
   thin_extraction?: ThinExtraction | null
+  /** Set when some pages' converted text is codes or symbols rather than words (D392). */
+  unreadable_text?: UnreadableText | null
+}
+
+export interface UnreadableText {
+  pages: number[]
+  /** How many pages the document's text has; null when not recorded. */
+  page_count: number | null
 }
 
 export interface ThinExtraction {

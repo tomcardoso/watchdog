@@ -52,9 +52,89 @@ _EMPTY_EXTRACTION_MIN_WORDS = 500
 # turns the warning off) since it was chosen by judgement on one benchmark run.
 _THIN_WORDS_PER_FACT = 1000
 
+# Unreadable source text (D392). Advisory, like the thin-extraction warning, but about the input
+# rather than the model: a page whose converted text came through as glyph codes or symbols (long
+# runs of digits, symbol soup) gives the extractor nothing to read, and a retry cannot fix it. A
+# page is unreadable when, outside markdown table rows (a table of figures is a real numeric
+# document), it has at least `_UNREADABLE_MIN_TOKENS` tokens, fewer than
+# `unreadable_text_letter_share` of them carry a letter in any script, and at least
+# `_UNREADABLE_JUNK_SHARE` of them are neither a word nor shaped like a figure (`_is_figure`).
+# Unreadable pages' words count towards neither the empty-extraction guard nor the thin-extraction
+# warning, whose retry cannot help them. All chosen by judgement on invented pages, never measured
+# on a corpus; configurable (`unreadable_text_letter_share`, 0 turns the warning off).
+_UNREADABLE_LETTER_SHARE = 0.1
+_UNREADABLE_MIN_TOKENS = 20
+_UNREADABLE_JUNK_SHARE = 0.5
+_LONG_DIGIT_RUN = 10            # a run of this many digits is a code, not an amount or a date
+_TOKEN_EDGE = ".,;:!?\"'()[]{}<>«»“”‘’。、—–-|*#_=~"
+_FIGURE_CHARS = re.compile(r"^[\d,.'/:\-−+()$€£¥%  ]+$")
+_DIGIT_RUN = re.compile(r"\d+")
+
 
 def _config_get(key: str, default):
     return user_config.get(key, default)
+
+
+def _is_figure(token: str) -> bool:
+    """A letter-free token shaped like an amount, a count, a date or a percentage: digits with
+    figure punctuation only, no run of `_LONG_DIGIT_RUN` digits, and not a zero-led code of three
+    or more bare digits (`0036`), which is how a glyph code reads, not a quantity."""
+    if not _FIGURE_CHARS.match(token):
+        return False
+    runs = _DIGIT_RUN.findall(token)
+    if not runs or max(len(r) for r in runs) >= _LONG_DIGIT_RUN:
+        return False
+    return not (token.isdigit() and len(token) >= 3 and token[0] == "0")
+
+
+def _page_unreadable(text: str, letter_share: float) -> bool:
+    tokens = [t.strip(_TOKEN_EDGE) for line in text.splitlines()
+              if not line.lstrip().startswith("|") for t in line.split()]
+    tokens = [t for t in tokens if t]
+    if len(tokens) < _UNREADABLE_MIN_TOKENS:
+        return False
+    worded = [any(c.isalpha() for c in t) for t in tokens]
+    if sum(worded) >= letter_share * len(tokens):
+        return False
+    junk = sum(1 for t, w in zip(tokens, worded) if not w and not _is_figure(t))
+    return junk >= _UNREADABLE_JUNK_SHARE * len(tokens)
+
+
+def find_unreadable_pages(page_texts: dict[int, str] | None) -> list[int]:
+    """The pages whose converted text is not words or figures but codes or symbols (D392). A
+    share of 0 flags none: no page has fewer than none of its tokens worded."""
+    try:
+        share = float(_config_get("unreadable_text_letter_share", _UNREADABLE_LETTER_SHARE))
+    except (TypeError, ValueError):
+        share = _UNREADABLE_LETTER_SHARE
+    return sorted(p for p, t in (page_texts or {}).items() if _page_unreadable(t or "", share))
+
+
+def _readable(page_texts: dict[int, str] | None, unreadable: list[int]) -> dict[int, str]:
+    skip = set(unreadable)
+    return {p: t for p, t in (page_texts or {}).items() if p not in skip}
+
+
+def _pages_label(pages: list[int]) -> str:
+    """`[1, 2, 3, 7]` as "pages 1–3 and 7"."""
+    spans: list[str] = []
+    for p in sorted(pages):
+        if spans and spans[-1].split("–")[-1] == str(p - 1):
+            spans[-1] = f"{spans[-1].split('–')[0]}–{p}"
+        else:
+            spans.append(str(p))
+    head = "page" if len(pages) == 1 else "pages"
+    return f"{head} {', '.join(spans[:-1])} and {spans[-1]}" if len(spans) > 1 else f"{head} {spans[0]}"
+
+
+def render_unreadable_warning(unreadable: dict) -> str:
+    """The unreadable-text warning as processing.log and the run's output show it."""
+    pages, total = unreadable["pages"], unreadable.get("page_count")
+    where = (f"its text could not be read ({_pages_label(pages)} of {total})"
+             if total and len(pages) < total else "its text could not be read")
+    return (f"{where}: the converted text is digits or symbols, not words, so there was nothing "
+            f"to extract — retrying will not help; check the original, and if it reads normally "
+            f"there, save or scan it as an image and add that copy so Watchdog reads it with OCR")
 
 
 # An extraction of this many facts or fewer that carries a placeholder quote locator ended early
@@ -191,8 +271,11 @@ def _validate(data: dict, page_texts: dict[int, str] | None = None) -> list[str]
         # against and so can't see this case at all, this is a hard failure: it feeds the same
         # repair-retry loop as any other post-flight rejection (one automatic re-ask, then a
         # loud FAILED instead of a silent OK).
+        # Unreadable pages (D392) do not count: a model cannot extract from glyph codes, and the
+        # unreadable-text warning, not a failure, tells the reporter so.
         if not doc.get("key_facts"):
-            words = sum(len(t.split()) for t in page_texts.values())
+            readable = _readable(page_texts, find_unreadable_pages(page_texts))
+            words = sum(len(t.split()) for t in readable.values())
             min_words = _config_get("empty_extraction_min_words", _EMPTY_EXTRACTION_MIN_WORDS)
             if words >= min_words:
                 errors.append(
@@ -551,9 +634,21 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     if gap:
         _warn(_render_coverage_warning(gap, page_count))
 
+    # Unreadable source text (D392): pages whose converted text is codes or symbols, not words.
+    # Written explicitly even when None, like the two below.
+    unreadable_pages = find_unreadable_pages(page_texts)
+    unreadable = ({"pages": unreadable_pages, "page_count": len(page_texts)}
+                  if unreadable_pages else None)
+    extraction["document"]["unreadable_text"] = unreadable
+    if unreadable:
+        _warn(render_unreadable_warning(unreadable))
+
     # Thin-extraction warning (D367): written explicitly even when None, like `coverage_gap`, so a
     # retry that comes back healthy clears the flag the earlier extraction left on the record.
-    thin = find_thin_extraction(extraction, page_texts)
+    # Weighed on the readable pages only (D392): a retry cannot help an unreadable one, so a
+    # document with no readable page is never offered one.
+    readable = _readable(page_texts, unreadable_pages)
+    thin = find_thin_extraction(extraction, readable) if readable or not unreadable else None
     extraction["document"]["thin_extraction"] = thin
     if thin:
         _warn(render_thin_warning(thin))
