@@ -89,16 +89,21 @@ def test_what_code_cannot_settle_goes_to_the_pass(text):
 def test_ambiguous_numeric_date_keeps_its_year_and_both_readings():
     r = dates.read("03/04/2021")
     assert (r.date, r.pending, r.readings) == ("2021", dates.PENDING_AMBIGUOUS, ("2021-04-03", "2021-03-04"))
-    r = dates.read("2020/07/08")
-    assert r.pending == dates.PENDING_AMBIGUOUS and r.readings == ("2020-07-08", "2020-08-07")
 
 
 @pytest.mark.parametrize("text, iso", [
     ("13/04/2021", "2021-04-13"), ("04.04.2021", "2021-04-04"), ("2019/08/16", "2019-08-16"),
     ("2020-7-8", "2020-07-08"),
+    # year-first is year-month-day whatever the separator (D391), even when day-month also fits
+    ("2020/07/08", "2020-07-08"), ("2020.07.08", "2020-07-08"), ("2010 / 03 / 02", "2010-03-02"),
 ])
 def test_a_numeric_date_with_one_reading_is_read(text, iso):
     assert _r(text) == (iso, None)
+
+
+@pytest.mark.parametrize("text", ["2010/25/03", "2010.25.03", "2010/02/30"])
+def test_year_first_is_never_read_year_day_month(text):
+    assert _r(text) == ("", dates.PENDING_UNRESOLVED)
 
 
 def test_valid_iso_rejects_impossible_dates_and_years():
@@ -369,3 +374,7 @@ def test_app_timeline_event_carries_the_range_and_the_inferred_mark():
         ("2024-06", "month", "April–June 2024", True)
     plain = vaultio.timeline_event({"date": "2024-04-03", "event": "A hearing."}, {}, {})
     assert plain["end"] is None and plain["date_inferred"] is False and plain["date_text"] is None
+
+
+def test_find_in_text_reads_a_year_first_slash_date():
+    assert dates.find_in_text("Registered on 2010/03/02 by the clerk.") == ("2010-03-02", "2010/03/02")

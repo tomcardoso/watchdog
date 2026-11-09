@@ -3265,3 +3265,9 @@ Tradeoff: a release waits for the slowest platform's tests before any build star
 The tests themselves also had to change:
 - Each test app now sets `USERPROFILE` beside `HOME`, since Windows takes the home folder from it.
 - On Windows, a test folder still locked by the closed app's helper processes is left to the system's temporary-files cleanup.
+
+### D391 — A year-first numeric date is year-month-day, whatever the separator
+
+`dates._numeric` read `2010-03-02` as ISO but treated `2010/03/02` and `2010.03.02` as ambiguous between year-month-day and year-day-month whenever both were valid, so they were stored as a year with two readings and left to the date pass, which did not settle them. In a live run about a fifth of all dated facts, registry printouts that print every date as YYYY/MM/DD, ended up year-only. Year-day-month is essentially unused (ISO 8601, East Asian and registry usage are all year-month-day), so a year-first date is now read year-month-day for every separator and is never ambiguous. When year-month-day is not a real date (`2010/25/03`, `2010/02/30`) the date is left unresolved for the pass, as hyphenated ones already were, not read as year-day-month: such a value is likelier a typo or a different format than a deliberate year-day-month date, and the pass is told to answer nothing when unsure. Day-first versus month-first (`A/B/YYYY`) is unchanged.
+
+Dates already stored as year-only with `date_pending` are not re-read (I19: forward-facing only, no migration); the next "Bring this investigation up to date" date pass may settle some. Tradeoff: a registry that genuinely prints year-day-month would be misread as a valid but wrong date; none is known.
