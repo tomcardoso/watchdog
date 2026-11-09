@@ -87,7 +87,7 @@ def test_a_small_entity_goes_whole_as_new_facts_in_one_call(vault):
     assert ent["stored_facts"] == "" and len(_refs(ent["new_facts"])) == p["entities"][0]["facts"] == 25
 
 
-@pytest.mark.parametrize("budget", [7000, 9000, 12000])
+@pytest.mark.parametrize("budget", [11000, 14000, 19000])
 def test_every_pair_of_facts_is_seen_together_at_least_once(vault, monkeypatch, budget):
     monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: budget)
     eid = "northgate-civil-works"
@@ -187,7 +187,7 @@ def test_a_handled_contradiction_never_comes_back_however_it_is_worded(vault, mo
 
 
 def test_the_same_conflict_found_by_two_calls_is_filed_once(vault, monkeypatch):
-    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 7000)
+    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 11000)
     first = {}
 
     def answer(ents):
@@ -251,7 +251,7 @@ def test_calls_are_recorded_in_the_usage_files(vault, monkeypatch):
 
 
 def test_a_stop_files_what_the_finished_calls_found(vault, monkeypatch):
-    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 7000)
+    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 11000)
     fake = FakeModel(lambda ents: [_first_last(ents[0])])
     calls = {"n": 0}
 
@@ -325,7 +325,7 @@ def test_the_spending_limit_stops_the_re_check_between_calls(vault, monkeypatch)
     """D324: before each call the recorded spend is compared with the investigation's limit; a
     stop files what the finished calls found and says how to go on."""
     from watchdog import spend
-    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 7000)
+    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 11000)
     # A limit one $0.002 call passes (finer than the app's cents, so written directly).
     (vault / ".watchdog" / "settings.json").write_text(json.dumps(
         {"spending_limit": {"usd": spend.status(vault)["spent_usd"] + 0.001}}))

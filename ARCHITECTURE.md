@@ -379,7 +379,10 @@ its synthesis. `/watchdog-entity` (`write_entity.py`) stores a session's summary
 **Code:** `pipeline/reconcile.py`, `pipeline/chunking.py`, `pipeline/merge_entities.py`.
 
 One reconcile call (split into context-bounded chunks when large, D237) does two jobs that need
-every document's claims side by side:
+every document's claims side by side. Every post-processing chunk (reconcile, synthesis, briefing,
+re-check) is sized by `chunking.json_size`, which counts letters, digits and punctuation
+separately rather than dividing length by four, since these bundles are dense with ids, dates and
+figures (D394):
 
 - **Entity resolution, by confidence tier (D279).** `pipeline/identity.py` classifies every
   candidate pair from what the extractions record (names and aliases, roles, facts, and a
@@ -398,6 +401,15 @@ every document's claims side by side:
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
   names, at least one side touched this run (or carried from the last run), then routes each by
   tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
+  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
+  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
+  canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0, a spelled-out legal form folded to
+  its abbreviation), the shared tokens weighing at least one distinctive token's worth once tokens
+  common across the type are discounted (IDF-style; identical token sets exempt), for places a
+  street address paired only through what identifies an address (a shared house or street number
+  with another address, a street-part word with any other place), plus a surname index for
+  initialled names, at least one side touched this run (or carried from the last run), then routes
+  each by tier (D394). **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
   pairs. Every pair inside the set is classified in code: high pairs merge as rule merges, low ones
   become "possible same" items each paired with the set's most-documented record, and records
   joined by a medium pair form a group the model judges in one answer (`NameGroups`): per slice of
