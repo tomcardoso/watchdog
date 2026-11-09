@@ -340,22 +340,25 @@ def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     assert "sha-b" in reg["alice-smith"]["appears_in"]   # its document carried over
 
 
-@pytest.mark.parametrize("item", [
-    {"pair": 0, "same": False, "keep": "a", "reason": "Different entities entirely, so no merge"},
-    {"pair": 0, "keep": "a", "reason": "no verdict given"},
-    {"pair": 0, "same": "true", "keep": "a", "reason": "a string is not a yes"},
-    {"pair": 0, "same": None, "keep": "a", "reason": "x"},
+@pytest.mark.parametrize("item,warned", [
+    ({"pair": 0, "same": False, "keep": "a", "reason": "Different entities entirely, so no merge"},
+     False),
+    ({"pair": 0, "keep": "a", "reason": "no verdict given"}, True),
+    ({"pair": 0, "same": "true", "keep": "a", "reason": "a string is not a yes"}, True),
+    ({"pair": 0, "same": None, "keep": "a", "reason": "x"}, True),
 ])
-def test_apply_merges_only_acts_on_an_explicit_same(tmp_path, item):
+def test_apply_merges_only_acts_on_an_explicit_same(tmp_path, item, warned):
     """A rejection written into `merges` (or an item with no verdict) merges nothing, whatever
-    its reason says (D387)."""
+    its reason says (D387). Only a missing or malformed verdict is warned about: an explicit
+    `false` is an ordinary answer."""
     vault = make_vault(tmp_path)
     warnings = []
     out = reconcile.apply_merges(
         vault, [], {"merges": [item]}, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
     assert out["merged"] == [] and out["remap"] == {}
-    assert len(warnings) == 1 and "not merged" in warnings[0]
+    assert len(warnings) == (1 if warned else 0)
+    assert all("not merged" in w for w in warnings)
     reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" in reg
 

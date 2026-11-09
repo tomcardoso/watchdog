@@ -1124,16 +1124,17 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         a, b = rm["a"], rm["b"]
         keep_id = min(a, b)
         decisions.append((keep_id, b if keep_id == a else a, rm["verdict"], "rule", rm["verdict"]["reason"]))
-    not_confirmed = 0
+    no_verdict = 0
     for item in parsed.get("merges") or []:
         idx = item.get("pair")
         if not isinstance(idx, int) or not 0 <= idx < len(pairs):
             warn(f"reconcile: merge names pair {idx!r}, which is not in the candidate list — skipped")
             continue
-        # Only an explicit `same: true` merges (D387). A "different" verdict, a missing one, or
-        # anything else is a pair the model did not confirm, whatever its reason says.
+        # Only an explicit `same: true` merges (D387). A "different" verdict leaves the pair apart,
+        # whatever its reason says; a missing or malformed one does too, and is counted.
         if item.get("same") is not True:
-            not_confirmed += 1
+            if item.get("same") is not False:
+                no_verdict += 1
             continue
         pair = pairs[idx]
         ids = {pair["a"]["id"], pair["b"]["id"]}
@@ -1149,9 +1150,9 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         verdict = verdicts[idx] if idx < len(verdicts) else {"tier": "medium", "rule": None}
         model_merged.add(frozenset(ids))
         decisions.append((keep_id, (ids - {keep_id}).pop(), verdict, "model", item.get("reason", "")))
-    if not_confirmed:
-        warn(f"reconcile: {not_confirmed} pair(s) were answered without a \"same\" verdict of true "
-             f"— not merged")
+    if no_verdict:
+        warn(f"reconcile: {no_verdict} merge answer(s) had no true/false \"same\" verdict — "
+             f"not merged")
     # Same-name groups (#755): `NameGroups` has already checked every answer.
     name_groups = bundle.get("name_groups")
     group_result = name_groups.result() if name_groups is not None else \
