@@ -204,19 +204,34 @@ class NameIndex:
         pos = self._pos.setdefault(eid, len(self._pos))
         etype = canonical_type(entry["type"])
         for n in [entry["name"], *entry.get("aliases", [])]:
-            key = (normalize_entity_name(n), etype)
-            self._all.setdefault(key, set()).add(eid)
-            current = self._index.get(key)
-            if current is None or self._pos[current] > pos:
-                self._index[key] = eid
+            for key in self.keys(n, etype):
+                self._all.setdefault(key, set()).add(eid)
+                current = self._index.get(key)
+                if current is None or self._pos[current] > pos:
+                    self._index[key] = eid
+
+    @staticmethod
+    def keys(name: str, etype: str) -> list[tuple[str, str]]:
+        """The keys one name is indexed under: its normalized form and, for a place whose name
+        reads as a street address, the address's street key (D388), so "1200 Example Ave NW" finds
+        "1200 Example Avenue Northwest". A shared key is a lookup, not a verdict: the judge
+        decides."""
+        from watchdog.pipeline.identity import address_key
+        etype = canonical_type(etype)
+        keys = [(normalize_entity_name(name), etype)]
+        street = address_key(name, etype)
+        if street:
+            keys.append(("address:" + street, etype))
+        return keys
 
     def get(self, key: tuple[str, str]) -> str | None:
         return self._index.get(key)
 
-    def get_all(self, key: tuple[str, str]) -> list[str]:
-        """Every entity carrying this (name, type), in registry order — several records can share
-        a name now that a same-name person is no longer folded on name alone (D279)."""
-        return sorted(self._all.get(key, ()), key=lambda eid: self._pos[eid])
+    def matches(self, name: str, etype: str) -> list[str]:
+        """Every entity sharing any of `name`'s keys, in registry order — several records can
+        share a name now that a same-name person is no longer folded on name alone (D279)."""
+        found = set().union(*(self._all.get(key, ()) for key in self.keys(name, etype)))
+        return sorted(found, key=lambda eid: self._pos[eid])
 
 
 def _unique_entity_id(eid: str, taken) -> str:
@@ -250,8 +265,9 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
 
     Two ways an incoming entity meets an existing one: the same slug (two documents both coin
     `john-smith`), or the same normalized (name, canonical type) under another slug, including an
-    existing alias. `judge(entity, existing_id)` decides each; it is `identity.classify` with the
-    documents' evidence when called from `orchestrate._batch_exact_fold`, and on names alone
+    existing alias, or for a place the same street address written another way (D388).
+    `judge(entity, existing_id)` decides each; it is `identity.classify` with the documents'
+    evidence when called from `orchestrate._batch_exact_fold`, and on names alone
     otherwise. A same-slug match that is not high gets a fresh slug (`john-smith-2`) so the two
     records stay separate. Non-person entities are judged first, so a person's roles already point
     at reconciled ids when shared employers and addresses are compared.
@@ -287,8 +303,7 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
             new_id = _unique_entity_id(entity["id"], taken)
             taken.add(new_id)
             _move(entity, new_id)
-        key = (normalize_entity_name(entity["name"]), canonical_type(entity["type"]))
-        for existing_id in norm_index.get_all(key):
+        for existing_id in norm_index.matches(entity["name"], entity["type"]):
             if existing_id == entity["id"] or existing_id not in entities_reg:
                 continue
             if judge(entity, existing_id):

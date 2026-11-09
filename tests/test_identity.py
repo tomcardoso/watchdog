@@ -429,3 +429,136 @@ def test_a_disputed_fact_reaches_the_same_name_comparison_labelled(tmp_path, mon
     by_text = {f["fact"]: f for f in member["facts"]}
     assert by_text["John Smith lives on Harbour Road."]["flags"] == ["disputed by the reporter"]
     assert "flags" not in by_text["John Smith applied for a permit."]
+
+
+# ── one street address written several ways (D388) ────────────────────────────────────────────
+
+import pytest  # noqa: E402
+
+
+def _place(eid, name, aliases=()):
+    return {"id": eid, "name": name, "type": "Place", "aliases": list(aliases),
+            "summary": None, "timeline_events": [], "roles": []}
+
+
+@pytest.mark.parametrize("a, b", [
+    ("1234-56 Ave NW", "1234 56 Avenue Northwest"),
+    ("1234 - 56 AVE NW", "1234 56 Ave NW, Port Calder, WS Z9Z 0Z1"),
+    ("1234 56 Ave NW Port Calder WS Z9Z OZ1", "1234-56 Avenue NW, Port Calder Z9Z 0Z1"),
+    ("Suite 310, 1200 Example Street", "310-1200 Example St."),
+    ("1200 Example St #310", "Unit 310 - 1200 Example Street, Port Calder"),
+    ("1200, rue Example Ouest, Port Calder Z8Z 2Z2", "1200 rue Example O"),
+    ("1200 boul. Ste-Catherine Est", "1200 Boulevard Sainte-Catherine E"),
+    ("1200 North Shore Rd", "1200 N Shore Road, Port Calder"),
+    ("12 05 Example Ave", "1205 Example Avenue"),
+    ("1200 Example Rd, Lindenvale, ZZ 99999-1234", "1200 Example Road Lindenvale ZZ 99999"),
+    ("1200 Example Ave, Port Calder", "1200 Example Ave, Port Calder, Westshire"),
+])
+def test_one_street_address_in_two_formats_is_the_same_address(a, b):
+    assert identity.same_address(identity.parse_address(a), identity.parse_address(b))
+    assert _tier(_p("a", a, "place"), _p("b", b, "place")) == ("high", "distinctive-name")
+
+
+@pytest.mark.parametrize("a, b", [
+    ("1200 Example Ave NW", "1202 Example Ave NW"),                       # civic number
+    ("1234-56 Ave NW", "1234-58 Ave NW"),                                 # street number
+    ("Suite 310, 1200 Example St", "Suite 312, 1200 Example St"),         # unit
+    ("Suite 310, 1200 Example St", "1200 Example St"),                    # a unit against none
+    ("1200 Example St", "1200 Sample St"),                                # street name
+    ("1200 Example St", "1200 Example Ave"),                              # street type
+    ("1200 Example Ave NW", "1200 Example Ave SW"),                       # direction
+    ("1200 Example Ave NW", "1200 Example Ave"),                          # a direction against none
+    ("1200 Example Ave, Z9Z 0Z1", "1200 Example Ave, Z9Z 0Z2"),           # postal code
+    ("1200 Example Rd, ZZ 99999-1234", "1200 Example Rd, ZZ 99999-9999"),  # ZIP+4
+    ("1200 Example Ave, Port Calder", "1200 Example Ave, Lindenvale"),    # town
+    ("1200 Park Place Ave", "1200 Park Place"),                           # a type word in the name
+])
+def test_different_street_addresses_are_never_the_same(a, b):
+    assert not identity.same_address(identity.parse_address(a), identity.parse_address(b))
+    assert _tier(_p("a", a, "place"), _p("b", b, "place"))[0] != "high"
+
+
+def test_names_that_are_not_street_addresses_are_not_read_as_one():
+    for name in ("Port Calder", "Pier 9", "Lot 5, Block 3", "Example Avenue",
+                 "1200 Example Ave NW 310", "Ste-Catherine"):
+        assert identity.parse_address(name) is None, name
+    # Only a place is compared as an address.
+    assert identity.address_key("1200 Example Ave", "organization") is None
+    assert _tier(_p("a", "1200 Example Ave Holdings", "organization"),
+                 _p("b", "1200 Example Avenue Holdings", "organization"))[0] != "high"
+
+
+def test_people_at_one_address_held_as_two_place_records_share_it():
+    home_a = ("addr-a", "resides at", "1234-56 Ave NW", "place")
+    home_b = ("addr-b", "lives at", "1234 56 Avenue Northwest, Port Calder Z9Z 0Z1", "place")
+    other_unit = ("addr-c", "lives at", "Suite 3, 1234 56 Avenue NW", "place")
+    v = identity.classify(_p("a", "John Smith", relations=[home_a]), _p("b", "John Smith", relations=[home_b]))
+    assert (v["tier"], v["rule"]) == ("high", "same-name-shared-attribute")
+    assert v["evidence"]["shared"][0]["target_id"] == "addr-a"
+    assert _tier(_p("a", "John Smith", relations=[home_a]),
+                 _p("b", "John Smith", relations=[other_unit])) == ("medium", "same-name")
+
+
+def test_the_fold_joins_an_address_written_another_way_but_not_the_house_next_door(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_place("1234-56-ave-nw", "1234-56 Ave NW")])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_place("1234-56-avenue-northwest",
+                                             "1234 56 Avenue Northwest, Port Calder WS Z9Z 0Z1")])
+    _stage(vault, tmp_path, "sha-c", [_place("1236-56-ave-nw", "1236 56 Ave NW")])
+    _commit(vault, ["sha-b", "sha-c"])
+
+    reg = _registry(vault)
+    assert reg["1234-56-ave-nw"]["appears_in"] == ["sha-a", "sha-b"]
+    assert "1234-56-avenue-northwest" not in reg
+    assert reg["1236-56-ave-nw"]["appears_in"] == ["sha-c"]
+    entry = next(m for m in _log(vault)["merges"] if m["keep"]["id"] == "1234-56-ave-nw")
+    assert (entry["tier"], entry["rule"]) == ("high", "distinctive-name")
+
+
+# ── registry identifiers under other labels (D388) ────────────────────────────────────────────
+
+@pytest.mark.parametrize("text, value", [
+    ("Northgate Holdings Ltd., Company Access Number 7712345678.", "7712345678"),
+    ("Corporation Key: 4567890", "4567890"),
+    ("Entity ID 1234567", "1234567"),
+    ("Company Registration Number BC1234567", "BC1234567"),
+    ("Business Identification Number (BIN) 123456789", "123456789"),
+    ("Westshire Corporation Number 0012345", "0012345"),
+    ("Its registration number is 5551234.", "5551234"),
+    ("Corporation No. 1234567", "1234567"),
+])
+def test_registry_numbers_are_read_under_their_registries_own_labels(text, value):
+    facts = [{"fact": text, "entities": ["x"]}]
+    assert identity.harvest_identifiers("organization", ["X"], facts) == {"registration": {value}}
+
+
+@pytest.mark.parametrize("text", [
+    "The corporation paid $45,000 in 2021.",
+    "The corporation number of shares was 4500.",
+    "Company phone number 555-555-0199.",
+    "Business account number 12345678.",
+    "Corporation key 2024 results.",
+    "Corporation No. 2019-05-01.",
+    "The entity identity 1234 is unknown.",
+])
+def test_amounts_dates_and_other_numbers_are_not_registry_numbers(text):
+    assert identity.harvest_identifiers("organization", ["X"], [{"fact": text, "entities": ["x"]}]) == {}
+
+
+def test_a_registry_number_in_a_fact_about_two_companies_belongs_to_neither():
+    shared = {"fact": "Northgate Holdings, Company Access Number 7712345678, owns Bayfield Ltd.",
+              "entities": ["northgate", "bayfield"]}
+    own = {"fact": "Company Access Number 7712345678.", "entities": ["northgate"]}
+    assert identity.harvest_identifiers("organization", ["Bayfield Ltd."], [shared]) == {}
+    assert identity.harvest_identifiers("organization", ["Northgate Holdings"], [shared, own]) == \
+        {"registration": {"7712345678"}}
+
+
+def test_two_records_of_one_company_sharing_a_corporate_access_number_merge():
+    org = "organization"
+    ids = identity.harvest_identifiers(
+        org, ["X"], [{"fact": "Company Access Number 7712345678.", "entities": ["x"]}])
+    a = _p("a", "Northgate Holdings Ltd.", org, identifiers=ids)
+    b = _p("b", "The Northgate Group Holdings Ltd.", org, identifiers=ids)
+    assert _tier(a, b) == ("high", "same-identifier")

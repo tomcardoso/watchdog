@@ -58,7 +58,7 @@ Much of it is plain bookkeeping by ordinary software: gathering every fact about
 
 <a id="same-entity"></a>**How Watchdog decides two names are the same.** A name alone is weak evidence, because two different people can share one. So Watchdog asks what else the two records have in common, and acts on how sure that makes it:
 
-- When both carry the same registration, licence, court file or parcel number, or a person's full name comes with the same role, employer or street address, or a company's or place's name is specific enough to pick out one ("Northgate Civil Works Ltd.", not "the City"), ordinary software merges them.
+- When both carry the same registration, licence, court file or parcel number, or a person's full name comes with the same role, employer or street address, or a company's or place's name is specific enough to pick out one ("Northgate Civil Works Ltd.", not "the City"), ordinary software merges them. A street address counts as the same when only its writing differs ("1200 Example Ave NW" and "1200 Example Avenue Northwest, Port Calder"), never when the unit, civic number, street or postal code does.
 - When two people share a full name and nothing else, or a name is short or general, an AI model reads both records' facts side by side and merges them only if it is confident.
 - When one name is an initialled or shortened form of the other ("J. Smith" and "John Smith"), nothing merges them automatically: you decide, on the Merges tab in Review.
 
