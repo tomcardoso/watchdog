@@ -75,7 +75,8 @@ def test_relative_dates_are_never_parsed(text):
 
 @pytest.mark.parametrize("text", [
     "15 Mart 2021",         # read as a time zone, month filled from the reference date
-    "2019-W12",             # a week, month filled in
+    "2019-W12",             # a week, not a month (dateparser 1.5 reads W12 as December)
+    "2019W121", "week 2019-W05",
     "3 and 7 June 2019",    # two days
     "after March 2020", "early June 2019", "circa 2019", "fin juin 2019",
     "April–June 2024", "2020-2021", "Q1 2020", "du 3 au 7 juin 2019",

@@ -45,6 +45,9 @@ _NUMERIC_ONLY = re.compile(r"^[\d\s./-]+$")
 _NUMERIC_PAIR = re.compile(r"\d\s*[./]\s*\d")
 # A span between two figures or two words ("3–7 April 2024", "2019-2021", "April–June 2024").
 _SPAN = re.compile(r"\d\s*[-–—]\s*\d|[–—]")
+# An ISO week date ("2019-W12", "2019W121"): a week, not a day or a month. Caught here rather than
+# left to dateparser, whose releases differ on it (1.5 reads the week number as a month).
+_ISO_WEEK = re.compile(r"\b\d{4}-?W\d{1,2}(?:-?\d)?\b", re.IGNORECASE)
 # Year-month(-day) with the Chinese/Japanese or Korean markers ("2021年3月15日", "2021년 3월 15일"),
 # read by code: dateparser reads the first and not the second. Gregorian years only — a Japanese
 # era year ("令和3年") has no four-digit year and goes to the pass.
@@ -146,7 +149,7 @@ def _parser(base: datetime):
 def _words(text: str) -> Reading:
     """A date with words in it, read by dateparser under the guards in the module docstring."""
     text = _TIME.sub(" ", text).strip(" ,")
-    if _NUMERIC_PAIR.search(text) or _SPAN.search(text):
+    if _NUMERIC_PAIR.search(text) or _SPAN.search(text) or _ISO_WEEK.search(text):
         return Reading(pending=PENDING_UNRESOLVED)
     if {w.casefold() for w in re.findall(r"[^\W\d_]+", text)} & _QUALIFIERS:
         return Reading(pending=PENDING_UNRESOLVED)
