@@ -62,7 +62,7 @@ RUSSIAN = ("Суд постановил, что компания обязана 
 ARABIC = "قررت المحكمة أن على الشركة تقديم بياناتها المالية قبل 30 يونيو وإلا فرضت غرامة يومية. " * 4
 CHINESE = "法院裁定该公司须于六月三十日前提交财务报表，否则每日罚款五千元。 " * 6
 JAPANESE = "裁判所は 会社に対し 6月30日 までに 財務諸表を 提出するよう 命じた。 罰金は 1日 5,000円 である。 " * 4
-PROSE = ("The board approved the transfer of the property to the numbered company on the date "
+PROSE = ("The board approved the transfer of the property to the holding company on the date "
          "shown in the schedule, and the minutes record no objection from any director. ") * 4
 
 
