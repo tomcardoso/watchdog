@@ -2246,6 +2246,28 @@ def test_truncated_error_carries_a_structured_truncated_flag(openai_key, monkeyp
     assert exc_info.value.truncated is True
 
 
+@pytest.mark.parametrize("backend, model, key, finish", [
+    ("claude-api", "claude-sonnet-4-5", "api_key_auth", "refusal"),
+    ("openai", "gpt-4o", "openai_key", "content_filter"),
+])
+def test_refusal_is_not_retried_and_reported_plainly(request, monkeypatch, backend, model, key,
+                                                     finish):
+    # A refusal arrives with empty text: it must not be read as malformed JSON, and the same
+    # input is refused again, so it is one attempt with its usage and cost still recorded.
+    request.getfixturevalue(key)
+    be = PagingBackend(("", finish), ("", finish))
+    monkeypatch.setitem(mc._ABACKENDS, backend, be)
+    with pytest.raises(mc.ModelError) as exc_info:
+        complete_json(task="classify", prompt="p", schema=SCHEMA, backend=backend, model=model,
+                      max_retries=1)
+    e = exc_info.value
+    assert len(be.calls) == 1
+    assert e.refused is True and e.truncated is False
+    assert "declined to answer" in str(e) and finish in str(e)
+    assert "not valid JSON" not in str(e)
+    assert e.attempts == 1 and e.usage == {"output_tokens": 5} and e.cost_usd == 0.01
+
+
 def test_json_validation_failure_is_not_flagged_truncated(api_key_auth, monkeypatch):
     # A schema-validation failure is a different failure from a truncation (#540) — `.truncated`
     # must stay False so a caller can't mistake one for the other.
