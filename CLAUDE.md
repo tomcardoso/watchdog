@@ -104,7 +104,7 @@ Write tests for new features and any non-trivial function. The suite lives in `t
 ```
 python3 -m venv .venv
 .venv/bin/pip install --no-deps -e .
-.venv/bin/pip install pyyaml pypdf numpy pytest pytest-timeout pytest-xdist jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser rapidocr py3langid ruff
+.venv/bin/pip install pyyaml pypdf numpy pytest pytest-timeout pytest-xdist jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser==1.5.0 rapidocr py3langid ruff
 ```
 
 **To run the suite:** `.venv/bin/pytest`.
