@@ -463,7 +463,7 @@ def test_font_cmap_type0_with_tounicode_is_not_missing():
 
 def test_font_cmap_simple_truetype_without_tounicode_is_not_missing():
     """A simple font with a named encoding (WinAnsiEncoding etc.) decodes fine
-    without ToUnicode — only composite (/Type0) fonts are checked."""
+    without ToUnicode; a simple font fires only on unmapped /Differences names (D386)."""
     page = _fake_page({
         "/F1": {"/Subtype": "/TrueType", "/BaseFont": "ABCDEF+Arial", "/Encoding": "/WinAnsiEncoding"},
     })
@@ -485,6 +485,142 @@ def test_font_cmap_dingbat_font_without_tounicode_is_excluded():
 def test_font_cmap_no_fonts_is_not_missing():
     assert not preprocess.pdf_page_missing_font_cmap({"/Resources": {}})
     assert not preprocess.pdf_page_missing_font_cmap({})
+
+
+# Simple fonts (D386): a /Differences array can rename a simple font's codes to glyph names
+# that carry no character, which with no /ToUnicode leaves nothing to decode them by.
+
+def _simple_font(subtype: str, differences: list, **extra) -> dict:
+    return {"/Subtype": subtype, "/Encoding": {"/Type": "/Encoding", "/Differences": differences}, **extra}
+
+
+_NUMERIC_GLYPHS = [0, "/.notdef", 1, "/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9", "/10"]
+
+
+@pytest.mark.parametrize("subtype", ["/Type3", "/Type1", "/TrueType", "/MMType1"])
+def test_font_cmap_simple_font_with_numbered_glyphs_is_missing(subtype):
+    """A print-to-PDF driver's Type3 font whose glyphs are named /1, /2, … and that has no
+    /ToUnicode: pypdf reads `/1 /2 …`, Docling a run of digits. The same holds for any
+    simple font subtype."""
+    page = _fake_page({"/T3_0": _simple_font(subtype, _NUMERIC_GLYPHS)})
+    assert preprocess.pdf_page_missing_font_cmap(page)
+
+
+@pytest.mark.parametrize("names", [
+    ["/g12", "/g13", "/g14", "/g15"],
+    ["/glyph1", "/glyph2", "/glyph3"],
+    ["/cid101", "/cid102", "/cid103"],
+])
+def test_font_cmap_simple_font_with_index_glyph_names_is_missing(names):
+    page = _fake_page({"/F1": _simple_font("/Type1", [32, *names])})
+    assert preprocess.pdf_page_missing_font_cmap(page)
+
+
+@pytest.mark.parametrize("names", [
+    ["/space", "/A", "/b", "/c", "/zero", "/one", "/comma", "/period"],   # Adobe Glyph List names
+    ["/uni0041", "/uni00E9", "/u1F600", "/uni00410042"],                  # names that spell the code point
+    ["/a.sc", "/b.sc", "/one.oldstyle", "/T_h"],                          # suffix variants
+    ["/f_f_i", "/T_h", "/c_t"],                                           # ligatures
+    ["/a1", "/a2", "/a3"],                                                # ZapfDingbats names are in the list
+])
+def test_font_cmap_simple_font_with_real_glyph_names_is_not_missing(names):
+    page = _fake_page({"/F1": _simple_font("/Type3", [65, *names])})
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_simple_font_with_a_few_odd_names_is_not_missing():
+    """Mostly real names with one or two private glyphs (a logo, a custom mark): the
+    text still decodes, so the font doesn't vote."""
+    page = _fake_page({"/F1": _simple_font("/Type1", [65, "/A", "/B", "/C", "/D", "/logo1", "/7"])})
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+@pytest.mark.parametrize("encoding", ["/WinAnsiEncoding", "/MacRomanEncoding", "/StandardEncoding", None])
+def test_font_cmap_simple_font_with_named_encoding_is_not_missing(encoding):
+    font = {"/Subtype": "/Type1", "/BaseFont": "/Helvetica"}
+    if encoding:
+        font["/Encoding"] = encoding
+    assert not preprocess.pdf_page_missing_font_cmap(_fake_page({"/F1": font}))
+
+
+def test_font_cmap_simple_font_numbered_glyphs_with_tounicode_is_not_missing():
+    page = _fake_page({"/T3_0": _simple_font("/Type3", _NUMERIC_GLYPHS, **{"/ToUnicode": object()})})
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_simple_dingbat_font_with_numbered_glyphs_is_excluded():
+    page = _fake_page({"/F1": _simple_font("/Type1", _NUMERIC_GLYPHS, **{"/BaseFont": "/ABCDEF+Wingdings"})})
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_simple_font_differences_of_only_notdef_is_not_missing():
+    page = _fake_page({"/F1": _simple_font("/Type3", [0, "/.notdef", "/.notdef"])})
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_glyph_check_falls_back_without_pypdf_glyph_list(monkeypatch):
+    """The Adobe Glyph List comes from a private pypdf module; if a release moves it, bare
+    numbers and index-style names still count as unmapped and ordinary names don't."""
+    monkeypatch.setattr(preprocess, "_adobe_glyph_names", lambda: None)
+    assert preprocess.pdf_page_missing_font_cmap(_fake_page({"/F1": _simple_font("/Type3", _NUMERIC_GLYPHS)}))
+    assert preprocess.pdf_page_missing_font_cmap(_fake_page({"/F1": _simple_font("/Type1", [1, "/g1", "/g2"])}))
+    assert not preprocess.pdf_page_missing_font_cmap(_fake_page({"/F1": _simple_font("/Type1", [65, "/A", "/B"])}))
+
+
+def _type3_text_pdf(path, differences, *, to_unicode: bool = False):
+    """A one-page PDF whose only text is drawn in a Type3 font with the given /Differences,
+    the shape a print-to-PDF driver writes (invented glyphs, a few filled squares)."""
+    import pypdf
+    from pypdf.generic import (ArrayObject, DictionaryObject, FloatObject, NameObject,
+                               NumberObject, StreamObject)
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(612, 792)
+    glyph = StreamObject()
+    glyph.set_data(b"600 0 0 0 500 700 d1 0 0 500 700 re f")
+    names = [d for d in differences if isinstance(d, str) and d != "/.notdef"]
+    procs = DictionaryObject({NameObject(n): writer._add_object(glyph) for n in names})
+    diffs = ArrayObject([NumberObject(d) if isinstance(d, int) else NameObject(d) for d in differences])
+    font = DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"),
+        NameObject("/Subtype"): NameObject("/Type3"),
+        NameObject("/FontBBox"): ArrayObject([FloatObject(v) for v in (0, 0, 600, 700)]),
+        NameObject("/FontMatrix"): ArrayObject([FloatObject(v) for v in (0.001, 0, 0, 0.001, 0, 0)]),
+        NameObject("/CharProcs"): writer._add_object(procs),
+        NameObject("/Encoding"): DictionaryObject({NameObject("/Type"): NameObject("/Encoding"),
+                                                   NameObject("/Differences"): diffs}),
+        NameObject("/FirstChar"): NumberObject(1),
+        NameObject("/LastChar"): NumberObject(len(names)),
+        NameObject("/Widths"): ArrayObject([NumberObject(600)] * len(names)),
+    })
+    if to_unicode:
+        cmap = StreamObject()
+        cmap.set_data(b"")
+        font[NameObject("/ToUnicode")] = writer._add_object(cmap)
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/T3_0"): writer._add_object(font)})})
+    codes = "".join(f"\\{i:03o}" for i in range(1, len(names) + 1))
+    content = StreamObject()
+    content.set_data(f"BT /T3_0 12 Tf 72 700 Td ({codes} {codes}) Tj ET".encode())
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(str(path))
+    return path
+
+
+def test_pdf_ocr_plan_forces_page_in_type3_font_with_numbered_glyphs(tmp_path):
+    """End to end on a real PDF: the font signal now fires on numbered Type3 glyphs and,
+    with word shape agreeing on the extracted glyph codes, the page is sent to OCR."""
+    numbered = [1, *[f"/{i}" for i in range(1, 13)]]
+    pdf = _type3_text_pdf(tmp_path / "t3.pdf", numbered)
+    (sample,) = preprocess.pdf_page_samples(pdf)
+    assert sample.missing_font_cmap
+    assert preprocess.pdf_ocr_plan(pdf, 1) == ([0], [0])
+
+
+def test_pdf_page_samples_type3_font_with_real_glyph_names_not_flagged(tmp_path):
+    named = [1, "/H", "/e", "/l", "/o", "/space", "/w", "/r", "/d"]
+    pdf = _type3_text_pdf(tmp_path / "t3.pdf", named)
+    (sample,) = preprocess.pdf_page_samples(pdf)
+    assert not sample.missing_font_cmap
 
 
 # ── page_garble_signals / is_page_garbled — level 1: signals -> page verdict ───
