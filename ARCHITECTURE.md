@@ -383,8 +383,12 @@ every document's claims side by side:
   a short or generic name; reordered or similar names) goes to the model with both sides' facts and
   roles; **low** (initialled or partial person names) is never merged and becomes a "possible
   same" item; a conflicting identifier, different people's names or a pair the reporter dismissed
-  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
-  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
+  is no pair. A place name that reads as a street address is compared by its parts
+  (`parse_address`/`same_address`, D388: unit, civic number, street, type, direction, with the
+  town and postal code only able to rule a match out), both as a place's name and as a person's
+  shared address. The fold (`_batch_exact_fold`, D127) folds only high matches, finding them
+  through `write_vault.NameIndex` (normalized name, plus a place's street key), and gives a
+  same-slug match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
   names, at least one side touched this run (or carried from the last run), then routes each by
   tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
