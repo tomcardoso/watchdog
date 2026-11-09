@@ -629,3 +629,54 @@ def test_no_prompt_or_skill_contains_a_benchmark_answer_key_term():
                 leaks.append(f"{f.relative_to(src)}: {n}")
         leaks += [f"{f.relative_to(src)}: {v}" for v in values - _KEY_TERM_ALLOWLIST if v in text]
     assert not leaks, "answer-key terms in prompts or skills:\n" + "\n".join(sorted(leaks))
+
+
+# ── the document block is closed before Watchdog's own text (D390) ────────────
+
+def _flat(prompt):
+    return "\n".join(b["text"] for b in prompt)
+
+
+def test_extract_prompt_closes_the_document_text_with_an_end_marker():
+    p = prompts.build_extract_prompt(
+        pages_text="Page one body.", skill_text="SKILL", sidecar=None, brief=None,
+        known_document_types=[])
+    text = _flat(p)
+
+    assert text.index("Page one body.") < text.index("END OF DOCUMENT TEXT")
+    assert text.rstrip().endswith(prompts.END_DOCUMENT_TEXT)
+
+
+def test_section_prompt_closes_the_section_text_with_an_end_marker():
+    p = prompts.build_section_prompt(
+        pages_text="Section body.", skill_text="SKILL", carry_forward="", section_label="1/2",
+        is_first=True, known_document_types=[])
+    text = _flat(p)
+
+    assert text.index("Section body.") < text.index("END OF SECTION TEXT")
+    assert text.rstrip().endswith(prompts.END_SECTION_TEXT)
+
+
+def test_repair_note_follows_the_end_marker_and_is_labelled_as_watchdogs():
+    from watchdog.pipeline import orchestrate
+    base = prompts.build_extract_prompt(
+        pages_text="Page one body.", skill_text="SKILL", sidecar=None, brief=None,
+        known_document_types=[])
+    repaired = orchestrate._append_repair_note(base, ["key_facts is empty"])
+
+    assert repaired[:len(base)] == base          # the note stays outside the cacheable blocks
+    text = _flat(repaired)
+    assert (text.index("Page one body.") < text.index("END OF DOCUMENT TEXT")
+            < text.index(prompts.REPAIR_NOTE_HEADER) < text.index("key_facts is empty"))
+    assert "not part of the document" in repaired[-1]["text"]
+    # A plain-string prompt gets the same label.
+    assert prompts.REPAIR_NOTE_HEADER in orchestrate._append_repair_note("base", ["x"])
+
+
+def test_verify_tail_comes_after_the_end_marker():
+    base = prompts.build_extract_prompt(
+        pages_text="Page one body.", skill_text="SKILL", sidecar=None, brief=None,
+        known_document_types=[])
+    text = _flat(prompts.build_verify_prompt(base, key_facts=[], entities=[]))
+
+    assert text.index("END OF DOCUMENT TEXT") < text.index("VERIFICATION PASS")

@@ -886,7 +886,8 @@ def _append_repair_note(base, errors: list[str]):
     """Append the post-flight repair note to a prompt, whether it's a plain string or a
     content-block list (A1) — the note is inherently volatile (only exists on retry), so it
     never belongs inside the cacheable prefix regardless of representation."""
-    note = ("\n\nThe previous extraction was rejected:\n" + "\n".join(errors)
+    note = (f"\n\n{prompts.REPAIR_NOTE_HEADER}\nThe previous extraction was rejected:\n"
+            + "\n".join(errors)
             + "\nReturn a corrected JSON object.")
     if isinstance(base, list):
         return base + [{"type": "text", "text": note}]
