@@ -120,6 +120,12 @@ A document whose extraction fails is logged and set aside, and the rest of the b
 
 The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab. Watchdog keeps the output of the last 50 runs, including after you close the app.
 
+## The model declined to answer a document
+
+A document can fail with "the model declined to answer this request". The provider's safety checks refused the page, and they refuse it again every time, so Watchdog stops after one try instead of paying for a second. This tends to happen with pages that are not really text, such as a scan whose text came out as rows of meaningless digits or symbols. Retrying the same document with the same model will fail the same way.
+
+Open the original and check that it is readable. If it is not, remove the document or add a cleaner copy. If it reads fine, choose a different model for that step in **Settings** and use **Retry** on the failed document. See [Models and cost](models-and-cost.md).
+
 ## A long document has only one or two facts
 
 A model sometimes stops early and keeps a single fact from a long report. Watchdog adds the document anyway and marks it **Few facts**; choose **Retry all…** at the top of the Documents screen, or open the document and choose **Retry extraction**. Either shows the cost before anything is sent. See [Few facts and Retry extraction](using-watchdog.md#few-facts-and-retry-extraction). If it keeps happening with the same document, [save the model's reasoning](#sharing-debugging-information) for a retry and send it with your report.
