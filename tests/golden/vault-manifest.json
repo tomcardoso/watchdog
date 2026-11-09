@@ -3,7 +3,7 @@
   ".watchdog/briefings/<DATE>-<TIME>.json": "663722f5ad71649a",
   ".watchdog/migrations.json": "<exempt>",
   ".watchdog/registry/.write-lock": "<exempt>",
-  ".watchdog/registry/documents.json": "3dbd27b8745ef9db",
+  ".watchdog/registry/documents.json": "d7ac5234bc1f7acf",
   ".watchdog/registry/entities.json": "57001e3eec96317f",
   ".watchdog/registry/manifest.json": "fa3590f752ccef49",
   ".watchdog/registry/merges.json": "52333bd880c78bef",

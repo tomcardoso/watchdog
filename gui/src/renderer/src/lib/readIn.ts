@@ -2,7 +2,7 @@
 // pre-processing detected (or the document's sidecar said), and which scanned pages were read
 // again in their language. Documents pre-processed before D383 have nothing recorded.
 
-import type { DocumentLanguage } from '@shared/api'
+import type { DocumentLanguage, UnreadableText } from '@shared/api'
 
 const names = (() => {
   try {
@@ -49,4 +49,14 @@ export function readIn(lang: DocumentLanguage | null | undefined): string | null
   const asked = Object.entries(lang.ask ?? {})
   if (asked.length) parts.push(`Scanned ${asked.map(([code, pages]) => `${languageName(code)} ${pageRanges(pages)}`).join('; ')} read as English`)
   return parts.join('. ')
+}
+
+/** What the unreadable-text warning says (D392): which pages came through as codes or symbols,
+ * and what the reporter can do, since retrying the extraction cannot help. */
+export function unreadableText(u: UnreadableText): string {
+  const all = u.page_count === null || u.pages.length >= u.page_count
+  const what = all
+    ? 'This document’s text came through as digits or symbols rather than words, so there was nothing to extract.'
+    : `The text of ${pageRanges(u.pages)} (of ${u.page_count}) came through as digits or symbols rather than words, so nothing was extracted from ${u.pages.length === 1 ? 'it' : 'them'}.`
+  return `${what} Retrying the extraction will not help. Open the original to check it: if it reads normally there, save or scan it as an image and add that copy, and Watchdog will read it with OCR.`
 }
