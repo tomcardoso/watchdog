@@ -3265,3 +3265,11 @@ Tradeoff: a release waits for the slowest platform's tests before any build star
 The tests themselves also had to change:
 - Each test app now sets `USERPROFILE` beside `HOME`, since Windows takes the home folder from it.
 - On Windows, a test folder still locked by the closed app's helper processes is left to the system's temporary-files cleanup.
+
+### D386 — The font signal also fires on simple fonts whose glyph names aren't characters
+
+The font vote in the per-page OCR check (D189, D192) fired only for a composite (/Type0) font with no /ToUnicode. In a live investigation's document set, a print-to-PDF driver wrote its text in Type3 fonts with no /ToUnicode and an /Encoding /Differences array naming the glyphs `/1`, `/2`, and so on. Nothing can map those names to characters: pypdf read `/1 /2 …` and Docling long runs of digits, but only the word-shape signal voted, so no page was read again and the model got glyph codes. The signal now also fires for a simple font (/Type1, /MMType1, /TrueType, /Type3) with no /ToUnicode when most of its Differences names are neither in the Adobe Glyph List nor `uniXXXX`/`uXXXX` names (with the list's `.suffix` and `_` ligature rules): bare numbers, `g12`, `cid12` and the like. A named encoding (WinAnsi, MacRoman, Standard), real glyph names, and dingbat or symbol fonts still never vote. With word shape agreeing, such pages are now OCR'd. The glyph list is pypdf's own (`pypdf._codecs.adobe_glyphs`), the list its text extraction decodes with; it is a private module, so if a release moves it the check falls back to recognising number-only and index-style names.
+
+Word shape was left alone: it reads pypdf's text, where these glyphs come out as `/12` tokens that already fail it, while a long all-digit token is ordinary in ledgers (account numbers, unformatted amounts). This changes only how newly processed documents are read; documents already processed keep their text until processed again, so no migration (I19).
+
+Tradeoff: a font that mostly uses private glyph names but does decode (an unusual subset font with its own naming and no /ToUnicode) now casts one vote, so a page with symbol-heavy text in it could be OCR'd. The majority rule keeps a few private glyphs (a logo, a custom mark) from voting.
