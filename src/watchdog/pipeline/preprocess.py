@@ -180,13 +180,68 @@ def is_word_shape_garbled(text: str) -> bool:
 _DINGBAT_FONT_RE = re.compile(r"wingding|dingbat|symbol|webding", re.IGNORECASE)
 
 
+_SIMPLE_FONT_SUBTYPES = {"/Type1", "/MMType1", "/TrueType", "/Type3"}
+
+# Glyph names that carry their character in the name itself (`uni0041`, `u1F600`), per the
+# Adobe Glyph List specification.
+_UNI_GLYPH_RE = re.compile(r"^(uni(?:[0-9A-F]{4})+|u[0-9A-F]{4,6})$")
+# Used only if pypdf's glyph list can't be imported: names that say nothing about the
+# character, such as a bare number (`7`) or a short prefix and a number (`g12`, `cid12`).
+_OPAQUE_GLYPH_RE = re.compile(r"^(\d+|(g|gid|glyph|cid|index)\d+)$", re.IGNORECASE)
+
+
+def _adobe_glyph_names():
+    """pypdf's copy of the Adobe Glyph List (keys with a leading '/'), the list its own
+    text extraction maps glyph names through. It lives in a private module, so None if a
+    pypdf release moves it; the check then falls back to _OPAQUE_GLYPH_RE (D386)."""
+    try:
+        from pypdf._codecs import adobe_glyphs
+    except Exception:
+        return None
+    return adobe_glyphs if isinstance(adobe_glyphs, dict) and adobe_glyphs else None
+
+
+def _glyph_name_recoverable(name: str, agl) -> bool:
+    """True if a /Differences glyph name leads back to a character: a name in the
+    Adobe Glyph List or a `uniXXXX`/`uXXXX` name, including (per the AGL rules) a
+    `.suffix` variant or `_` ligature of such names. A name like `7` or `g12` is a
+    font-internal glyph index that says nothing about the character."""
+    base = name.lstrip("/").split(".", 1)[0]
+    if not base:
+        return True
+    if agl is None:
+        return not _OPAQUE_GLYPH_RE.match(base)
+    return all(("/" + part) in agl or _UNI_GLYPH_RE.match(part) for part in base.split("_"))
+
+
+def _simple_font_glyphs_unmapped(font) -> bool:
+    """True if a simple font's /Encoding /Differences array names most of its glyphs
+    with names that carry no character (D386). A named encoding (WinAnsi, MacRoman,
+    Standard) or a Differences array of real glyph names decodes fine."""
+    enc = font.get("/Encoding")
+    enc = enc.get_object() if hasattr(enc, "get_object") else enc
+    if not hasattr(enc, "get"):
+        return False
+    diffs = enc.get("/Differences")
+    diffs = diffs.get_object() if hasattr(diffs, "get_object") else diffs
+    names = [str(d) for d in (diffs or []) if isinstance(d, str) and str(d) != "/.notdef"]
+    if not names:
+        return False
+    agl = _adobe_glyph_names()
+    unmapped = sum(1 for n in names if not _glyph_name_recoverable(n, agl))
+    return unmapped * 2 > len(names)
+
+
 def pdf_page_missing_font_cmap(page) -> bool:
-    """Font-CMap signal: True if the page declares a composite (/Type0) font
-    with no /ToUnicode CMap — the extractor is recovering glyph codes with no
-    reliable path back to characters. Tests a cause rather than a symptom, so
-    when it fires it's close to authoritative; when it doesn't, it says
-    nothing (most documents' simple fonts rely on a named encoding like
-    WinAnsiEncoding instead, which needs no ToUnicode to decode reliably).
+    """Font-mapping signal: True if the page declares a font with no /ToUnicode
+    CMap whose glyphs have no other reliable path back to characters, so the
+    extractor is recovering glyph codes: a composite (/Type0) font, or a simple
+    font (/Type1, /TrueType, /Type3) whose /Encoding /Differences names most of
+    its glyphs with bare numbers or other names that aren't characters (D386).
+    Tests a cause rather than a symptom, so when it fires it's close to
+    authoritative; when it doesn't, it says nothing (most documents' simple
+    fonts rely on a named encoding like WinAnsiEncoding instead, which needs no
+    ToUnicode to decode reliably).
 
     Takes a pypdf-style page object (duck-typed: anything with `.get()` on
     itself and its nested "/Resources"/"/Font" entries works, so tests can
@@ -201,13 +256,15 @@ def pdf_page_missing_font_cmap(page) -> bool:
             return False
         for font_ref in fonts.values():
             font = font_ref.get_object() if hasattr(font_ref, "get_object") else font_ref
-            if font.get("/Subtype") != "/Type0":
-                continue
             if "/ToUnicode" in font:
                 continue
             if _DINGBAT_FONT_RE.search(str(font.get("/BaseFont", ""))):
                 continue
-            return True
+            subtype = font.get("/Subtype")
+            if subtype == "/Type0":
+                return True
+            if subtype in _SIMPLE_FONT_SUBTYPES and _simple_font_glyphs_unmapped(font):
+                return True
         return False
     except Exception:
         return False

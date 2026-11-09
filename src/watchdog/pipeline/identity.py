@@ -29,6 +29,7 @@ import json
 import re
 import unicodedata
 from pathlib import Path
+from typing import NamedTuple
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
@@ -166,16 +167,201 @@ def is_distinctive(name: str) -> bool:
     return bool(digits) and len(tokens) >= 2
 
 
+# ── street addresses ──────────────────────────────────────────────────────────────────────────
+
+# One street address is often written several ways across documents: "Ave" or "Avenue", "NW" or
+# "Northwest", "310-1200" or "Suite 310, 1200", with or without the town and postal code. A place
+# record whose name reads as a street address is compared through `parse_address` (D388), which
+# folds those spellings and keeps apart anything that names another address: a different unit,
+# civic number, street, street type or direction, a conflicting postal code, or a different town.
+_STREET_TYPES = {
+    "avenue": "avenue", "ave": "avenue", "av": "avenue",
+    "street": "street", "st": "street",
+    "road": "road", "rd": "road",
+    "drive": "drive", "dr": "drive",
+    "boulevard": "boulevard", "blvd": "boulevard", "boul": "boulevard",
+    "crescent": "crescent", "cres": "crescent", "cresc": "crescent",
+    "court": "court", "ct": "court",
+    "place": "place", "pl": "place",
+    "lane": "lane", "ln": "lane",
+    "highway": "highway", "hwy": "highway",
+    "route": "route", "rte": "route",
+    "rue": "rue",
+    "chemin": "chemin", "ch": "chemin",
+    "way": "way",
+    "trail": "trail", "trl": "trail",
+    "terrace": "terrace", "terr": "terrace", "tce": "terrace",
+    "parkway": "parkway", "pkwy": "parkway",
+    "circle": "circle", "cir": "circle",
+    "square": "square", "sq": "square",
+}
+# Types that come before the street's name in French ("1200, rue Example"): a number before one of
+# these is never a numbered street.
+_FRENCH_LEAD = frozenset({"rue", "chemin", "boulevard"})
+_DIRECTIONS = {
+    "north": "n", "n": "n", "nord": "n",
+    "south": "s", "s": "s", "sud": "s",
+    "east": "e", "e": "e", "est": "e",
+    "west": "w", "w": "w", "ouest": "w", "o": "w",
+    "northwest": "nw", "nw": "nw", "northeast": "ne", "ne": "ne",
+    "southwest": "sw", "sw": "sw", "southeast": "se", "se": "se",
+}
+# A direction spelled out inside a street's name ("North Shore Road") reads as its abbreviation.
+_NAME_DIRECTIONS = {k: v for k, v in _DIRECTIONS.items() if len(k) > 1}
+_NAME_WORDS = {"st": "saint", "ste": "sainte"}
+# A unit is a number or a single letter ("Suite 310", "Unit B", "#3"), so "Ste-Catherine" is not one.
+_UNIT = re.compile(r"(?:\b(?:suite|ste|unit|apt|apartment|app|appartement|bureau|room|rm)\b\.?\s*#?"
+                   r"|#)\s*(\d[0-9a-z]*|[a-z]\d*)\b")
+# A Canadian postal code; a digit position read by OCR as O, I or L is put back (D388).
+_POSTAL_CA = re.compile(r"\b([a-z])([0-9oil])([a-z])[\s-]?([0-9oil])([a-z])([0-9oil])\b")
+_ZIP = re.compile(r"\b(\d{5})(?:-(\d{4}))?\s*$")
+_COUNTRY = frozenset({"canada", "usa", "us"})
+
+
+class Address(NamedTuple):
+    """A place name read as a street address. `street` is the comparison key (unit, civic number,
+    street name, type and direction); `locality` the words after it, a trailing region code or
+    country dropped; `postal` a postal code or ZIP as `(code, extension)`, or None."""
+
+    street: str
+    locality: tuple[str, ...]
+    postal: tuple[str, str] | None
+
+
+def _postal(text: str) -> tuple[str, tuple | None]:
+    """`text` without its last postal code or ZIP, and that code."""
+    found = None
+    for m in _POSTAL_CA.finditer(text):
+        found = m
+    if found:
+        g = list(found.groups())
+        if sum(c.isdigit() for c in (g[1], g[3], g[5])) >= 2:
+            digit = {"o": "0", "i": "1", "l": "1"}
+            code = "".join(digit.get(c, c) if i % 2 else c for i, c in enumerate(g))
+            return text[:found.start()] + " " + text[found.end():], (code, "")
+    m = _ZIP.search(text)
+    if m and re.search(r"[a-z]\W*$", text[:m.start()]):     # after a town or state, not a civic number
+        return text[:m.start()], (m.group(1), m.group(2) or "")
+    return text, None
+
+
+def parse_address(name: str) -> Address | None:
+    """`name` read as a street address, or None when it does not read as one: it must start with
+    a civic number (after any unit) and name a street type. Conservative by design: anything left
+    over that it cannot place (a stray number) makes it None, never a looser key."""
+    text = _fold(name).replace("&", " and ")
+    text, postal = _postal(text)
+    units = {m.group(1) for m in _UNIT.finditer(text)}
+    text = _UNIT.sub(" , ", text)
+    if len(units) > 1:
+        return None
+    segments = [re.sub(r"[^\w]+|_", " ", s).split() for s in text.split(",")]
+    tokens: list[str] = []
+    for seg in segments:
+        tokens += seg + [","]
+    nums: list[str] = []
+    i = 0
+    while i < len(tokens) and (tokens[i] == "," or any(c.isdigit() for c in tokens[i])):
+        if tokens[i] != ",":
+            # A civic or street number never starts with 0: a "0" token after a number is the rest
+            # of that number, split by OCR ("12 05" is 1205).
+            if nums and tokens[i].startswith("0") and tokens[i].isdigit():
+                nums[-1] += tokens[i]
+            else:
+                nums.append(tokens[i])
+        i += 1
+    if not nums or len(nums) > 3:
+        return None
+    rest = tokens[i:]
+    cut = rest.index(",") if "," in rest else len(rest)
+    seg, after = rest[:cut], [t for t in rest[cut:] if t != ","]
+    canon = [_STREET_TYPES.get(t) for t in seg]
+    if not seg or not any(canon):
+        return None
+    if canon[0] and len(nums) >= 2 and seg[0] not in _FRENCH_LEAD and canon[0] not in _FRENCH_LEAD:
+        # A numbered street: "1234 56 Ave NW" is civic 1234 on 56 Avenue.
+        street_name, stype, j = [nums.pop()], canon[0], 1
+    else:
+        last = max((k for k in range(1, len(seg)) if canon[k]), default=None)
+        if canon[0] and (canon[0] in _FRENCH_LEAD or last is None):
+            # French order, the type first: "rue Example Ouest".
+            k = len(seg)
+            while k > 2 and seg[k - 1] in _DIRECTIONS:
+                k -= 1
+            street_name, stype, j = seg[1:k], canon[0], k
+        elif last is not None:
+            street_name, stype, j = seg[:last], canon[last], last + 1
+        else:
+            return None
+        street_name = [_NAME_WORDS.get(t, _NAME_DIRECTIONS.get(t, t)) for t in street_name]
+    if len(nums) > 2 or not street_name:
+        return None
+    direction = ""
+    while j < len(seg) and seg[j] in _DIRECTIONS:
+        direction += _DIRECTIONS[seg[j]]
+        j += 1
+    locality = seg[j:] + after
+    while locality and (locality[-1] in _COUNTRY or (len(locality[-1]) == 2 and locality[-1].isalpha())):
+        locality.pop()
+    if any(c.isdigit() for t in locality for c in t):
+        return None
+    unit = nums[0] if len(nums) == 2 else ""
+    if units:
+        (u,) = units
+        if unit and unit != u:
+            return None
+        unit = u
+    civic = nums[-1]
+    street = "|".join((unit, civic, " ".join(street_name), stype, direction))
+    return Address(street, tuple(locality), postal)
+
+
+def same_address(a: Address | None, b: Address | None) -> bool:
+    """Whether two parsed addresses are one: the same street key, postal codes that agree where
+    both have one (a ZIP+4 against its five-digit ZIP agrees), and towns where one is the start of
+    the other ("Port Calder" / "Port Calder, Westshire") or either is missing."""
+    if a is None or b is None or a.street != b.street:
+        return False
+    pa, pb = a.postal, b.postal
+    if pa and pb and (pa[0] != pb[0] or (pa[1] and pb[1] and pa[1] != pb[1])):
+        return False
+    la, lb = a.locality, b.locality
+    n = min(len(la), len(lb))
+    return la[:n] == lb[:n]
+
+
+def address_key(name: str, etype: str) -> str | None:
+    """A place record's street key, for indexing records by address (`write_vault.NameIndex`):
+    two records with one address share it. Equal keys are a lookup, not a verdict: `classify`
+    still checks postal codes and towns with `same_address`."""
+    if canonical_type(etype) != "place":
+        return None
+    parsed = parse_address(name)
+    return parsed.street if parsed else None
+
+
 # ── identifiers ───────────────────────────────────────────────────────────────────────────────
 
 # Labelled identifiers only: a bare number in a fact is far too often an amount or a date. Each
 # scheme lists the entity types it can identify, so a parcel number in a fact about a company is
 # never taken to be the company's.
 _ID_VALUE = r"([A-Z]{0,4}[\s-]?\d[\dA-Z\-]{2,}[\dA-Z])\b"
+# A company registry's label: a registry word, up to two qualifying words from a closed list, then
+# the number's own word ("Corporation No.", "Company Access Number", "Company Registration
+# Number", "Business Identification Number (BIN)", "Entity ID", "Corporation Key"), D388. The
+# qualifiers are a closed list so "company phone number" or "business account number" never
+# reads as a registration.
+_REG_WORD = r"(?:incorporation|corporation|corporate|company|registration|registry|business|entity)"
+_REG_QUALIFIER = (r"(?:access|registration|registry|identification|identifier|incorporation|"
+                  r"corporation|corporate|company|business|entity|filing)")
+_ID_TERM = r"(?:(?:number|num|no|id|key|identifier)\b\.?|#)(?:\s*\([A-Z]{2,5}\))?"
+# A year or a date after a label is a date the sentence mentions, never an identifier.
+_DATE_LIKE = re.compile(r"(?:19|20)\d\d|(?:19|20)\d\d-\d\d?-\d\d?|\d\d?-\d\d?-(?:19|20)?\d\d")
 _SCHEMES: list[tuple[str, str, frozenset[str], re.Pattern]] = [
     ("registration", "registration number", frozenset({"organization"}), re.compile(
-        r"\b(?:incorporation|corporation|corporate|company|registration|registry|business|entity)"
-        r"\s+(?:no\.?|number|#)\s*:?\s*" + _ID_VALUE, re.IGNORECASE)),
+        r"\b" + _REG_WORD + r"(?:'s)?(?:\s+" + _REG_QUALIFIER + r"){0,2}\s+" + _ID_TERM
+        # "number is 5551234": the verb is not a letter prefix of the number.
+        + r"\s*:?\s*(?:(?:is|was)\s+)?" + _ID_VALUE, re.IGNORECASE)),
     ("licence", "licence number", frozenset({"person", "organization"}), re.compile(
         r"\blicen[cs]e\s+(?:no\.?|number|#)\s*:?\s*" + _ID_VALUE, re.IGNORECASE)),
     ("court-file", "court file number", frozenset({"proceeding"}), re.compile(
@@ -210,7 +396,8 @@ def harvest_identifiers(etype: str, names: list[str], facts: list[dict]) -> dict
         for scheme, _, types, pattern in _SCHEMES:
             if etype in types:
                 for m in pattern.finditer(text):
-                    out.setdefault(scheme, set()).add(_id_value(m.group(1)))
+                    if not _DATE_LIKE.fullmatch(m.group(1).strip()):
+                        out.setdefault(scheme, set()).add(_id_value(m.group(1)))
     if etype == "proceeding":
         for name in names:
             for m in _DOCKET_IN_NAME.finditer(name or ""):
@@ -321,6 +508,17 @@ def shared_attributes(a: Profile, b: Profile) -> list[dict]:
         elif ra["type"] == "place" and _street_address(ra["name"]):
             rel = next(iter(ra["rels"]), "linked to")
             out.append({"relationship": rel, "target_id": tid, "target_name": ra["name"]})
+    # The same street address held as two place records ("1200 Example Ave" / "1200 Example
+    # Avenue, Port Calder") is still one address (D388).
+    places_b = [(tid, parse_address(r["name"])) for tid, r in b.relations.items()
+                if r["type"] == "place" and tid not in a.relations and tid not in (a.id, b.id)]
+    for tid, ra in a.relations.items():
+        if ra["type"] != "place" or tid in b.relations or tid in (a.id, b.id):
+            continue
+        addr = parse_address(ra["name"])
+        if addr and any(same_address(addr, x) for _, x in places_b):
+            rel = next(iter(ra["rels"]), "linked to")
+            out.append({"relationship": rel, "target_id": tid, "target_name": ra["name"]})
     return out
 
 
@@ -369,6 +567,13 @@ def classify(a: Profile, b: Profile, dismissed: frozenset[str] | set[str] = froz
             if name_key(sa) in keys_b:
                 if best != "same" or (not is_distinctive(surface) and is_distinctive(sa)):
                     best, surface = "same", sa
+        if best is None and a.type == "place":
+            # One street address written two ways ("1200 Example Ave NW" / "1200 Example Avenue
+            # Northwest, Port Calder"), D388.
+            addrs_b = [parse_address(s) for s in b.surfaces]
+            surface = next((sa for sa in a.surfaces
+                            if any(same_address(parse_address(sa), x) for x in addrs_b)), None)
+            best = "same" if surface else None
         if best is None:
             toks_b = {frozenset(_name_tokens(s)) for s in b.surfaces}
             for sa in a.surfaces:

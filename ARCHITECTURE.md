@@ -214,7 +214,10 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
    existing fact anywhere in the document (D199). Survivors are ordinary facts tagged
    `added_by: "verify"` in the staged JSON. Not available on batch backends.
-5. **Post-flight** — validates the JSON; reads each fact's printed date (`pipeline/dates.py`, D329:
+5. **Post-flight** — first, in code, drops any placeholder entity ("Unknown", "Unidentified
+   corporation") with its tags and relationships and clears a `morgue_entity_id` naming one
+   (`pipeline/placeholders.py`, D393); then validates the JSON (a null `morgue_entity_id` is valid:
+   the document has no identifiable subject); reads each fact's printed date (`pipeline/dates.py`, D329:
    `dateparser`, all its languages, absolute dates only, a printed year required, only the
    precision the wording gives; a numeric day/month pair with two real readings keeps its year and
    both readings; anything else keeps its wording in `date_text` and is marked `date_pending` for
@@ -229,8 +232,11 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
    OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
    `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
-   than one per `thin_extraction_words_per_fact` words of source text, default 1,000), both
-   advisory, stored on the record and logged as `WARN` lines; stages raw timeline NDJSON; and
+   than one per `thin_extraction_words_per_fact` words of source text, default 1,000) and
+   unreadable source text (`unreadable_text`, D392: pages whose text, outside tables, is codes
+   or symbols rather than words or figures; their words count towards neither the thin warning
+   nor the empty-extraction guard), all advisory, stored on the record and logged as `WARN`
+   lines; stages raw timeline NDJSON; and
    writes the validated extraction to `.watchdog/extracted/<sha>.json` (D126). That artifact is
    kept as an audit record.
 
@@ -373,7 +379,10 @@ its synthesis. `/watchdog-entity` (`write_entity.py`) stores a session's summary
 **Code:** `pipeline/reconcile.py`, `pipeline/chunking.py`, `pipeline/merge_entities.py`.
 
 One reconcile call (split into context-bounded chunks when large, D237) does two jobs that need
-every document's claims side by side:
+every document's claims side by side. Every post-processing chunk (reconcile, synthesis, briefing,
+re-check) is sized by `chunking.json_size`, which counts letters, digits and punctuation
+separately rather than dividing length by four, since these bundles are dense with ids, dates and
+figures (D394):
 
 - **Entity resolution, by confidence tier (D279).** `pipeline/identity.py` classifies every
   candidate pair from what the extractions record (names and aliases, roles, facts, and a
@@ -383,11 +392,24 @@ every document's claims side by side:
   a short or generic name; reordered or similar names) goes to the model with both sides' facts and
   roles; **low** (initialled or partial person names) is never merged and becomes a "possible
   same" item; a conflicting identifier, different people's names or a pair the reporter dismissed
-  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
-  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
+  is no pair. A place name that reads as a street address is compared by its parts
+  (`parse_address`/`same_address`, D388: unit, civic number, street, type, direction, with the
+  town and postal code only able to rule a match out), both as a place's name and as a person's
+  shared address. The fold (`_batch_exact_fold`, D127) folds only high matches, finding them
+  through `write_vault.NameIndex` (normalized name, plus a place's street key), and gives a
+  same-slug match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
   names, at least one side touched this run (or carried from the last run), then routes each by
   tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
+  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
+  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
+  canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0, a spelled-out legal form folded to
+  its abbreviation), the shared tokens weighing at least one distinctive token's worth once tokens
+  common across the type are discounted (IDF-style; identical token sets exempt), for places a
+  street address paired only through what identifies an address (a shared house or street number
+  with another address, a street-part word with any other place), plus a surname index for
+  initialled names, at least one side touched this run (or carried from the last run), then routes
+  each by tier (D394). **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
   pairs. Every pair inside the set is classified in code: high pairs merge as rule merges, low ones
   become "possible same" items each paired with the set's most-documented record, and records
   joined by a medium pair form a group the model judges in one answer (`NameGroups`): per slice of
@@ -663,6 +685,7 @@ context/                     background material for the context interview (D266
 entities/<type>/<id>.md      entity notes; <type> is the closed vocabulary (D105)
 documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241); each fact line ends in its ^f- block id, the target of every fact citation (D283)
 morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); same -<sha6> rule
+morgue/_no-subject/<type>/…  originals whose extraction named no primary subject (D393); never an entity id
 timeline.md                  rendered global timeline
 briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests

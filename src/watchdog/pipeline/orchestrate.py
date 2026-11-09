@@ -23,8 +23,8 @@ from pathlib import Path
 
 from watchdog import defaults, model_client, progress, skills_catalog, telemetry_db
 from watchdog.pipeline import (
-    abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
-    requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
+    abort, batch_extract, chunking, harvest, leads, merge, placeholders, preflight, postflight, prompts,
+    reconcile, requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
@@ -761,8 +761,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
     # morgue_entity_id is used raw as a morgue path segment (write_vault) — slugify the model's
     # value here too, so a value with spaces or an embedded path separator (e.g. "Acme Corp" or
-    # "acme/subsidiary") can't produce a broken morgue directory layout or wikilinks.
-    extraction["morgue_entity_id"] = slugify(extraction.get("morgue_entity_id") or "")
+    # "acme/subsidiary") can't produce a broken morgue directory layout or wikilinks. Null when
+    # the document has no identifiable primary subject (D393), or the value slugifies to nothing.
+    subject = extraction.get("morgue_entity_id")
+    extraction["morgue_entity_id"] = (slugify(subject) or None) if isinstance(subject, str) else None
 
 
 def _near_duplicate_of(near_dup: dict | None) -> str | None:
@@ -875,8 +877,10 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     `result_<sha>.json` directly (`_commit_pending`)."""
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
+    # A placeholder entity ("Unknown", "Unidentified party") is dropped before it can be
+    # staged, and a morgue_entity_id naming one is cleared (D393).
+    warnings: list[str] = placeholders.drop(extraction) if isinstance(extraction, dict) else []
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-    warnings: list[str] = []
     outcome = postflight.run(vault, tmp, warn=warnings.append)
     ok = "errors" not in outcome
     return ok, outcome.get("errors", []), warnings
@@ -886,7 +890,8 @@ def _append_repair_note(base, errors: list[str]):
     """Append the post-flight repair note to a prompt, whether it's a plain string or a
     content-block list (A1) — the note is inherently volatile (only exists on retry), so it
     never belongs inside the cacheable prefix regardless of representation."""
-    note = ("\n\nThe previous extraction was rejected:\n" + "\n".join(errors)
+    note = (f"\n\n{prompts.REPAIR_NOTE_HEADER}\nThe previous extraction was rejected:\n"
+            + "\n".join(errors)
             + "\nReturn a corrected JSON object.")
     if isinstance(base, list):
         return base + [{"type": "text", "text": note}]
@@ -1086,11 +1091,8 @@ def _facts_so_far(section_parts: dict[int, list[dict]]) -> list[dict]:
 
 
 async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, carry, brief,
-                               model, effort, backend, repair_errors=None, verify_pass=False,
-                               prior_facts=None):
-    """One section's extract-section call. `repair_errors`, when given, appends the post-flight
-    repair note to the prompt (#505) — used only for a targeted section-1 retry, never the
-    normal per-section loop.
+                               model, effort, backend, verify_pass=False, prior_facts=None):
+    """One section's extract-section call.
 
     `verify_pass` (#535) verifies each section against its own text, right after that section's
     call — not the merged document at the end. A section's text is the only thing the verifier
@@ -1117,9 +1119,6 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
         candidates=candidates, cache_document=verify_pass, model=model,
     )
     prompt, detail = base, sec["label"]
-    if repair_errors:
-        prompt = _append_repair_note(base, repair_errors)
-        detail += " (repair)"
     # Marks where the section's model call — the thing that can silently run for minutes —
     # actually begins, so ingest.log doesn't read as though the HARVEST line just above it
     # (which finishes in seconds) is what the elapsed time belongs to (#556).
@@ -1138,8 +1137,7 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
 async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effort, backend, brief,
                            vault):
     """Merge + whole-document digest + stamping — the steps between having every section's raw
-    output and being ready for post-flight. Split out so the section-1 repair retry (#505) can
-    redo it without duplicating the digest/stamp calls."""
+    output and being ready for post-flight."""
     extraction = merge.merge_extractions(parts, sha=sha)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
     doc = extraction.setdefault("document", {})
@@ -1150,17 +1148,6 @@ async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effor
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
     return extraction, scratchpad, digest_cost
-
-
-# Post-flight errors that only section 1 — the one section ever prompted to supply document
-# metadata and the morgue fields (see build_section_prompt's `is_first` branch) — can fix. A
-# later section's output was never going to repair these, so a repair retry only needs to
-# re-call section 1, not the whole document (#505).
-_SECTION1_OWNED_ERROR_PREFIXES = ("morgue_entity_id ", "morgue_document_type ")
-
-
-def _repairable_by_section1(errors: list[str]) -> bool:
-    return bool(errors) and all(e.startswith(_SECTION1_OWNED_ERROR_PREFIXES) for e in errors)
 
 
 def _section_checkpoint_path(vault: Path, sha: str, index: int) -> Path:
@@ -1285,8 +1272,7 @@ def _note_section_entities(entities_seen: dict, parsed: dict) -> str:
     """Fold one section call's entities into `entities_seen` and return the updated carry-forward
     text (#636). Shared by every `_extract_sectioned` path that produces a section result and
     needs the next call's carry — normal success, the starved-effort retry, and each half of a
-    re-split section. The section-1 repair path does not call this: a repair never changes
-    entities_seen/carry, since it happens after the whole document is already merged."""
+    re-split section."""
     for e in parsed.get("entities") or []:
         if e.get("id"):
             entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
@@ -1296,9 +1282,9 @@ def _note_section_entities(entities_seen: dict, parsed: dict) -> str:
 def _record_single_part_section(section_parts: dict[int, list[dict]], section_cost: dict[int, float],
                                 vault: Path, sha: str, sec: dict, parsed: dict, cost: float) -> None:
     """Record one section's result as its sole part — set `section_cost`/`section_parts` and write
-    the checkpoint (#636). Shared by the normal-success, starved-effort-retry, and section-1-repair
-    paths, all of which replace a section's entry outright with one result. The re-split path keeps
-    its own inline version: it accumulates 2+ parts under one section index, which this helper's
+    the checkpoint (#636). Shared by the normal-success and starved-effort-retry paths, both of
+    which replace a section's entry outright with one result. The re-split path keeps its own
+    inline version: it accumulates 2+ parts under one section index, which this helper's
     single-`parsed` shape can't express."""
     section_cost[sec["index"]] = cost
     section_parts[sec["index"]] = [parsed]
@@ -1310,15 +1296,12 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     """Extract a sectioned document one section at a time with carry-forward, then merge.
 
     Each section is checkpointed as it completes and replayed on a retry with the same plan (D157);
-    checkpoints clear when post-flight succeeds. If post-flight rejects only fields section 1 owns
-    (`morgue_entity_id`), only section 1 is re-called. A truncated section is re-split in two (D183);
+    checkpoints clear when post-flight succeeds. A truncated section is re-split in two (D183);
     a starved one (reasoning used the output budget) is re-run one effort level lower instead."""
     sections = plan["sections"]
     checkpoints = _load_section_checkpoints(vault, sha, sections)
     # Keyed by planned-section index rather than a flat list (#540): a re-split section contributes
-    # 2 results instead of 1, and the #505 repair below replaces one *section's* worth of output —
-    # which a flat list can't express, since `parts[0] = …` would leave a re-split section 1's
-    # second half behind, merging its content twice. Flattened in section order at merge time.
+    # 2 results instead of 1. Flattened in section order at merge time.
     section_parts: dict[int, list[dict]] = {
         c["section"]["index"]: (c.get("parts") or [c["parsed"]]) for c in checkpoints}
     section_cost: dict[int, float] = {
@@ -1401,22 +1384,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
     cost = sum(section_cost.values()) + digest_cost
     ok, errors, warnings = _write_postflight(vault, sha, extraction)
-
-    if not ok and _repairable_by_section1(errors):
-        r = await _extract_one_section(vault, sha, pf, skill_text, sections[0],
-                                       is_first=True, carry="", brief=brief,
-                                       model=model, effort=effort, backend=backend,
-                                       repair_errors=errors, verify_pass=verify_pass)
-        idx = sections[0]["index"]
-        # Replaces every part section 1 contributed, not just the first: the repair re-ran the
-        # whole section, so a re-split section 1's second half is now superseded, not still due.
-        _record_single_part_section(section_parts, section_cost, vault, sha, sections[0], r.parsed,
-                                    section_cost.get(idx, 0.0) + (r.cost_usd or 0.0))
-        parts = _ordered_parts(section_parts)
-        extraction, scratchpad, digest_cost = await _merge_sectioned(
-            parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
-        cost = sum(section_cost.values()) + digest_cost
-        ok, errors, warnings = _write_postflight(vault, sha, extraction)
+    # No section-1 repair retry any more (#505's, removed by D393): it existed only for a missing
+    # morgue_entity_id, which is now a valid answer — the document has no identifiable subject.
 
     if ok:
         _clear_section_checkpoints(vault, sha)

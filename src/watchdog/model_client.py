@@ -303,13 +303,15 @@ class ModelError(RuntimeError):
     `usage`, `cost_usd`, `attempts`, `model`, `backend` and `auth_mode` are set when at least one
     attempt reached the model, so failed spend is still recorded (D125). `truncated` marks an
     authoritative max-token cut; `starved` narrows it to reasoning having used the output budget —
-    re-splitting the input fixes the first but not the second."""
+    re-splitting the input fixes the first but not the second. `refused` marks the provider
+    declining the request (a safety stop): the same input is refused again, so it is never
+    retried."""
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
                 auth_mode: str | None = None, truncated: bool = False, starved: bool = False,
                 key_label: str | None = None, stop_reason: str | None = None,
-                reasoning: str | None = None):
+                reasoning: str | None = None, refused: bool = False):
         super().__init__(message)
         self.key_label = key_label
         self.stop_reason = stop_reason
@@ -322,6 +324,7 @@ class ModelError(RuntimeError):
         self.auth_mode = auth_mode
         self.truncated = truncated
         self.starved = starved
+        self.refused = refused
 
 
 class RateLimitError(RuntimeError):
@@ -1485,6 +1488,16 @@ _MAX_CONTINUATIONS = 8
 _TRUNCATION_FINISH = {"length", "max_tokens", "MAX_TOKENS"}
 
 
+# Stop reasons that mean the provider declined to answer: Anthropic's `refusal` (also what the
+# Claude Code backend reports) and the OpenAI-compatible `content_filter`.
+_REFUSAL_FINISH = {"refusal", "content_filter"}
+
+
+def _is_refused(stop_reason) -> bool:
+    """Whether a backend's stop reason marks the model declining the request (a safety stop)."""
+    return bool(stop_reason) and str(stop_reason) in _REFUSAL_FINISH
+
+
 def _is_truncated(finish_reason) -> bool:
     """Whether a backend's finish_reason/stop_reason marks a max-token cut (not a natural stop)."""
     return bool(finish_reason) and str(finish_reason) in _TRUNCATION_FINISH
@@ -1611,6 +1624,7 @@ async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, 
     agg_usage: dict | None = None
     last_rate_limit: dict | None = None   # #563: freshest snapshot, not accumulated like usage
     was_truncated = False   # #540: whether the final failure was a truncation specifically
+    was_refused = False     # the provider declined the request: never retried
     was_starved = False     # #558: narrows was_truncated to the reasoning-starvation shape
     stop_reason = None      # the last request's own stop reason, recorded per call (D368)
     thoughts: list = []     # every attempt's reasoning, when asked for (D368)
@@ -1675,6 +1689,17 @@ async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, 
                                     text=out.get("text"), usage=out.get("usage"))
             break
 
+        if _is_refused(out.get("stop_reason")):
+            # The provider declined this input (stop reason `refusal`, no answer). The same
+            # input is declined again, so a retry only spends input tokens and the empty text
+            # would be reported as malformed JSON — stop and say what happened.
+            last_err = (f"the model declined to answer this request (stop reason: "
+                        f"{stop_reason}) — retrying the same input will not help")
+            was_refused = True
+            fixture_capture.capture("refusal", backend=chosen, model_id=model_id, task=task,
+                                    text=out.get("text"), usage=out.get("usage"))
+            break
+
         parsed = _extract_json(out["text"])
         if parsed is None:
             last_err = "response was not valid JSON"
@@ -1708,5 +1733,5 @@ async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, 
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
         model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
         starved=was_starved, key_label=key_label, stop_reason=stop_reason,
-        reasoning=_join_reasoning(thoughts))
+        reasoning=_join_reasoning(thoughts), refused=was_refused)
 

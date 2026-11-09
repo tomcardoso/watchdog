@@ -394,6 +394,24 @@ def test_validate_rejects_empty_key_facts_with_substantial_source_text():
     assert any("key_facts is empty" in e and "5000 words" in e for e in errors)
 
 
+def test_validate_accepts_a_document_with_no_subject():
+    """D393: null, empty or absent morgue_entity_id means the document has no identifiable
+    primary subject — a valid answer, not a rejection that pushes the model to invent one."""
+    for value in (None, ""):
+        doc = _minimal_valid_doc(key_facts=[])
+        doc["morgue_entity_id"] = value
+        assert _validate(doc, {}) == []
+    doc = _minimal_valid_doc(key_facts=[])
+    del doc["morgue_entity_id"]
+    assert _validate(doc, {}) == []
+
+
+def test_validate_rejects_a_subject_that_is_not_a_string():
+    doc = _minimal_valid_doc(key_facts=[])
+    doc["morgue_entity_id"] = ["acme"]
+    assert any(e.startswith("morgue_entity_id ") for e in _validate(doc, {}))
+
+
 def test_validate_allows_empty_key_facts_with_thin_source_text():
     # A short cover letter or signature page can legitimately have nothing to extract, even if
     # the model happens to report a nominally long page_count (e.g. a mostly-blank exhibit set).

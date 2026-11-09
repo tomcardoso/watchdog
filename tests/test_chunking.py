@@ -77,8 +77,8 @@ def test_chunk_bundle_renumbers_pairs_per_chunk_and_maps_back():
     # A model answering "pair 1" in chunk 2 means bundle pair 3.
     merged = reconcile.merge_chunk_results(chunks, [
         {"merges": [], "contradictions": [{"x": 1}]},
-        {"merges": [{"pair": 1, "keep": "a", "reason": "r"}], "contradictions": []},
-        {"merges": [{"pair": 7, "keep": "b", "reason": "r"}], "contradictions": [{"x": 2}]},
+        {"merges": [{"pair": 1, "same": True, "keep": "a", "reason": "r"}], "contradictions": []},
+        {"merges": [{"pair": 7, "same": True, "keep": "b", "reason": "r"}], "contradictions": [{"x": 2}]},
     ])
     assert merged["merges"][0]["pair"] == 3
     assert not isinstance(merged["merges"][1]["pair"], int)   # out of its chunk → apply_merges skips
@@ -94,6 +94,72 @@ def test_chunk_bundle_trims_the_oldest_stored_facts_keeping_the_newest():
     assert kept["stored_facts"].startswith(reconcile._TRIMMED)
     assert kept["stored_facts"].endswith("NEWEST CLAIM")
     assert kept["new_facts"] == "n"
+
+
+# ── content-aware sizing (D394) ───────────────────────────────────────────────
+
+_PROSE = ("The council approved the harbour contract after a long debate about its cost, and the "
+          "mayor said the decision would be reviewed once the engineers had reported back. ") * 40
+
+
+def _fact_id(i: int, j: int) -> str:
+    return f"fact:1:{(i * 7919 + j) % 16 ** 12:012x}:{(i * 104729 + j) % 16 ** 10:010x}"
+
+
+def _dense_side(i: int, s: str) -> dict:
+    """One side of an invented candidate pair, as dense as a real one: slugs, fact ids, dates,
+    street numbers and postal codes."""
+    street = f"{100 + i} Example St NW"
+    return {"id": f"{s}{i}-{100 + i}-example-st-nw", "type": "place",
+            "name": f"{street}, Port Calder, Northland T1A {i % 10}B{i % 7}", "aliases": [street.upper()],
+            "facts": [{"id": _fact_id(i, j), "document": f"Registry search {i}-{j}",
+                       "date": f"2026-0{1 + j}-1{i % 10}", "page": j + 1,
+                       "fact": f"Lists {street} as the registered office from 2019-08-0{1 + j}."}
+                      for j in range(3)]}
+
+
+def _dense_pairs(n: int) -> list[dict]:
+    return [{"index": i, "a": _dense_side(i, "a"), "b": _dense_side(i, "b")} for i in range(n)]
+
+
+def test_content_estimate_stays_near_chars_over_4_on_prose():
+    ratio = chunking.content_est_tokens(_PROSE) / (len(_PROSE) / 4)
+    assert 1.0 <= ratio <= 1.25
+
+
+def test_content_estimate_counts_ids_and_figures_heavier():
+    """A bundle of ids, fact ids, dates and addresses tokenizes far worse than prose; a live run's
+    reconcile calls came back 40–50% over a chars/4 plan."""
+    text = json.dumps(_dense_pairs(20), ensure_ascii=False)
+    assert chunking.content_est_tokens(text) / (len(text) / 4) >= 1.35
+
+
+def test_dense_pairs_are_packed_by_content_under_the_line(monkeypatch):
+    """Chunks of dense pairs are cut by their content estimate, so each stays inside the model's
+    long-prompt cap by that estimate — which a chars/4 packing, filling the budget by length,
+    overshoots by about half."""
+    monkeypatch.setattr(model_client, "context_window", lambda m, b=None: 1_000_000)
+    monkeypatch.setattr(model_client, "tokenizer_ratio", lambda m, b=None, v=None: 1.0)
+    monkeypatch.setattr(model_client, "long_context_input_cap", lambda m, b=None: 9_000)
+    budget = chunking.prompt_budget_chars("m")
+    chunks = reconcile.chunk_bundle({"pairs": _dense_pairs(120), "entities": []}, budget)
+    assert len(chunks) > 2
+    for chunk in chunks:
+        text = json.dumps(chunk["pairs"], ensure_ascii=False)
+        assert chunking.content_est_tokens(text) <= 9_000
+        assert len(text) / 4 < 0.75 * 9_000
+
+
+def test_trim_fits_dense_stored_facts_by_content():
+    lines = [f"- [{_fact_id(i, 0)}] p. {i % 9 + 1}, 2019-0{i % 9 + 1}-1{i % 10}: "
+             f"{100 + i} Example St NW, T1A {i % 10}B{i % 7}" for i in range(400)]
+    claims = "\n".join(lines + ["NEWEST CLAIM"])
+    budget = 4000
+    chunks = reconcile.chunk_bundle({"pairs": [], "entities": [_entity(0, claims)]}, budget)
+    kept = chunks[0]["entities"][0]
+    assert chunking.json_size(kept) <= budget
+    assert kept["stored_facts"].startswith(reconcile._TRIMMED)
+    assert kept["stored_facts"].endswith("NEWEST CLAIM")
 
 
 # ── _reconcile_pre_commit: several calls, one atomic outcome ─────────────────
@@ -117,7 +183,7 @@ def test_reconcile_pre_commit_splits_and_applies_merges_once(tmp_path, monkeypat
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         calls.append(prompt)
         return model_client.ModelResult(
-            parsed={"merges": [{"pair": 0, "keep": "a", "reason": "r"}], "contradictions": []},
+            parsed={"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "r"}], "contradictions": []},
             text="", model="m", backend="b", auth_mode="api-key", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 

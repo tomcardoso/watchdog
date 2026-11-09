@@ -95,7 +95,7 @@ def test_ambiguous_numeric_date_keeps_its_year_and_both_readings():
 @pytest.mark.parametrize("text, iso", [
     ("13/04/2021", "2021-04-13"), ("04.04.2021", "2021-04-04"), ("2019/08/16", "2019-08-16"),
     ("2020-7-8", "2020-07-08"),
-    # year-first is year-month-day whatever the separator (D391), even when day-month also fits
+    # year-first is year-month-day whatever the separator (D395), even when day-month also fits
     ("2020/07/08", "2020-07-08"), ("2020.07.08", "2020-07-08"), ("2010 / 03 / 02", "2010-03-02"),
 ])
 def test_a_numeric_date_with_one_reading_is_read(text, iso):

@@ -1334,6 +1334,19 @@ def _commit_same_name(tmp_path, vault, sha, body, entity="court", dtype="order")
     }), vault)
 
 
+def test_document_with_no_subject_is_filed_under_no_subject(tmp_path):
+    """D393: an extraction naming no primary subject files its original under
+    morgue/_no-subject/<type>/, a folder no entity id can take (slugify never makes a leading
+    underscore)."""
+    from watchdog.pipeline.write_vault import NO_SUBJECT_DIR, slugify
+    assert NO_SUBJECT_DIR.startswith("_") and slugify(NO_SUBJECT_DIR) != NO_SUBJECT_DIR
+    vault = make_vault(tmp_path)
+    _commit_same_name(tmp_path, vault, "c" * 64, "COVER", entity=None, dtype="cover-page")
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert docs["c" * 64]["morgue_path"] == "morgue/_no-subject/cover-page/Order.pdf"
+    assert (vault / "morgue" / "_no-subject" / "cover-page" / "Order.pdf").read_text() == "COVER"
+
+
 def test_same_filename_different_documents_keep_separate_notes_and_originals(tmp_path):
     """Two different files that share a filename (every production has its Order.pdf) must not
     overwrite each other's document note or morgue original (D241)."""

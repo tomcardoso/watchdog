@@ -130,6 +130,8 @@ DocumentRow = {
   entity_count, source|null, obtained|null, summary|null,
   thin_extraction: {facts, words, expected_min, retry: bool}|null  // implausibly few facts for the
                                      // text's length (D367); retry: its text is kept for Retry extraction
+  unreadable_text: {pages: number[], page_count|null}|null  // pages whose converted text is codes or
+                                     // symbols, not words (D392); advisory, no retry
 }
 
 EntityRow = {

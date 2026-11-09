@@ -320,6 +320,23 @@ SETTINGS = {
         "default": 1000,
         "min": 0,
     },
+    "unreadable_text_letter_share": {
+        "short": "Warn when a page's text is codes or symbols: fewer than this share of its words carry a letter (default: 0.1)",
+        "help": (
+            "A page whose pre-processed text came through as glyph codes or symbols (long runs of\n"
+            "  digits, symbol soup) rather than words gives the model nothing to read. A page is\n"
+            "  counted as unreadable when fewer than this share of its words contain a letter, in any\n"
+            "  script, and most of the rest are not shaped like amounts, dates or counts; tables of\n"
+            "  figures are not counted. The document is still added, but marked with a warning on\n"
+            "  its page in Documents and in the processing log. Retrying the extraction cannot fix\n"
+            "  it: check the original, and add a copy saved or scanned as an image so it is read\n"
+            "  with OCR. Lower it to warn less often; 0 turns the warning off. Default: 0.1."
+        ),
+        "type": "float",
+        "default": 0.1,
+        "min": 0.0,
+        "max": 1.0,
+    },
     "verify_extraction": {
         "short": "Re-read each document to catch facts the extraction missed (default: false)",
         "help": (
@@ -733,7 +750,8 @@ SECTIONS = [
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
-      "empty_extraction_min_words", "thin_extraction_words_per_fact", "verify_extraction"]),
+      "empty_extraction_min_words", "thin_extraction_words_per_fact", "unreadable_text_letter_share",
+      "verify_extraction"]),
     ("Model options", "How hard each step's model thinks, and where self-hosted models are. The models themselves are chosen under Models & keys.",
      ["classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),

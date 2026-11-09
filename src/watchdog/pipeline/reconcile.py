@@ -16,6 +16,7 @@ pass, using the merge remap `apply_merges` returned.
 
 import json
 import math
+import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -32,6 +33,23 @@ from watchdog.pipeline.write_vault import _doc_slug, _merge_entity, _new_entity
 # "of") and block as a candidate pair, while "Laurentian University" and "Laurentian University of
 # Sudbury" — the case this exists to catch — score no better.
 _STOPWORDS = {"the", "of", "and", "a", "an", "de", "du", "la", "le"}
+
+# A legal form spelled out and abbreviated is one word to the comparison, so "Acme Limited" and
+# "Acme Ltd." have the same tokens and reach the model as a pair (D394).
+_LEGAL_FOLD = {"limited": "ltd", "incorporated": "inc", "corporation": "corp", "company": "co",
+               "limitee": "ltee", "limitée": "ltée"}
+
+# Tokens common across a type's records carry little identity: in a live run a region's name, a
+# city's, "ltd" and "corporation" sat in most of the records of their type, and pairs sharing only
+# those were most of what reconcile sent (D394). A token's weight is 1 while it is in at most
+# `_COMMON_MIN` records of a type, or at most `_COMMON_SHARE` of them, then falls with its
+# frequency (an IDF curve) to 0 for a token in every record. A pair qualifies only when the tokens
+# it shares weigh at least `_SHARED_WEIGHT_MIN`, one distinctive token's worth, unless the two
+# names have the very same tokens. The floor keeps every token at full weight in a small
+# investigation, where none is in more than a handful of records.
+_COMMON_MIN = 5
+_COMMON_SHARE = 0.1
+_SHARED_WEIGHT_MIN = 1.0
 
 # Token-overlap floor for a pair to be worth a model's judgement. 0.5 admits one differing token
 # out of two ("Acme Holdings" / "Acme Holdings International"); it is a recall knob on a set the
@@ -50,8 +68,11 @@ _MAX_PAIRS = 2000
 # batch's identical-name pairs past `_MAX_PAIRS` unjudged. A group is cut into slices of at most
 # `_GROUP_MEMBERS` records per call: a member as the model sees it is at most about 3.5 KB (six facts
 # of up to 300 characters, eight roles, a summary line; measured on a 2,000-entity investigation),
-# so a full slice is about 105 KB, inside the smallest catalogued model's per-call data budget
-# (`chunking.prompt_budget_chars`, about 165 KB), and still few enough records to compare at once.
+# so a full slice is about 105 KB, which `chunking.json_size` counts at roughly 175 KB once its ids
+# and figures are weighed (D394): inside Claude Haiku 5.5's per-call data budget
+# (`chunking.prompt_budget_chars`, about 290 KB), a little over the smallest catalogued model's
+# (about 160 KB, where a full slice goes as a call of its own, well inside its context window), and
+# still few enough records to compare at once.
 # A group cut into several slices gets further rounds over the survivors (`NameGroups`), at most
 # `_GROUP_ROUNDS` rounds in all; what still has not been compared in full is carried to the next run.
 _GROUP_MEMBERS = 30
@@ -76,11 +97,44 @@ def _surfaces(entry: dict) -> list[str]:
 
 def _tokens(name: str) -> frozenset[str]:
     return frozenset(
-        t for t in normalize_entity_name(name).split() if t and t not in _STOPWORDS
+        _LEGAL_FOLD.get(t, t) for t in normalize_entity_name(name).split() if t and t not in _STOPWORDS
     )
 
 
-def _overlap(a: str, b: str) -> float:
+def _street_part(name: str) -> frozenset[str] | None:
+    """The tokens of a street address's street part, or None when `name` is not shaped like one.
+
+    A street address is a name whose first comma-separated part holds a digit ("12 Example St,
+    Port Calder, Northland T1A 1A1"). Its street part is its leading parts that hold a digit ("Unit
+    5, 12 Example St"); what follows is the locality — city, province, postal code — which many
+    unrelated addresses share."""
+    street = []
+    for part in (name or "").split(","):
+        if not re.search(r"\d", part):
+            break
+        street.append(part)
+    if not street or len(_tokens(name)) < 2:
+        return None
+    return _tokens(",".join(street))
+
+
+def _numbered(tokens: frozenset[str]) -> bool:
+    return any(any(c.isdigit() for c in t) for t in tokens)
+
+
+def _street_shared(a: str, b: str, ta: frozenset[str], tb: frozenset[str]) -> bool:
+    """Whether two place names share a word of a street address's street part, or neither is one:
+    "Northland" is not a duplicate of "12 Example St, Port Calder, Northland", nor is one address
+    in Port Calder of another, when the words they share are the locality's (D394)."""
+    sa, sb = _street_part(a), _street_part(b)
+    if sa is None and sb is None:
+        return True
+    if sa is not None and sb is not None:
+        return bool(sa & sb)
+    return bool(sa & tb) if sa is not None else bool(sb & ta)
+
+
+def _overlap(a: str, b: str, place: bool = False) -> float:
     """How strongly two names suggest the same thing, in [0, 1]; 0 means "do not send this pair".
 
     Three shapes qualify. **Identical token sets** score 1.0 — the strongest signal available:
@@ -94,13 +148,78 @@ def _overlap(a: str, b: str) -> float:
     — is the abbreviation/partial-name case ("Laurentian University" ⊂ "Laurentian University of
     Sudbury"), also scored 1.0. Otherwise, plain **Jaccard overlap** of the token sets, which
     catches spelling drift.
+
+    With `place`, two names of places must also share a word of a street address's street part
+    when either is one (`_street_shared`): a locality wholly contained in an address, as its
+    trailing city or province, is not its duplicate.
     """
     ta, tb = _tokens(a), _tokens(b)
     if not ta or not tb:
         return 0.0
+    if place and not _street_shared(a, b, ta, tb):
+        return 0.0
     if ta == tb or ta < tb or tb < ta:
         return 1.0
     return len(ta & tb) / len(ta | tb)
+
+
+def _token_weight(df: int, n: int) -> float:
+    """A token's weight from how many of a type's `n` records hold it (`df`): 1 up to the common
+    floor, then an IDF curve down to 0 for a token in every record (see `_COMMON_MIN`)."""
+    floor = max(_COMMON_MIN, _COMMON_SHARE * n)
+    if df <= floor:
+        return 1.0
+    return max(0.0, math.log(n / df) / math.log(n / floor))
+
+
+def _type_weights(entities_reg: dict) -> dict[tuple[str, str], float]:
+    """`_token_weight` of every (canonical type, token) in the registry, counting each record once
+    however many of its names hold the token."""
+    df: dict[tuple[str, str], int] = {}
+    n_type: dict[str, int] = {}
+    for e in entities_reg.values():
+        etype = canonical_type(e.get("type", ""))
+        n_type[etype] = n_type.get(etype, 0) + 1
+        for tok in frozenset().union(*(_tokens(n) for n in _surfaces(e))):
+            df[(etype, tok)] = df.get((etype, tok), 0) + 1
+    return {key: _token_weight(count, n_type[key[0]]) for key, count in df.items()}
+
+
+def _pair_score(a: dict, b: dict, etype: str, weight) -> float:
+    """The best `_overlap` over two records' known names, or 0 when the pair is not worth a call.
+
+    A pair of names counts only when the tokens they share weigh at least `_SHARED_WEIGHT_MIN`
+    under `weight(token)`, unless the two names have the very same tokens (a word-order or
+    stopword variant). For places with a street address on either side, what identifies an
+    address is checked across all their names together: two addresses must share a number in
+    their street parts ("12 St NW" and "40 St NW" share only words every street has), and an
+    address and another place must share street-part words of that weight, so an address that
+    carries its province as an alias is still not the province's duplicate (D394)."""
+    place = etype == "place"
+    a_names = [(n, _tokens(n)) for n in _surfaces(a)]
+    b_names = [(n, _tokens(n)) for n in _surfaces(b)]
+    best = 0.0
+    for an, at in a_names:
+        for bn, bt in b_names:
+            score = _overlap(an, bn, place)
+            if score < _JACCARD_MIN or score <= best:
+                continue
+            if at != bt and sum(weight(t) for t in at & bt) < _SHARED_WEIGHT_MIN:
+                continue
+            best = score
+    if not best or not place:
+        return best
+    streets, addresses = [], 0
+    for names in (a_names, b_names):
+        parts = [p for p in (_street_part(n) for n, _ in names) if p is not None]
+        addresses += bool(parts)
+        streets.append(frozenset().union(*parts) if parts else frozenset().union(*(t for _, t in names)))
+    shared = streets[0] & streets[1]
+    if addresses == 2 and not _numbered(shared):
+        return 0.0
+    if addresses == 1 and sum(weight(t) for t in shared) < _SHARED_WEIGHT_MIN:
+        return 0.0
+    return best
 
 
 def _prefix_len(n_tokens: int) -> int:
@@ -144,8 +263,10 @@ def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
       token only, with every one of the probing name's tokens.
 
     Token rarity only decides which tokens are probed; any fixed order would be exact, rarity just
-    keeps the postings short. The candidate set is a superset of the qualifying pairs, and each
-    candidate is scored exactly as before, so the output is unchanged — only the work is not.
+    keeps the postings short. The candidate set is a superset of the qualifying pairs: each
+    candidate is scored by `_pair_score`, which only ever removes pairs the plain token overlap
+    admits — tokens common across the type, a locality inside an address (D394) — so the index
+    stays exact.
 
     Returned strongest-signal-first, uncapped and unnumbered.
     """
@@ -161,6 +282,7 @@ def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
         for ts in toks:
             for tok in ts:
                 freq[tok] = freq.get(tok, 0) + 1
+    weights = _type_weights(entities_reg)
 
     def _order(ts: frozenset[str]) -> list[str]:
         return sorted(ts, key=lambda tok: (freq.get(tok, 0), tok))
@@ -185,15 +307,15 @@ def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
             for tok in ordered:
                 candidates |= rare_index.get((t_type, tok), set())
         candidates.discard(t_id)
-        t_names = _surfaces(entities_reg[t_id])
+
+        def weight(tok: str, t_type: str = t_type) -> float:
+            return weights.get((t_type, tok), 1.0)
+
         for o_id in candidates:
             # A pair with both sides touched is found from both; score it once, from the lower id.
             if o_id in touched_set and o_id < t_id:
                 continue
-            o = entities_reg[o_id]
-            score = max(
-                (_overlap(tn, on) for tn in t_names for on in _surfaces(o)), default=0.0
-            )
+            score = _pair_score(entities_reg[t_id], entities_reg[o_id], t_type, weight)
             if score < _JACCARD_MIN:
                 continue
             a_id, b_id = sorted((t_id, o_id))
@@ -865,24 +987,32 @@ def group_estimate(vault: Path, shas: list[str]) -> dict:
 
 
 def _trim_claims(entity: dict, budget: int) -> dict:
-    """Fit one entity into `budget` characters by dropping the *oldest* of its stored facts.
+    """Fit one entity into `budget` (`chunking.json_size` units) by dropping the *oldest* of its
+    stored facts.
 
     A hub entity named in hundreds of documents can carry more stored facts than a whole call
     holds. They are listed in date order, so the head is the oldest and is what goes; this
     batch's new facts — the ones the check exists for — are kept whole. Returns the entity
-    unchanged when it already fits."""
+    unchanged when it already fits. The size is counted by content, not length (D394), so the cut
+    is made in proportion and repeated until the entity fits."""
     size = json_size(entity)
     if size <= budget:
         return entity
     stored = entity.get("stored_facts") or ""
-    keep = max(0, len(stored) - (size - budget) - len(_TRIMMED) - 64)
     trimmed = dict(entity)
-    trimmed["stored_facts"] = _TRIMMED + stored[len(stored) - keep:] if keep else _TRIMMED
-    return trimmed
+    keep = len(stored)
+    while True:
+        over = json_size(trimmed) - budget
+        if over <= 0 or not keep:
+            return trimmed
+        per_char = max(1.0, json_size(stored[len(stored) - keep:]) / max(1, keep))
+        keep = max(0, keep - int(over / per_char) - len(_TRIMMED) - 64)
+        trimmed["stored_facts"] = _TRIMMED + stored[len(stored) - keep:] if keep else _TRIMMED
 
 
 def chunk_bundle(bundle: dict, budget: int) -> list[dict]:
-    """Split a reconciliation bundle into calls of at most `budget` characters of data (#696).
+    """Split a reconciliation bundle into calls of at most `budget` of data (#696), measured by
+    `chunking.json_size` — by what the data is made of, not its length (D394).
 
     Pairs and entities are packed in order, pairs first, into as few chunks as fit; a bundle that
     already fits comes back as one chunk identical to the input. Each chunk numbers its pairs from
@@ -1124,10 +1254,17 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         a, b = rm["a"], rm["b"]
         keep_id = min(a, b)
         decisions.append((keep_id, b if keep_id == a else a, rm["verdict"], "rule", rm["verdict"]["reason"]))
+    no_verdict = 0
     for item in parsed.get("merges") or []:
         idx = item.get("pair")
         if not isinstance(idx, int) or not 0 <= idx < len(pairs):
             warn(f"reconcile: merge names pair {idx!r}, which is not in the candidate list — skipped")
+            continue
+        # Only an explicit `same: true` merges (D387). A "different" verdict leaves the pair apart,
+        # whatever its reason says; a missing or malformed one does too, and is counted.
+        if item.get("same") is not True:
+            if item.get("same") is not False:
+                no_verdict += 1
             continue
         pair = pairs[idx]
         ids = {pair["a"]["id"], pair["b"]["id"]}
@@ -1143,6 +1280,9 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         verdict = verdicts[idx] if idx < len(verdicts) else {"tier": "medium", "rule": None}
         model_merged.add(frozenset(ids))
         decisions.append((keep_id, (ids - {keep_id}).pop(), verdict, "model", item.get("reason", "")))
+    if no_verdict:
+        warn(f"reconcile: {no_verdict} merge answer(s) had no true/false \"same\" verdict — "
+             f"not merged")
     # Same-name groups (#755): `NameGroups` has already checked every answer.
     name_groups = bundle.get("name_groups")
     group_result = name_groups.result() if name_groups is not None else \

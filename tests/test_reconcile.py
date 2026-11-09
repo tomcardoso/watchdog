@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from watchdog import model_client
-from watchdog.pipeline import identity, orchestrate, reconcile
+from watchdog.pipeline import identity, orchestrate, reconcile, schemas
 
 from tests.test_merge_entities import make_vault
 
@@ -115,17 +115,19 @@ def test_candidate_pairs_ranked_and_capped(monkeypatch):
 
 
 def _brute_force_pairs(entities_reg, touched):
-    """The pre-#696 O(touched·n) walk, kept as the reference the indexed version must match."""
+    """The pre-#696 O(touched·n) walk, kept as the reference the indexed version must match:
+    every same-type pair scored by `_pair_score`, with the registry's token weights (D394)."""
     from watchdog.pipeline.entity_type import canonical_type
     types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
+    weights = reconcile._type_weights(entities_reg)
     out = set()
     for t_id in (eid for eid in touched if eid in entities_reg):
         for o_id in entities_reg:
             if o_id == t_id or types[o_id] != types[t_id]:
                 continue
-            score = max((reconcile._overlap(tn, on)
-                         for tn in reconcile._surfaces(entities_reg[t_id])
-                         for on in reconcile._surfaces(entities_reg[o_id])), default=0.0)
+            etype = types[t_id]
+            score = reconcile._pair_score(entities_reg[t_id], entities_reg[o_id], etype,
+                                          lambda tok: weights.get((etype, tok), 1.0))
             if score >= reconcile._JACCARD_MIN:
                 out.add((min(t_id, o_id), max(t_id, o_id), score))
     return out
@@ -139,13 +141,16 @@ def test_candidate_pairs_index_matches_brute_force(monkeypatch):
     monkeypatch.setattr(reconcile, "_MAX_PAIRS", 10**9)
     rng = random.Random(696)
     vocab = ["acme", "holdings", "inc", "ltd", "canada", "bank", "of", "the", "nova", "scotia",
-             "tom", "cardoso", "smith", "group", "trust", "toronto", "capital", "partners"]
+             "tom", "cardoso", "smith", "group", "trust", "toronto", "capital", "partners",
+             "12", "40", "st", "limited"]
     types = ["Person", "Company", "organization", "Location"]
     for _ in range(40):
         reg = {}
         for i in range(rng.randint(2, 40)):
             def name():
-                return " ".join(rng.sample(vocab, rng.randint(1, 4)))
+                # Sometimes comma-separated, so some names are shaped like street addresses.
+                sep = rng.choice([" ", " ", ", "])
+                return sep.join(rng.sample(vocab, rng.randint(1, 4)))
             reg[f"e{i:02d}"] = {"id": f"e{i:02d}", "name": name(), "type": rng.choice(types),
                                 "aliases": [name() for _ in range(rng.randint(0, 2))]}
         ids = sorted(reg)
@@ -164,6 +169,114 @@ def test_candidate_pairs_scales_past_the_quadratic_walk():
     started = time.monotonic()
     assert reconcile.candidate_pairs(reg, set(reg)) == []
     assert time.monotonic() - started < 10
+
+
+# ── candidate_pairs: localities and common tokens (D394) ──────────────────────
+
+def _places(*rows):
+    """A registry of invented records: (id, name, type, aliases)."""
+    return {i: {"id": i, "name": n, "type": t, "aliases": list(al)} for i, n, t, al in rows}
+
+
+def _pair_ids(reg, touched=None):
+    return {(p["a"]["id"], p["b"]["id"])
+            for p in reconcile.candidate_pairs(reg, set(reg) if touched is None else touched)}
+
+
+def test_a_locality_inside_an_address_is_not_its_duplicate():
+    """A province or a city is wholly contained in every address in it, as a trailing locality,
+    which used to score as a strict subset (1.0) and pair the place with every address."""
+    reg = _places(("prov", "Northland", "place", []),
+                  ("city", "Port Calder", "place", []),
+                  ("addr", "12 Example St, Port Calder, Northland T1A 1A1", "place", []))
+    assert _pair_ids(reg) == set()
+
+
+def test_an_address_carrying_its_province_as_an_alias_is_not_the_province():
+    """An address whose extraction listed the province among its names still shares nothing that
+    identifies an address with the province record."""
+    reg = _places(("prov", "Northland", "place", []),
+                  ("addr", "12 Example St, Port Calder, Northland", "place", ["Northland"]))
+    assert _pair_ids(reg) == set()
+
+
+def test_two_addresses_sharing_only_street_words_and_locality_are_not_paired():
+    reg = _places(("a1", "12 St NW, Port Calder, Northland", "place", []),
+                  ("a2", "40 St NW, Port Calder, Northland", "place", []))
+    assert _pair_ids(reg) == set()
+
+
+def test_a_locality_alias_does_not_pair_two_addresses_with_one_house_number():
+    """Two addresses with the same house number on different streets share a number, but the only
+    names that overlap enough are one's locality alias and the other's full address."""
+    reg = _places(("a1", "12 Example St, Port Calder", "place", []),
+                  ("a2", "12 Harbour Rd, Port Calder, Northland", "place", ["Port Calder"]))
+    assert _pair_ids(reg) == set()
+
+
+def test_the_same_address_written_two_ways_is_still_a_pair():
+    reg = _places(("a1", "12 Example St NW, Port Calder, Northland", "place", []),
+                  ("a2", "12 Example Street NW, Port Calder", "place", []),
+                  ("prov", "Northland", "place", []))
+    assert _pair_ids(reg) == {("a1", "a2")}
+
+
+def test_a_place_that_is_not_an_address_keeps_the_subset_rule():
+    reg = _places(("h", "Calder Harbour", "place", []),
+                  ("hw", "Calder Harbour West Basin", "place", []))
+    assert _pair_ids(reg) == {("h", "hw")}
+
+
+def _numbered_companies(n=12):
+    """`n` numbered companies in one province, plus the real candidates the tests look for."""
+    rows = [(f"n{i:02d}", f"{1000 + i} Northland Ltd.", "organization", []) for i in range(n)]
+    return rows
+
+
+def test_tokens_common_across_a_type_do_not_make_pairs_on_their_own():
+    """Numbered companies share only the province and the legal form, which a dozen records hold:
+    none of them is a candidate for another."""
+    reg = _places(*_numbered_companies())
+    assert _pair_ids(reg) == set()
+
+
+def test_real_candidates_survive_among_common_tokens():
+    """A spelling slip, a word-order variant, an alias and a spelled-out legal form are still sent,
+    among a dozen records sharing the province and the legal form."""
+    reg = _places(*_numbered_companies(),
+                  ("f1", "Calder Fisheries Northland Ltd.", "organization", []),
+                  ("f2", "Calder Fisheres Northland Ltd.", "organization", []),
+                  ("w1", "Harbour Freight Northland Ltd.", "organization", []),
+                  ("w2", "Northland Harbour Freight Ltd.", "organization", []),
+                  ("l1", "Brightwater Ltd.", "organization", []),
+                  ("l2", "Brightwater Limited", "organization", []),
+                  ("x1", "Pelican Holdings Ltd.", "organization", ["PHL Northland"]),
+                  ("x2", "PHL Northland", "organization", []))
+    pairs = _pair_ids(reg)
+    assert {("f1", "f2"), ("w1", "w2"), ("l1", "l2"), ("x1", "x2")} <= pairs
+    assert not any(a.startswith("n") and b.startswith("n") for a, b in pairs)
+
+
+def test_identical_names_of_common_words_still_pair():
+    """Two records with the very same name are a same-name group whatever their words, and the
+    group is found through this pair; common tokens must not hide it."""
+    reg = _places(*_numbered_companies(),
+                  ("s1", "Northland Ltd.", "organization", []),
+                  ("s2", "Northland Limited", "organization", []))
+    assert ("s1", "s2") in _pair_ids(reg)
+
+
+def test_a_small_investigation_discounts_no_token():
+    """Below the common floor every token keeps full weight, so a handful of records pair as they
+    always did."""
+    assert reconcile._token_weight(reconcile._COMMON_MIN, 8) == 1.0
+    assert reconcile._token_weight(10, 100) == 1.0
+    assert 0 < reconcile._token_weight(30, 100) < 1.0
+    assert reconcile._token_weight(100, 100) == 0.0
+    reg = _places(("a", "Acme Holdings Ltd.", "organization", []),
+                  ("b", "Acme Holding Ltd.", "organization", []),
+                  ("c", "Acme Freight Ltd.", "organization", []))
+    assert ("a", "b") in _pair_ids(reg)
 
 
 # ── build_bundle ──────────────────────────────────────────────────────────────
@@ -330,7 +443,7 @@ def _pairs_for(a_id, b_id):
 def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     vault = make_vault(tmp_path)
     pairs = _pairs_for("alice-smith", "a-smith-duplicate")
-    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same person"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same person"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
 
     assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
@@ -340,10 +453,48 @@ def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     assert "sha-b" in reg["alice-smith"]["appears_in"]   # its document carried over
 
 
+@pytest.mark.parametrize("item,warned", [
+    ({"pair": 0, "same": False, "keep": "a", "reason": "Different entities entirely, so no merge"},
+     False),
+    ({"pair": 0, "keep": "a", "reason": "no verdict given"}, True),
+    ({"pair": 0, "same": "true", "keep": "a", "reason": "a string is not a yes"}, True),
+    ({"pair": 0, "same": None, "keep": "a", "reason": "x"}, True),
+])
+def test_apply_merges_only_acts_on_an_explicit_same(tmp_path, item, warned):
+    """A rejection written into `merges` (or an item with no verdict) merges nothing, whatever
+    its reason says (D387). Only a missing or malformed verdict is warned about: an explicit
+    `false` is an ordinary answer."""
+    vault = make_vault(tmp_path)
+    warnings = []
+    out = reconcile.apply_merges(
+        vault, [], {"merges": [item]}, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
+        warn=warnings.append)
+    assert out["merged"] == [] and out["remap"] == {}
+    assert len(warnings) == (1 if warned else 0)
+    assert all("not merged" in w for w in warnings)
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "a-smith-duplicate" in reg
+
+
+def test_apply_merges_mixed_verdicts_merge_only_the_confirmed(tmp_path):
+    vault = make_vault(tmp_path)
+    pairs = [{"index": 0, "a": {"id": "alice-smith"}, "b": {"id": "a-smith-duplicate"}},
+             {"index": 1, "a": {"id": "bob-jones"}, "b": {"id": "alice-smith"}}]
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"},
+                         {"pair": 1, "same": False, "keep": "a", "reason": "different"}]}
+    out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
+    assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
+
+
+def test_reconcile_schema_requires_a_verdict_on_every_merge_item():
+    item = schemas.RECONCILE["properties"]["merges"]["items"]
+    assert "same" in item["required"] and item["properties"]["same"]["type"] == "boolean"
+
+
 def test_apply_merges_skips_bad_pair_index_with_warning(tmp_path):
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 9, "keep": "a"}]}
+    parsed = {"merges": [{"pair": 9, "same": True, "keep": "a"}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
@@ -360,7 +511,7 @@ def test_apply_merges_rejects_a_keep_that_is_not_a_side(tmp_path, bad):
     skipped, and nothing is merged (D335)."""
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 0, "keep": bad}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": bad}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
@@ -375,7 +526,7 @@ def test_apply_merges_ids_come_from_the_pair_not_the_model(tmp_path):
     pair, so a stray spelling in the answer's other fields cannot change either (D335)."""
     vault = make_vault(tmp_path)
     pairs = _pairs_for("a-smith-duplicate", "alice-smith")
-    parsed = {"merges": [{"pair": 0, "keep": "b", "keep_id": "alice-smithh", "reason": "same"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "b", "keep_id": "alice-smithh", "reason": "same"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
     assert out["merged"][0]["keep_id"] == "alice-smith"
@@ -385,7 +536,7 @@ def test_apply_merges_ids_come_from_the_pair_not_the_model(tmp_path):
 def test_apply_merges_keeping_side_a(tmp_path):
     vault = make_vault(tmp_path)
     pairs = _pairs_for("a-smith-duplicate", "alice-smith")
-    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"alice-smith": "a-smith-duplicate"}
 
@@ -399,8 +550,8 @@ def test_apply_merges_chains_through_prior_merge(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep": "b", "reason": "x"},
-        {"pair": 1, "keep": "a", "reason": "y"},   # bob folds into the survivor
+        {"pair": 0, "same": True, "keep": "b", "reason": "x"},
+        {"pair": 1, "same": True, "keep": "a", "reason": "y"},   # bob folds into the survivor
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert len(out["merged"]) == 2
@@ -419,8 +570,8 @@ def test_apply_merges_returns_flattened_remap(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep": "b", "reason": "same person"},
-        {"pair": 1, "keep": "b", "reason": "same person again"},
+        {"pair": 0, "same": True, "keep": "b", "reason": "same person"},
+        {"pair": 1, "same": True, "keep": "b", "reason": "same person again"},
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"a-smith-duplicate": "bob-jones", "alice-smith": "bob-jones"}
@@ -460,7 +611,7 @@ def _as_sides(prompt: str, merges: list[dict]) -> list[dict]:
     if "CANDIDATE PAIRS (possible" not in prompt:
         return []
     pairs = _pairs_in(prompt)
-    return [{"pair": m["pair"], "keep": "a" if pairs[m["pair"]]["a"]["id"] == m["keep_id"] else "b",
+    return [{"pair": m["pair"], "same": True, "keep": "a" if pairs[m["pair"]]["a"]["id"] == m["keep_id"] else "b",
              "reason": m["reason"]} for m in merges if m["pair"] < len(pairs)]
 
 
@@ -588,7 +739,7 @@ def test_initialled_person_is_a_review_item_not_a_model_question(tmp_path, monke
 
     async def fake(*, task, prompt, schema, **kw):
         prompts.append((task, prompt))
-        parsed = {"reconcile": {"merges": [{"pair": 0, "keep": "a", "reason": "x"}],
+        parsed = {"reconcile": {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "x"}],
                                 "contradictions": []}}.get(task, {})
         return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
                                         auth_mode="subscription", cost_usd=0.0)
@@ -664,8 +815,8 @@ def test_apply_contradictions_follows_a_chained_remap(tmp_path):
     }
     parsed = {
         "merges": [
-            {"pair": 0, "keep": "b", "reason": "same person"},
-            {"pair": 1, "keep": "b", "reason": "same person again"},
+            {"pair": 0, "same": True, "keep": "b", "reason": "same person"},
+            {"pair": 1, "same": True, "keep": "b", "reason": "same person again"},
         ],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
@@ -687,7 +838,7 @@ def test_apply_merges_then_contradictions_lands_on_the_survivors_note(tmp_path):
     vault = make_vault(tmp_path)
     bundle = {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")}
     parsed = {
-        "merges": [{"pair": 0, "keep": "a", "reason": "same"}],
+        "merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"}],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
             "a_value": "director", "a_doc": "doc-a", "b_value": "officer", "b_doc": "doc-b",
