@@ -115,17 +115,19 @@ def test_candidate_pairs_ranked_and_capped(monkeypatch):
 
 
 def _brute_force_pairs(entities_reg, touched):
-    """The pre-#696 O(touched·n) walk, kept as the reference the indexed version must match."""
+    """The pre-#696 O(touched·n) walk, kept as the reference the indexed version must match:
+    every same-type pair scored by `_pair_score`, with the registry's token weights (D394)."""
     from watchdog.pipeline.entity_type import canonical_type
     types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
+    weights = reconcile._type_weights(entities_reg)
     out = set()
     for t_id in (eid for eid in touched if eid in entities_reg):
         for o_id in entities_reg:
             if o_id == t_id or types[o_id] != types[t_id]:
                 continue
-            score = max((reconcile._overlap(tn, on)
-                         for tn in reconcile._surfaces(entities_reg[t_id])
-                         for on in reconcile._surfaces(entities_reg[o_id])), default=0.0)
+            etype = types[t_id]
+            score = reconcile._pair_score(entities_reg[t_id], entities_reg[o_id], etype,
+                                          lambda tok: weights.get((etype, tok), 1.0))
             if score >= reconcile._JACCARD_MIN:
                 out.add((min(t_id, o_id), max(t_id, o_id), score))
     return out
@@ -139,13 +141,16 @@ def test_candidate_pairs_index_matches_brute_force(monkeypatch):
     monkeypatch.setattr(reconcile, "_MAX_PAIRS", 10**9)
     rng = random.Random(696)
     vocab = ["acme", "holdings", "inc", "ltd", "canada", "bank", "of", "the", "nova", "scotia",
-             "tom", "cardoso", "smith", "group", "trust", "toronto", "capital", "partners"]
+             "tom", "cardoso", "smith", "group", "trust", "toronto", "capital", "partners",
+             "12", "40", "st", "limited"]
     types = ["Person", "Company", "organization", "Location"]
     for _ in range(40):
         reg = {}
         for i in range(rng.randint(2, 40)):
             def name():
-                return " ".join(rng.sample(vocab, rng.randint(1, 4)))
+                # Sometimes comma-separated, so some names are shaped like street addresses.
+                sep = rng.choice([" ", " ", ", "])
+                return sep.join(rng.sample(vocab, rng.randint(1, 4)))
             reg[f"e{i:02d}"] = {"id": f"e{i:02d}", "name": name(), "type": rng.choice(types),
                                 "aliases": [name() for _ in range(rng.randint(0, 2))]}
         ids = sorted(reg)
@@ -164,6 +169,114 @@ def test_candidate_pairs_scales_past_the_quadratic_walk():
     started = time.monotonic()
     assert reconcile.candidate_pairs(reg, set(reg)) == []
     assert time.monotonic() - started < 10
+
+
+# ── candidate_pairs: localities and common tokens (D394) ──────────────────────
+
+def _places(*rows):
+    """A registry of invented records: (id, name, type, aliases)."""
+    return {i: {"id": i, "name": n, "type": t, "aliases": list(al)} for i, n, t, al in rows}
+
+
+def _pair_ids(reg, touched=None):
+    return {(p["a"]["id"], p["b"]["id"])
+            for p in reconcile.candidate_pairs(reg, set(reg) if touched is None else touched)}
+
+
+def test_a_locality_inside_an_address_is_not_its_duplicate():
+    """A province or a city is wholly contained in every address in it, as a trailing locality,
+    which used to score as a strict subset (1.0) and pair the place with every address."""
+    reg = _places(("prov", "Northland", "place", []),
+                  ("city", "Port Calder", "place", []),
+                  ("addr", "12 Example St, Port Calder, Northland T1A 1A1", "place", []))
+    assert _pair_ids(reg) == set()
+
+
+def test_an_address_carrying_its_province_as_an_alias_is_not_the_province():
+    """An address whose extraction listed the province among its names still shares nothing that
+    identifies an address with the province record."""
+    reg = _places(("prov", "Northland", "place", []),
+                  ("addr", "12 Example St, Port Calder, Northland", "place", ["Northland"]))
+    assert _pair_ids(reg) == set()
+
+
+def test_two_addresses_sharing_only_street_words_and_locality_are_not_paired():
+    reg = _places(("a1", "12 St NW, Port Calder, Northland", "place", []),
+                  ("a2", "40 St NW, Port Calder, Northland", "place", []))
+    assert _pair_ids(reg) == set()
+
+
+def test_a_locality_alias_does_not_pair_two_addresses_with_one_house_number():
+    """Two addresses with the same house number on different streets share a number, but the only
+    names that overlap enough are one's locality alias and the other's full address."""
+    reg = _places(("a1", "12 Example St, Port Calder", "place", []),
+                  ("a2", "12 Harbour Rd, Port Calder, Northland", "place", ["Port Calder"]))
+    assert _pair_ids(reg) == set()
+
+
+def test_the_same_address_written_two_ways_is_still_a_pair():
+    reg = _places(("a1", "12 Example St NW, Port Calder, Northland", "place", []),
+                  ("a2", "12 Example Street NW, Port Calder", "place", []),
+                  ("prov", "Northland", "place", []))
+    assert _pair_ids(reg) == {("a1", "a2")}
+
+
+def test_a_place_that_is_not_an_address_keeps_the_subset_rule():
+    reg = _places(("h", "Calder Harbour", "place", []),
+                  ("hw", "Calder Harbour West Basin", "place", []))
+    assert _pair_ids(reg) == {("h", "hw")}
+
+
+def _numbered_companies(n=12):
+    """`n` numbered companies in one province, plus the real candidates the tests look for."""
+    rows = [(f"n{i:02d}", f"{1000 + i} Northland Ltd.", "organization", []) for i in range(n)]
+    return rows
+
+
+def test_tokens_common_across_a_type_do_not_make_pairs_on_their_own():
+    """Numbered companies share only the province and the legal form, which a dozen records hold:
+    none of them is a candidate for another."""
+    reg = _places(*_numbered_companies())
+    assert _pair_ids(reg) == set()
+
+
+def test_real_candidates_survive_among_common_tokens():
+    """A spelling slip, a word-order variant, an alias and a spelled-out legal form are still sent,
+    among a dozen records sharing the province and the legal form."""
+    reg = _places(*_numbered_companies(),
+                  ("f1", "Calder Fisheries Northland Ltd.", "organization", []),
+                  ("f2", "Calder Fisheres Northland Ltd.", "organization", []),
+                  ("w1", "Harbour Freight Northland Ltd.", "organization", []),
+                  ("w2", "Northland Harbour Freight Ltd.", "organization", []),
+                  ("l1", "Brightwater Ltd.", "organization", []),
+                  ("l2", "Brightwater Limited", "organization", []),
+                  ("x1", "Pelican Holdings Ltd.", "organization", ["PHL Northland"]),
+                  ("x2", "PHL Northland", "organization", []))
+    pairs = _pair_ids(reg)
+    assert {("f1", "f2"), ("w1", "w2"), ("l1", "l2"), ("x1", "x2")} <= pairs
+    assert not any(a.startswith("n") and b.startswith("n") for a, b in pairs)
+
+
+def test_identical_names_of_common_words_still_pair():
+    """Two records with the very same name are a same-name group whatever their words, and the
+    group is found through this pair; common tokens must not hide it."""
+    reg = _places(*_numbered_companies(),
+                  ("s1", "Northland Ltd.", "organization", []),
+                  ("s2", "Northland Limited", "organization", []))
+    assert ("s1", "s2") in _pair_ids(reg)
+
+
+def test_a_small_investigation_discounts_no_token():
+    """Below the common floor every token keeps full weight, so a handful of records pair as they
+    always did."""
+    assert reconcile._token_weight(reconcile._COMMON_MIN, 8) == 1.0
+    assert reconcile._token_weight(10, 100) == 1.0
+    assert 0 < reconcile._token_weight(30, 100) < 1.0
+    assert reconcile._token_weight(100, 100) == 0.0
+    reg = _places(("a", "Acme Holdings Ltd.", "organization", []),
+                  ("b", "Acme Holding Ltd.", "organization", []),
+                  ("c", "Acme Freight Ltd.", "organization", []))
+    assert ("a", "b") in _pair_ids(reg)
 
 
 # ── build_bundle ──────────────────────────────────────────────────────────────
