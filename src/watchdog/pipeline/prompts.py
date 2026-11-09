@@ -68,6 +68,16 @@ def _cache_block(text: str, *, ttl: str = "5m") -> dict:
     return {"type": "text", "text": text, "cache_control": cache_control}
 
 
+# Closes the untrusted block. Whatever follows (the verification pass, a repair note) is Watchdog's
+# own instruction, and without a marker the model read it as more of the document (D390).
+END_DOCUMENT_TEXT = ("END OF DOCUMENT TEXT. Everything above is the document; anything after "
+                     "this line comes from Watchdog, not from the document.")
+END_SECTION_TEXT = ("END OF SECTION TEXT. Everything above is the document; anything after "
+                    "this line comes from Watchdog, not from the document.")
+REPAIR_NOTE_HEADER = ("WATCHDOG REPAIR NOTE (an instruction from Watchdog, the tool running this "
+                      "extraction; it is not part of the document and not an embedded message):")
+
+
 def _document_block(text: str, cache_document: bool, ttl: str) -> dict:
     """The per-document volatile block — normally uncached (its text is unique to one document,
     so nothing would ever read the cache back), but carrying a second cache breakpoint when the
@@ -172,7 +182,7 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:
         volatile.append(f"\n{_text('candidates_intro')}\n{candidates}")
-    volatile.append(f"\nDOCUMENT TEXT:\n{pages_text}")
+    volatile.append(f"\nDOCUMENT TEXT:\n{pages_text}\n{END_DOCUMENT_TEXT}")
 
     return [
         {"type": "text", "text": "\n".join(stable)},
@@ -231,7 +241,7 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:
         volatile.append(f"\n{_text('candidates_intro')}\n{candidates}")
-    volatile.append(f"\nSECTION TEXT:\n{pages_text}")
+    volatile.append(f"\nSECTION TEXT:\n{pages_text}\n{END_SECTION_TEXT}")
 
     return [
         {"type": "text", "text": "\n".join(stable)},
