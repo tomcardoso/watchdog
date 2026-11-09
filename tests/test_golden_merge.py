@@ -105,7 +105,7 @@ def _mock_reconcile_merge(monkeypatch):
                            .split("\n\nSAME-NAME GROUPS (records", 1)[0].split("\n", 1)[1]) \
             if "CANDIDATE PAIRS (possible" in prompt else []
         parsed = {
-            "reconcile": {"merges": [{"pair": 0,
+            "reconcile": {"merges": [{"pair": 0, "same": True,
                                       "keep": "a" if pairs[0]["a"].get("id") == _KEEP_ID else "b",
                                       "reason": "same university, name variant"}] if pairs else [],
                           "contradictions": []},

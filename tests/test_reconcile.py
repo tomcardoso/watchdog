@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from watchdog import model_client
-from watchdog.pipeline import identity, orchestrate, reconcile
+from watchdog.pipeline import identity, orchestrate, reconcile, schemas
 
 from tests.test_merge_entities import make_vault
 
@@ -330,7 +330,7 @@ def _pairs_for(a_id, b_id):
 def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     vault = make_vault(tmp_path)
     pairs = _pairs_for("alice-smith", "a-smith-duplicate")
-    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same person"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same person"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
 
     assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
@@ -340,10 +340,45 @@ def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     assert "sha-b" in reg["alice-smith"]["appears_in"]   # its document carried over
 
 
+@pytest.mark.parametrize("item", [
+    {"pair": 0, "same": False, "keep": "a", "reason": "Different entities entirely, so no merge"},
+    {"pair": 0, "keep": "a", "reason": "no verdict given"},
+    {"pair": 0, "same": "true", "keep": "a", "reason": "a string is not a yes"},
+    {"pair": 0, "same": None, "keep": "a", "reason": "x"},
+])
+def test_apply_merges_only_acts_on_an_explicit_same(tmp_path, item):
+    """A rejection written into `merges` (or an item with no verdict) merges nothing, whatever
+    its reason says (D387)."""
+    vault = make_vault(tmp_path)
+    warnings = []
+    out = reconcile.apply_merges(
+        vault, [], {"merges": [item]}, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
+        warn=warnings.append)
+    assert out["merged"] == [] and out["remap"] == {}
+    assert len(warnings) == 1 and "not merged" in warnings[0]
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "a-smith-duplicate" in reg
+
+
+def test_apply_merges_mixed_verdicts_merge_only_the_confirmed(tmp_path):
+    vault = make_vault(tmp_path)
+    pairs = [{"index": 0, "a": {"id": "alice-smith"}, "b": {"id": "a-smith-duplicate"}},
+             {"index": 1, "a": {"id": "bob-jones"}, "b": {"id": "alice-smith"}}]
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"},
+                         {"pair": 1, "same": False, "keep": "a", "reason": "different"}]}
+    out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
+    assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
+
+
+def test_reconcile_schema_requires_a_verdict_on_every_merge_item():
+    item = schemas.RECONCILE["properties"]["merges"]["items"]
+    assert "same" in item["required"] and item["properties"]["same"]["type"] == "boolean"
+
+
 def test_apply_merges_skips_bad_pair_index_with_warning(tmp_path):
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 9, "keep": "a"}]}
+    parsed = {"merges": [{"pair": 9, "same": True, "keep": "a"}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
@@ -360,7 +395,7 @@ def test_apply_merges_rejects_a_keep_that_is_not_a_side(tmp_path, bad):
     skipped, and nothing is merged (D335)."""
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 0, "keep": bad}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": bad}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
@@ -375,7 +410,7 @@ def test_apply_merges_ids_come_from_the_pair_not_the_model(tmp_path):
     pair, so a stray spelling in the answer's other fields cannot change either (D335)."""
     vault = make_vault(tmp_path)
     pairs = _pairs_for("a-smith-duplicate", "alice-smith")
-    parsed = {"merges": [{"pair": 0, "keep": "b", "keep_id": "alice-smithh", "reason": "same"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "b", "keep_id": "alice-smithh", "reason": "same"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
     assert out["merged"][0]["keep_id"] == "alice-smith"
@@ -385,7 +420,7 @@ def test_apply_merges_ids_come_from_the_pair_not_the_model(tmp_path):
 def test_apply_merges_keeping_side_a(tmp_path):
     vault = make_vault(tmp_path)
     pairs = _pairs_for("a-smith-duplicate", "alice-smith")
-    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same"}]}
+    parsed = {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"alice-smith": "a-smith-duplicate"}
 
@@ -399,8 +434,8 @@ def test_apply_merges_chains_through_prior_merge(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep": "b", "reason": "x"},
-        {"pair": 1, "keep": "a", "reason": "y"},   # bob folds into the survivor
+        {"pair": 0, "same": True, "keep": "b", "reason": "x"},
+        {"pair": 1, "same": True, "keep": "a", "reason": "y"},   # bob folds into the survivor
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert len(out["merged"]) == 2
@@ -419,8 +454,8 @@ def test_apply_merges_returns_flattened_remap(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep": "b", "reason": "same person"},
-        {"pair": 1, "keep": "b", "reason": "same person again"},
+        {"pair": 0, "same": True, "keep": "b", "reason": "same person"},
+        {"pair": 1, "same": True, "keep": "b", "reason": "same person again"},
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"a-smith-duplicate": "bob-jones", "alice-smith": "bob-jones"}
@@ -460,7 +495,7 @@ def _as_sides(prompt: str, merges: list[dict]) -> list[dict]:
     if "CANDIDATE PAIRS (possible" not in prompt:
         return []
     pairs = _pairs_in(prompt)
-    return [{"pair": m["pair"], "keep": "a" if pairs[m["pair"]]["a"]["id"] == m["keep_id"] else "b",
+    return [{"pair": m["pair"], "same": True, "keep": "a" if pairs[m["pair"]]["a"]["id"] == m["keep_id"] else "b",
              "reason": m["reason"]} for m in merges if m["pair"] < len(pairs)]
 
 
@@ -588,7 +623,7 @@ def test_initialled_person_is_a_review_item_not_a_model_question(tmp_path, monke
 
     async def fake(*, task, prompt, schema, **kw):
         prompts.append((task, prompt))
-        parsed = {"reconcile": {"merges": [{"pair": 0, "keep": "a", "reason": "x"}],
+        parsed = {"reconcile": {"merges": [{"pair": 0, "same": True, "keep": "a", "reason": "x"}],
                                 "contradictions": []}}.get(task, {})
         return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
                                         auth_mode="subscription", cost_usd=0.0)
@@ -664,8 +699,8 @@ def test_apply_contradictions_follows_a_chained_remap(tmp_path):
     }
     parsed = {
         "merges": [
-            {"pair": 0, "keep": "b", "reason": "same person"},
-            {"pair": 1, "keep": "b", "reason": "same person again"},
+            {"pair": 0, "same": True, "keep": "b", "reason": "same person"},
+            {"pair": 1, "same": True, "keep": "b", "reason": "same person again"},
         ],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
@@ -687,7 +722,7 @@ def test_apply_merges_then_contradictions_lands_on_the_survivors_note(tmp_path):
     vault = make_vault(tmp_path)
     bundle = {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")}
     parsed = {
-        "merges": [{"pair": 0, "keep": "a", "reason": "same"}],
+        "merges": [{"pair": 0, "same": True, "keep": "a", "reason": "same"}],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
             "a_value": "director", "a_doc": "doc-a", "b_value": "officer", "b_doc": "doc-b",

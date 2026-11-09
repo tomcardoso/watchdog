@@ -223,7 +223,10 @@ SYNTHESIS = _obj(
 # Reconciliation (D118): the two jobs that need the whole entity set.
 #
 #   `merges`         — entity resolution over Python-blocked candidate pairs; the model confirms or
-#                      rejects each by pair `index`, so it can't invent an id.
+#                      rejects each by pair `index`, so it can't invent an id. Each item carries an
+#                      explicit `same` verdict and code merges only on `true` (D387): an item's mere
+#                      presence once meant "merge", and a model that wrote its rejections into the
+#                      list had them applied.
 #   `groups`         — same-name groups (#755): per group, by member index, the sets that are one
 #                      thing and the sets it could not rule out. Optional, since a call may carry
 #                      no group (and the contradiction re-check never does); code checks each
@@ -238,12 +241,18 @@ RECONCILE = _obj(
             "items": _obj(
                 {"pair": {"type": "integer",
                           "description": "index into the CANDIDATE PAIRS list"},
+                 "same": {"type": "boolean",
+                          "description": "true only when you are confident the two sides are one "
+                                         "real-world thing; false when they are different or you "
+                                         "are not sure (code merges only on true)"},
                  "keep": {"type": "string", "enum": ["a", "b"],
                           "description": "which side of the pair survives, \"a\" or \"b\" "
-                                         "(never an id); the other is folded into it"},
+                                         "(never an id); the other is folded into it. When `same` "
+                                         "is false, either"},
                  "reason": {"type": "string",
-                            "description": "one clause on why these are the same real-world thing"}},
-                ["pair", "keep", "reason"],
+                            "description": "one clause on why these are, or are not, the same "
+                                           "real-world thing"}},
+                ["pair", "same", "keep", "reason"],
             ),
         },
         "groups": {
