@@ -299,8 +299,10 @@ def _validate(data: dict, page_texts: dict[int, str] | None = None) -> list[str]
                 if not isinstance(role, dict):
                     errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/page/basis/date_range keys — not a string")
 
-    if not data.get("morgue_entity_id"):
-        errors.append("morgue_entity_id is missing or empty — this is the kebab-case id of the entity this document is primarily about")
+    # Null, empty or absent means the document has no identifiable primary subject (D393).
+    subject = data.get("morgue_entity_id")
+    if subject is not None and not isinstance(subject, str):
+        errors.append("morgue_entity_id must be the kebab-case id of the entity this document is primarily about, or null when there is none")
     if not data.get("morgue_document_type"):
         errors.append("morgue_document_type is missing or empty — use a slug like annual-report, court-order, bankruptcy-filing")
 

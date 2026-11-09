@@ -116,6 +116,10 @@ def merge_extractions(sections: list[dict], sha: str | None = None) -> dict:
     by_id: dict[str, dict] = {}
     norm_index: dict[str, str] = {}   # normalized surface form -> canonical id
     morgue_entity_id = None
+    # Section 1 answered the field and said there is no primary subject (D393), as opposed to
+    # leaving it out: the fallback below must not invent one.
+    no_subject = bool(sections) and "morgue_entity_id" in sections[0] \
+        and not sections[0].get("morgue_entity_id")
     remaps: list[dict[str, str]] = []                 # per section: drifted id -> kept id
     folds: list[dict] = []
 
@@ -205,11 +209,12 @@ def merge_extractions(sections: list[dict], sha: str | None = None) -> dict:
     # section ever asked for it (prompts.py), so a single miss there is otherwise a single point
     # of failure for the whole document. Deterministic, not a model call: the entity mentioned
     # in the most key_facts is the closest available proxy for "primarily about", falling back to
-    # the first entity encountered when no fact carries an entity tag. Stays None (still a
-    # post-flight failure) when there are no entities at all — nothing to derive from. A later
-    # pre-commit reconciliation pass (#513) keeps this value in sync if the entity it names gets
-    # folded into a different canonical id.
-    if not morgue_entity_id and entities:
+    # the first entity encountered when no fact carries an entity tag. Stays None when there are
+    # no entities at all — nothing to derive from — and the original is filed as having no
+    # subject (D393). A later pre-commit reconciliation pass (#513) keeps this value in sync if
+    # the entity it names gets folded into a different canonical id. Not when section 1 said, by answering null, that the
+    # document has no identifiable primary subject (D393): that is an answer, not a miss.
+    if not morgue_entity_id and not no_subject and entities:
         mention_counts: dict[str, int] = {}
         for fact in document["key_facts"]:
             for eid in fact.get("entities") or []:

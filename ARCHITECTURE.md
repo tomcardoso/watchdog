@@ -214,7 +214,10 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
    existing fact anywhere in the document (D199). Survivors are ordinary facts tagged
    `added_by: "verify"` in the staged JSON. Not available on batch backends.
-5. **Post-flight** — validates the JSON; reads each fact's printed date (`pipeline/dates.py`, D329:
+5. **Post-flight** — first, in code, drops any placeholder entity ("Unknown", "Unidentified
+   corporation") with its tags and relationships and clears a `morgue_entity_id` naming one
+   (`pipeline/placeholders.py`, D393); then validates the JSON (a null `morgue_entity_id` is valid:
+   the document has no identifiable subject); reads each fact's printed date (`pipeline/dates.py`, D329:
    `dateparser`, all its languages, absolute dates only, a printed year required, only the
    precision the wording gives; a numeric day/month pair with two real readings keeps its year and
    both readings; anything else keeps its wording in `date_text` and is marked `date_pending` for
@@ -670,6 +673,7 @@ context/                     background material for the context interview (D266
 entities/<type>/<id>.md      entity notes; <type> is the closed vocabulary (D105)
 documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241); each fact line ends in its ^f- block id, the target of every fact citation (D283)
 morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); same -<sha6> rule
+morgue/_no-subject/<type>/…  originals whose extraction named no primary subject (D393); never an entity id
 timeline.md                  rendered global timeline
 briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests

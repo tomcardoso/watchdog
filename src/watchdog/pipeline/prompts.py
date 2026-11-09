@@ -213,7 +213,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     volatile = [_render("section_intro", section_label=section_label)]
     if is_first:
         volatile.append("This is SECTION 1: fill document metadata (title, document_type, "
-                        "date_of_document) and the morgue_entity_id field. Omit document.summary "
+                        "date_of_document) and the morgue_entity_id field (null when the document "
+                        "shows no primary subject). Omit document.summary "
                         "— the whole-document summary is composed after all sections are merged. "
                         "document.key_facts is still required, same as every other section: "
                         "capture this section's own material facts, not the whole document's.")

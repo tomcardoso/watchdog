@@ -144,7 +144,7 @@ def test_merge_falls_back_to_most_mentioned_entity_when_morgue_entity_id_missing
              {"id": "monitor", "name": "Monitor Inc", "type": "Company", "aliases": [], "roles": []},
              {"id": "creditor", "name": "Creditor LLC", "type": "Company", "aliases": [], "roles": []},
          ],
-         "morgue_entity_id": None, "morgue_document_type": "bankruptcy-filing"},
+         "morgue_document_type": "bankruptcy-filing"},   # morgue_entity_id left out: a miss
     ]
     merged = merge_extractions(sections)
     assert merged["morgue_entity_id"] == "acme"          # mentioned in 2 of 3 facts
@@ -157,10 +157,26 @@ def test_merge_falls_back_to_first_entity_when_no_fact_carries_entity_tags():
              {"id": "first", "name": "First Co", "type": "Company", "aliases": [], "roles": []},
              {"id": "second", "name": "Second Co", "type": "Company", "aliases": [], "roles": []},
          ],
-         "morgue_entity_id": None, "morgue_document_type": "annual-report"},
+         "morgue_document_type": "annual-report"},
     ]
     merged = merge_extractions(sections)
     assert merged["morgue_entity_id"] == "first"
+
+
+def test_merge_respects_section_1_saying_the_document_has_no_subject():
+    """D393: section 1 answering null (or empty) is the model saying the document has no
+    identifiable primary subject — an answer, not a miss — so the #505 fallback must not pick
+    one. A later section's unasked null changes nothing."""
+    for answer in (None, ""):
+        sections = [
+            {"document": {"sha256": "x", "key_facts": [
+                {"fact": "Printed by the office copier.", "entities": ["copier-co"]}]},
+             "entities": [{"id": "copier-co", "name": "Copier Co", "type": "Company",
+                           "aliases": [], "roles": []}],
+             "morgue_entity_id": answer, "morgue_document_type": "print-job"},
+            {"document": {"key_facts": []}, "morgue_entity_id": None},
+        ]
+        assert not merge_extractions(sections)["morgue_entity_id"]
 
 
 def test_merge_leaves_morgue_entity_id_none_when_no_entities_to_fall_back_on():

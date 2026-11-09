@@ -40,7 +40,7 @@ into per-entity `evidence_fragments`/`timeline_events` (D26). The model itself e
       ]
     }
   ],
-  "morgue_entity_id": str,
+  "morgue_entity_id": str|null,           // null: no identifiable subject (morgue/_no-subject/)
   "morgue_document_type": str
 }"""
 
@@ -82,6 +82,11 @@ def _today() -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# The morgue folder for an original whose extraction named no primary subject (D393). Not an
+# entity id: `slugify` never produces a leading underscore, so no entity can collide with it.
+NO_SUBJECT_DIR = "_no-subject"
 
 
 def slugify(text: str) -> str:
@@ -1162,7 +1167,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         morgue_relative = _unique_morgue_path(
             vault_path,
-            f"morgue/{extraction.get('morgue_entity_id', 'unknown')}"
+            f"morgue/{extraction.get('morgue_entity_id') or NO_SUBJECT_DIR}"
             f"/{extraction.get('morgue_document_type', 'document')}",
             doc["filename"], doc_sha256, documents_reg,
         )

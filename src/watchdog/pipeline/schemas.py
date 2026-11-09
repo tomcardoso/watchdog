@@ -124,7 +124,9 @@ EXTRACTION = _obj(
     {
         "entities": {"type": "array", "items": _ENTITY},
         "document": _DOCUMENT,
-        "morgue_entity_id": {"type": "string"},
+        # Null when the document has no identifiable primary subject (D393): the original is filed
+        # under morgue/_no-subject/ rather than under an entity invented to fill the field.
+        "morgue_entity_id": _NULLABLE_STR,
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
         # Concrete documents this document refers to that a reporter could go and get (#365) —
         # moved out of scratchpad, not duplicated. Optional: omit entirely when none apply.
