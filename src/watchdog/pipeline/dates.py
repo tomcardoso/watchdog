@@ -14,7 +14,8 @@ The extraction prompt transcribes a fact's date as printed (TRANSCRIBE, DON'T CO
   in, not read, so the date is not settled by code.
 - A numeric date is read by code, never by `dateparser`. When both readings of a day/month pair
   are real and different (03/04/2021) code does not guess: the date keeps its year and goes to
-  the model pass with the two readings, the only answers it may give.
+  the model pass with the two readings, the only answers it may give. A year-first date
+  (2010/03/02, 2010.03.02) is never ambiguous: it is year-month-day (D395).
 
 Everything else (ranges, quarters, dates in words, relative dates) is left for the pass: the
 fact keeps its printed wording in `date_text` and is marked `date_pending`. The pass
@@ -124,15 +125,10 @@ def _numeric(text: str) -> Reading:
         one = dm or md
         return Reading(one) if one else Reading(pending=PENDING_UNRESOLVED)
     if m := _Y_A_B.match(text):
-        y, sep, a, b = int(m[1]), m[2], int(m[3]), int(m[5])
-        ymd = _iso(y, a, b)
-        if sep == "-":                           # year-first with hyphens is ISO's own order
-            return Reading(ymd) if ymd else Reading(pending=PENDING_UNRESOLVED)
-        ydm = _iso(y, b, a)
-        if ymd and ydm and ymd != ydm:
-            return Reading(f"{y:04d}", PENDING_AMBIGUOUS, (ymd, ydm))
-        one = ymd or ydm
-        return Reading(one) if one else Reading(pending=PENDING_UNRESOLVED)
+        # Year-first is year-month-day whatever the separator (ISO, East Asian and registry
+        # usage); year-day-month is not read, so 2010/25/03 is left for the pass (D395).
+        ymd = _iso(int(m[1]), int(m[3]), int(m[5]))
+        return Reading(ymd) if ymd else Reading(pending=PENDING_UNRESOLVED)
     return Reading(pending=PENDING_UNRESOLVED)
 
 
