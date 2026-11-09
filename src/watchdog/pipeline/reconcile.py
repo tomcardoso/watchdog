@@ -39,7 +39,7 @@ _STOPWORDS = {"the", "of", "and", "a", "an", "de", "du", "la", "le"}
 _LEGAL_FOLD = {"limited": "ltd", "incorporated": "inc", "corporation": "corp", "company": "co",
                "limitee": "ltee", "limitée": "ltée"}
 
-# Tokens common across a type's records carry little identity: in a live run a province's name, a
+# Tokens common across a type's records carry little identity: in a live run a region's name, a
 # city's, "ltd" and "corporation" sat in most of the records of their type, and pairs sharing only
 # those were most of what reconcile sent (D394). A token's weight is 1 while it is in at most
 # `_COMMON_MIN` records of a type, or at most `_COMMON_SHARE` of them, then falls with its
