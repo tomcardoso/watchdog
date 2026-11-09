@@ -363,7 +363,7 @@ The **sample investigation** is listed here with a **Sample** label; its menu ad
 Each investigation is an ordinary folder of Markdown files (plain text with light formatting) on your computer, and nothing in it is in a proprietary format. You can do all your work in the app, but the files are yours and stay readable without it. **File → Show in Folder** opens the folder. The parts worth knowing:
 
 - `entities/` and `documents/` hold a note for every entity and document, rebuilt from Watchdog's records on every run, apart from your notes section. A deleted note comes back with **Rebuild notes**.
-- `morgue/` holds every original file after it is processed, beside its full extracted text.
+- `morgue/` holds every original file after it is processed, beside its full extracted text, in a folder named after the entity the document is mainly about. A document that shows no clear subject (an unreadable scan, a cover page) goes in `morgue/_no-subject/` instead, rather than under a made-up "Unknown" entity.
 - `briefings/`, `queries/` and `wiki/` hold what Watchdog and Claude write for you to read.
 - `context.md` is your brief, and `context/` the background material it was drawn from.
 - `timeline.md`, `verification.md`, `merges.md`, `requests.md` and `watchlist.md` are written records of what the app shows. Edit them in the app, not on disk.
