@@ -883,7 +883,11 @@ what it changes. The merged id's facts reach the survivor through the merge log 
 `synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one. Review's **Merge ticked** runs
 `merge-entity-pairs`, which calls the same merge once per pair, keeps going past a failed pair and
 reports each outcome; a pair whose record an earlier pair merged away is followed to its survivor
-(D328).
+(D328). Its **Merge all N records named …** runs `merge-entity-group`: `merge_log.same_name_groups`
+joins open pairs whose records share a type and `identity.name_key`, offers a group of three or
+more, keeps the record in most documents (then the longer name), and leaves out any record marked
+"Not the same" as one already in it; the operation reads those marks again and merges the rest
+through `merge-entity-pairs` (D399).
 
 **The merge log (D279).** `registry/merges.json` (`schema_version` 1) records every merge — keep
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the

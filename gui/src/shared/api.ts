@@ -739,6 +739,7 @@ export interface OpParams {
   'diagnostics-report': { output: string }
   'merge-entities': { keep: string; merge: string }
   'merge-entity-pairs': { keep: string[]; merge: string[] }
+  'merge-entity-group': { keep: string; merge: string[] }
   'undo-merge': { id: string }
   'set-details': { values: DetailValues; sha?: string; path?: string }
   'hide-entities': { ids: string[] }
@@ -842,6 +843,12 @@ export interface ReviewItem { kind: ReviewKind; rid: string; title: string; deta
 /** What `merge-entity-pairs` returns (D328): each pair merged, failed (with why) or already one. */
 export interface MergePairRow { keep: string; merge: string; keep_name: string; merge_name: string; error?: string }
 export interface MergePairsResult { merged: MergePairRow[]; failed: MergePairRow[]; skipped: MergePairRow[] }
+/** What `merge-entity-group` returns (D399): `merge-entity-pairs`' result plus the records left out
+ * because the reporter marked them Not the same as one in the group. */
+export interface MergeGroupResult extends MergePairsResult { left_out: { id: string; name: string; not_same_as: string; not_same_as_name: string }[] }
+/** Open possible-same pairs joining three or more records of one name (`review.sameNameGroups`, D399). */
+export interface SameNameRecord { id: string; name: string; type: string; doc_count: number }
+export interface SameNameGroup { key: string; name: string; type: string; size: number; keep: SameNameRecord; merge: SameNameRecord[]; left_out: (SameNameRecord & { not_same_as: SameNameRecord })[]; rids: string[] }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
@@ -1129,6 +1136,7 @@ export interface Methods {
   'review.watchlistAdd': [{ vault: string; term: string }, { added: string | null }]
   'review.watchlistRemove': [{ vault: string; term: string }, { removed: string }]
   'review.mergeLog': [{ vault: string; limit?: number }, { merges: MergeLogEntry[]; total: number; too_new: boolean; undo_available: boolean }]
+  'review.sameNameGroups': [{ vault: string }, { groups: SameNameGroup[] }]
   'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean; type_mismatch?: boolean }]
 
   'settings.schema': [Record<string, never>, SettingsSchema]

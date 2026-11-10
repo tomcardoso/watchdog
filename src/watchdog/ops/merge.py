@@ -112,3 +112,33 @@ def merge_entity_pairs(rep, vault: Path, *, keep: list[str], merge: list[str]) -
                 "the search index (Activity → Maintenance) to drop the merged entities' old "
                 "search entries.")
     return {"merged": merged, "failed": failed, "skipped": skipped}
+
+
+@op("merge-entity-group", engine="index", exit_code=lambda r: 1 if (r or {}).get("failed") else 0)
+def merge_entity_group(rep, vault: Path, *, keep: str, merge: list[str]) -> dict:
+    """Merge every record in `merge` into `keep`, one at a time through `merge-entity-pairs`
+    (Review's "Merge all N records named …", D399): each merge is the reporter's, logged and
+    undoable on its own, and a failure does not stop the rest.
+
+    A record the reporter marked "Not the same" as `keep`, or as a record merged before it, is left
+    out, since merging both would join them; the marks are read again here, not taken from the
+    list the app showed. Returns `merge-entity-pairs`' result plus `left_out`, each
+    `{id, name, not_same_as, not_same_as_name}`."""
+    from watchdog.pipeline import merge_log, resolutions
+    require_vault(vault)
+    if not merge:
+        sys.exit("Error: give at least one record to merge.")
+    dismissed = frozenset(r for r in resolutions.resolved_ids(vault) if r.startswith("same:"))
+    kept, left = merge_log.leave_out_not_same([keep, *merge], dismissed)
+    ents = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
+    name = lambda e: (ents.get(e) or {}).get("name") or e   # noqa: E731
+    left_out = [{"id": i, "name": name(i), "not_same_as": o, "not_same_as_name": name(o)}
+                for i, o in left]
+    for row in left_out:
+        rep.warn(f"Left out {row['name']}: it is marked Not the same as {row['not_same_as_name']}.")
+    rest = kept[1:]
+    if not rest:
+        rep.log("Nothing to merge.")
+        return {"merged": [], "failed": [], "skipped": [], "left_out": left_out}
+    result = merge_entity_pairs(rep, vault, keep=[keep] * len(rest), merge=rest)
+    return {**result, "left_out": left_out}
