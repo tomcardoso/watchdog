@@ -134,7 +134,7 @@ def test_a_removed_entity_drops_out_of_every_view_and_count(vault):
     assert not gone & {r["id"] for r in s["top_entities"]}
     assert s["possible_same"] == 0
     assert s["contradictions"] < before["contradictions"]
-    assert s["leads"] == before["leads"] - 1          # the surety company is no longer a lead
+    assert s["gaps"] == before["gaps"] - 1            # the surety company is no longer a gap
 
     found = leads.scan(vault)
     assert "pier-9" not in {c["id"] for c in found["contradictions"]}
@@ -153,8 +153,8 @@ def test_a_removed_entity_drops_out_of_every_view_and_count(vault):
     # Bringing them back restores every view.
     _unhide(vault, *gone)
     after = call("vault.summary", vault=v)
-    assert {k: after[k] for k in ("contradictions", "leads", "possible_same")} == \
-        {k: before[k] for k in ("contradictions", "leads", "possible_same")}
+    assert {k: after[k] for k in ("contradictions", "leads", "gaps", "possible_same")} == \
+        {k: before[k] for k in ("contradictions", "leads", "gaps", "possible_same")}
     assert after["totals"]["entities"] == before["totals"]["entities"]
 
 

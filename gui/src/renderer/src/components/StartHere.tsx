@@ -15,7 +15,8 @@ const WORDS: Record<ReviewKind, [string, string]> = {
   leads: ['lead', 'leads'],
   alerts: ['watchlist alert', 'watchlist alerts'],
   duplicates: ['possible duplicate document', 'possible duplicate documents'],
-  merges: ['possible same entity', 'possible same entities']
+  merges: ['possible same entity', 'possible same entities'],
+  gaps: ['gap in the record', 'gaps in the record']
 }
 
 function joinList(parts: string[]): string {
@@ -28,7 +29,7 @@ export function describeAdded(added: Partial<Record<ReviewKind, number>>): strin
   const judgement = (['contradictions', 'leads', 'alerts'] as ReviewKind[])
     .filter((k) => (added[k] ?? 0) > 0)
     .map((k) => `${fmtNum(added[k]!)} ${added[k] === 1 ? WORDS[k][0] : WORDS[k][1]}`)
-  const tidy = (added.duplicates ?? 0) + (added.merges ?? 0)
+  const tidy = (added.duplicates ?? 0) + (added.merges ?? 0) + (added.gaps ?? 0)
   const tidyText = tidy ? `${fmtNum(tidy)} tidy-up ${tidy === 1 ? 'item' : 'items'}` : ''
   if (!judgement.length) return tidyText
   return joinList(judgement) + (tidyText ? `, plus ${tidyText}` : '')

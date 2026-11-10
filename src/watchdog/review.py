@@ -1,12 +1,14 @@
 """What Review lists: everything waiting on the reporter, read from local files only (D252).
 
-Five kinds:
+Six kinds:
 
   * contradictions — conflicting claims recorded on entity notes
-  * leads          — entities named but never profiled, isolated, or with inferred relationships
+  * leads          — entities with inferred relationships to verify
   * alerts         — unresolved watchlist hits in `briefings/alerts-*.md`
   * duplicates     — documents pre-processing's MinHash matched to an earlier one
   * merges         — two entity records that may be the same, left unmerged (D279)
+  * gaps           — entities named but never profiled, or mentioned often but unconnected: what the
+                     extraction left unfinished, tidy-up rather than judgement (D399)
 
 Marking an item handled records its id in `resolutions.json`, so it stops re-surfacing in every
 report. Marking a `merges` item handled means "not the same": the pair is never merged
@@ -20,7 +22,7 @@ from watchdog.pipeline import leads as _leads
 from watchdog.pipeline import resolutions
 from watchdog.pipeline.json_io import _read_json_or
 
-KINDS = ("contradictions", "leads", "alerts", "duplicates", "merges")
+KINDS = ("contradictions", "leads", "alerts", "duplicates", "merges", "gaps")
 
 
 _SAME_WORD = {"person": "person", "organization": "organization", "public-body": "public body",
@@ -93,20 +95,28 @@ def _cited(shas: list[str], docs: dict) -> list[dict]:
              "note": (docs.get(sha) or {}).get("document_note")} for sha in shas]
 
 
-def _lead_items(found: dict, docs: dict) -> list[dict]:
+def _gap_items(found: dict, docs: dict) -> list[dict]:
+    """Named-but-never-profiled and mentioned-often-but-unconnected entities (D399). Their ids are
+    the `lead:` ids they always had."""
     out = []
     for u in found["unprofiled"]:
-        item = _item("leads", u["rid"], f"{u['name']} — named but never profiled",
+        item = _item("gaps", u["rid"], f"{u['name']} — named but never profiled",
                      _unprofiled_detail(u), None)
         item["cited"] = _cited(u["docs"], docs)
         item.update(entity=u["id"], related=list(u.get("by_ids") or []), doc_count=u["doc_count"])
         out.append(item)
     for i in found["isolated"]:
-        item = _item("leads", i["rid"], f"{i['name']} — mentioned often but unconnected",
+        item = _item("gaps", i["rid"], f"{i['name']} — mentioned often but unconnected",
                      [f"Appears in {i['doc_count']} documents with no relationships"],
                      i.get("note_path"))
         item.update(entity=i["id"], doc_count=i["doc_count"])
         out.append(item)
+    return out
+
+
+def _lead_items(found: dict) -> list[dict]:
+    """Inferred relationships to verify: the leads that still need the reporter's judgement."""
+    out = []
     for i in found["inferred"]:
         item = _item("leads", i["rid"], f"{i['name']} — inferred relationships to verify",
                      list(i["claims"]), i["note_path"])
@@ -198,7 +208,7 @@ def same_entities(vault: Path, resolved: frozenset[str]) -> list[dict]:
 def open_items(vault: Path, kinds=KINDS) -> list[dict]:
     """Every unresolved item of the given kinds, in `KINDS` order."""
     resolved = resolutions.resolved_ids(vault)
-    found = _leads.scan(vault) if {"contradictions", "leads"} & set(kinds) else None
+    found = _leads.scan(vault) if {"contradictions", "leads", "gaps"} & set(kinds) else None
     out: list[dict] = []
     for kind in KINDS:
         if kind not in kinds:
@@ -206,7 +216,9 @@ def open_items(vault: Path, kinds=KINDS) -> list[dict]:
         if kind == "contradictions":
             out += contradictions(found)
         elif kind == "leads":
-            out += _lead_items(found, _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {}))
+            out += _lead_items(found)
+        elif kind == "gaps":
+            out += _gap_items(found, _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {}))
         elif kind == "alerts":
             out += _alerts(vault, resolved)
         elif kind == "merges":

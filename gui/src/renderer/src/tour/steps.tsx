@@ -103,14 +103,14 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
     },
     {
       id: 'lead',
-      title: 'A lead',
+      title: 'A gap in the record',
       body: () => (
         <>
-          <p>Leads are places the record points that the investigation has not followed yet: a body named but never profiled, an entity with no known connections, a relationship the model inferred.</p>
-          <p>They are suggestions for reporting, not findings.</p>
+          <p>Gaps are places the record points that the investigation has not followed yet: a body named but never profiled, or an entity that recurs with no known connections. Relationships the model inferred are listed separately, as leads to verify.</p>
+          <p>They are suggestions for reporting, not findings, and they are worked through in bulk with the other tidy-up queues.</p>
         </>
       ),
-      route: () => ({ view: 'review', kind: 'leads' }),
+      route: () => ({ view: 'review', kind: 'gaps' }),
       target: (t) => rid(t.lead.rid)
     },
     {

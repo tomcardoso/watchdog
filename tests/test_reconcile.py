@@ -896,7 +896,8 @@ def test_identical_names_go_to_the_model_as_one_group_not_pairs(tmp_path):
     items = ng.next_items()
     assert [len(i["members"]) for i in items] == [1 * 3] and not rules and not cands
     member = items[0]["members"][0]
-    assert {"member", "id", "names", "facts", "roles", "summary", "documents"} <= set(member)
+    assert {"member", "id", "names", "facts", "roles", "documents"} <= set(member)
+    assert "summary" not in member
     assert member["facts"][0]["fact"].startswith("Harbour Board met on day")
 
 
@@ -1075,3 +1076,25 @@ def test_pairs_past_the_cap_are_carried_reported_and_blocked_again(tmp_path, mon
         | set(bundle["carry_pairs"])
     assert carried <= blocked
     assert all(e["entity_id"] not in carried for e in bundle["entities"])   # pairs only
+
+
+def test_pair_sides_carry_no_earlier_summary(tmp_path):
+    """The record's stored synthesis summary is earlier model prose that a merge can leave stale;
+    a pair side is its facts and roles (D399)."""
+    vault = make_vault(tmp_path)
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
+    reg = json.loads(reg_path.read_text())
+    reg["acme-corp-canada"] = {
+        "id": "acme-corp-canada", "name": "Acme Corp Canada", "type": "Company", "aliases": [],
+        "appears_in": ["sha-b"], "note_path": "entities/company/acme-corp-canada", "roles": [],
+        "timeline_events": [], "date_first_seen": "2021-05-01", "date_last_updated": "2021-05-01"}
+    for eid in ("acme-corp", "acme-corp-canada"):
+        reg[eid]["synthesis"] = {"summary": "An earlier model summary."}
+    reg_path.write_text(json.dumps(reg))
+    _stage(vault, "sha-f", "doc-f.pdf", [_touch("acme-corp", "Acme Corp", "Company", "Acme signed.")])
+    bundle = reconcile.build_bundle(vault, ["sha-f"])
+    assert bundle["pairs"], "the fixture should reach the model as a pair"
+    for pair in bundle["pairs"]:
+        for side in ("a", "b"):
+            assert "summary" not in pair[side]
+            assert "facts" in pair[side]

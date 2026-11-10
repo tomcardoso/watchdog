@@ -575,7 +575,11 @@ registry, keyed for idempotent replay (D67).
   (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
   function of the items and registry-derived inputs (watchlist terms, relationship-graph degree,
   `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
-  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watchlist
+  into judgement and tidy-up (duplicates, possible same, document requests, gaps; D328, D399). The
+  **gaps** kind holds the two extraction leftovers among the lead signals, `unprofiled` and
+  `isolated`; `leads` holds only `inferred` relationships. Their ids stay `lead:<signal>:<entity>`
+  (`resolutions.is_gap_id`), so earlier marks hold, and a sidecar written before D399 is regrouped
+  at read time (`triage.regroup`). A watchlist
   term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
   possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
   possible duplicate is resolved with the label `copies` or `different`, and `different` hides the
@@ -837,7 +841,7 @@ and nothing the session can start runs a command, so nothing else sees it.
 raising) to a session's system prompt when it connects, at the start and on every resume (D299);
 the system prompt survives compaction. It holds the questions
 in `context.md`, counts and verification progress, the most-mentioned entities with note links,
-open contradictions, leads, document requests, possible same entities and disputed facts (with
+open contradictions, leads, gaps in the record, document requests, possible same entities and disputed facts (with
 citation links), the last three briefings with their status lines, and how to cite. It is read from
 the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
 every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to

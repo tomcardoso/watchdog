@@ -16,9 +16,11 @@ Everything here is derived from the registry and the app's own files, with no mo
 
   A removed entity (D326) never appears, as an item's own entity or as the reason for another.
 
-* **Judgement and tidy-up** (`groups`): contradictions, leads, alerts and disputed facts need the
-  reporter's judgement; possible duplicate documents, possible same entities and document requests
-  are tidy-up, worked through in bulk (D328). The Overview's headline number counts judgement only.
+* **Judgement and tidy-up** (`groups`): contradictions, leads (inferred relationships), alerts and
+  disputed facts need the reporter's judgement; possible duplicate documents, possible same
+  entities, document requests and gaps in the record (entities named but never profiled, or
+  mentioned often but unconnected) are tidy-up, worked through in bulk (D328, D399). The
+  Overview's headline number counts judgement only.
 
 * **What a batch added** (`record_batch`, `batch_delta`): after a run writes its briefing, the
   open Review items are recorded in the briefing's sidecar (`.watchdog/briefings/<ts>.json`,
@@ -37,10 +39,11 @@ import json
 import os
 from pathlib import Path
 
+from watchdog.pipeline import resolutions
 from watchdog.pipeline.json_io import _read_json_or
 
 JUDGEMENT = ("contradictions", "leads", "alerts")
-TIDY_UP = ("duplicates", "merges")
+TIDY_UP = ("duplicates", "merges", "gaps")
 REVIEW_KINDS = JUDGEMENT + TIDY_UP
 
 SLICE = 7           # items in Start here: enough to fill a short card, few enough to read first
@@ -257,10 +260,11 @@ def start_here(vault: Path, items: list[dict] | None = None, limit: int = SLICE)
 def groups(counts: dict) -> dict:
     """Pure: the Overview's two totals from its counts (the `overview.summary` keys plus
     `disputed`). Judgement: contradictions, leads, watchlist alerts, disputed facts. Tidy-up:
-    possible duplicate documents, possible same entities and open document requests (D328)."""
+    possible duplicate documents, possible same entities, open document requests (D328) and gaps in
+    the record (D399)."""
     n = lambda k: int(counts.get(k) or 0)   # noqa: E731
     return {"judgement": n("contradictions") + n("leads") + n("alerts") + n("disputed"),
-            "tidy_up": n("near_duplicates") + n("possible_same") + n("requests")}
+            "tidy_up": n("near_duplicates") + n("possible_same") + n("requests") + n("gaps")}
 
 
 # ── What a batch added ─────────────────────────────────────────────────────────────────────────
@@ -296,13 +300,35 @@ def added_between(before: dict | None, after: dict) -> dict[str, list[str]] | No
     return {k: sorted(set(after.get(k) or []) - set(before.get(k) or [])) for k in REVIEW_KINDS}
 
 
+def regroup(by_kind: dict | None) -> dict | None:
+    """Pure: a recorded `{kind: ids}` with the gap ids filed under `gaps`. A sidecar written before
+    D399 lists named-but-never-profiled and mentioned-often-but-unconnected leads under `leads`;
+    their ids never changed, so they are moved at read time and nothing is rewritten. Without it
+    every such item would look newly added by the first batch after the upgrade. Idempotent."""
+    if not isinstance(by_kind, dict):
+        return by_kind
+    out = {k: list(v) if isinstance(v, list) else v for k, v in by_kind.items()}
+    leads = out.get("leads")
+    if isinstance(leads, list):
+        moved = [r for r in leads if resolutions.is_gap_id(r)]
+        if moved:
+            out["leads"] = [r for r in leads if not resolutions.is_gap_id(r)]
+            out["gaps"] = sorted(set(out.get("gaps") or []) | set(moved))
+    return out
+
+
 def _review_record(vault: Path, briefing: Path) -> dict | None:
     try:
         data = json.loads(_sidecar(vault, briefing.name).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     rec = data.get("review") if isinstance(data, dict) else None
-    return rec if isinstance(rec, dict) and isinstance(rec.get("open"), dict) else None
+    if not (isinstance(rec, dict) and isinstance(rec.get("open"), dict)):
+        return None
+    rec = {**rec, "open": regroup(rec["open"])}
+    if isinstance(rec.get("added"), dict):
+        rec["added"] = regroup(rec["added"])
+    return rec
 
 
 def record_batch(vault: Path, briefing: str) -> dict | None:

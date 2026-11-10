@@ -97,6 +97,7 @@ def summary(vault: str) -> dict:
         "headline": s["headline"],
         "contradictions": s["contradictions"],
         "leads": s["leads"],
+        "gaps": s["gaps"],
         "near_duplicates": s["near_duplicates"],
         "possible_same": s["possible_same"],
         "alerts": s["alerts"],

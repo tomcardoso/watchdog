@@ -25,7 +25,7 @@ def _c(rid, entity, docs, title=None):
 
 
 def _lead(rid, entity, docs, related=(), title=None):
-    return {"kind": "leads", "rid": rid, "title": title or f"{entity} — named but never profiled",
+    return {"kind": "leads", "rid": rid, "title": title or f"{entity} — inferred relationships to verify",
             "note": None, "entity": entity, "related": list(related), "doc_count": docs}
 
 
@@ -197,9 +197,10 @@ def test_graph_inputs_count_neighbours_and_main_subjects():
 
 def test_groups_split_judgement_from_tidy_up():
     counts = {"contradictions": 3, "leads": 4, "alerts": 2, "disputed": 1,
-              "near_duplicates": 5, "possible_same": 6, "requests": 7, "incoming": 99}
-    # Document requests are tidy-up too (D328).
-    assert triage.groups(counts) == {"judgement": 10, "tidy_up": 18}
+              "near_duplicates": 5, "possible_same": 6, "requests": 7, "gaps": 8, "incoming": 99}
+    # Document requests are tidy-up too (D328), and so are gaps in the record (D399).
+    assert triage.groups(counts) == {"judgement": 10, "tidy_up": 26}
+    assert triage.TIDY_UP == ("duplicates", "merges", "gaps") and "gaps" not in triage.JUDGEMENT
     assert triage.groups({}) == {"judgement": 0, "tidy_up": 0}
 
 
@@ -207,7 +208,8 @@ def test_the_overview_summary_carries_both_groups_and_the_slice(rich_vault):
     s = call("vault.summary", vault=str(rich_vault))
     assert s["judgement"] == s["contradictions"] + s["leads"] + s["alerts"] + s["verification"]["disputed"]
     assert s["requests"] == 1
-    assert s["tidy_up"] == s["near_duplicates"] + s["possible_same"] + s["requests"]
+    assert s["tidy_up"] == s["near_duplicates"] + s["possible_same"] + s["requests"] + s["gaps"]
+    assert s["gaps"] >= 1                                # the rich vault has an unprofiled target
     assert s["start_here"] and all(i["kind"] in triage.JUDGEMENT for i in s["start_here"])
     assert all(i["reason"] for i in s["start_here"])
     assert s["since_review"] is None                     # Review never opened
@@ -268,8 +270,11 @@ def test_an_unprofiled_lead_names_who_mentions_it(tmp_path):
         "removed-co": {"name": "Removed Co", "type": "organization", "roles": [
             {"relationship": "owns", "target_id": "ghost-co", "source_sha256": "s2"}]},
     })
-    (item,) = [i for i in open_items(vault, ("leads",)) if i["entity"] == "ghost-co"]
+    (item,) = [i for i in open_items(vault, ("gaps",)) if i["entity"] == "ghost-co"]
     assert item["related"] == ["ida-marsh", "removed-co"]
+    assert not [i for i in open_items(vault, ("leads",)) if i["entity"] == "ghost-co"]
+    # Gaps are tidy-up: they never reach the Start here slice.
+    assert triage.start_here(vault) == []
 
 
 def test_start_here_on_a_vault_leaves_removed_entities_out(tmp_path):
@@ -291,7 +296,7 @@ def test_start_here_on_a_vault_leaves_removed_entities_out(tmp_path):
 def test_added_between_is_by_kind_and_none_without_a_before():
     after = {"contradictions": ["c1", "c2"], "leads": ["l1"]}
     assert triage.added_between({"contradictions": ["c1"]}, after) == {
-        "contradictions": ["c2"], "leads": ["l1"], "alerts": [], "duplicates": [], "merges": []}
+        "contradictions": ["c2"], "leads": ["l1"], "alerts": [], "duplicates": [], "merges": [], "gaps": []}
     assert triage.added_between(None, after) is None
 
 
@@ -325,7 +330,8 @@ def test_record_batch_counts_what_each_batch_added(tmp_path):
     triage.record_batch(vault, "briefings/2026-10-02-09-00.md")
     delta = triage.batch_delta(vault, second)
     assert delta["briefing"] == "2026-10-02-09-00"
-    assert delta["added"] == {"contradictions": 1, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}
+    assert delta["added"] == {"contradictions": 1, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0,
+                              "gaps": 0}
     status = json.loads((vault / ".watchdog" / "briefings" / "2026-10-02-09-00.json").read_text())["status"]
     assert status == "Where things stand."                  # the rest of the sidecar is kept
 
@@ -428,3 +434,52 @@ def test_review_opened_and_new_labels_through_the_app(tmp_path):
     s = call("vault.summary", vault=str(vault))
     assert s["since_review"]["added"]["contradictions"] == 0
     assert s["batch"]["added"]["contradictions"] == 1
+
+
+# ── a sidecar written before gaps were their own kind (D399) ─────────────────────────────────
+
+def _old_sidecar(vault, stem, open_, added):
+    """A briefing sidecar as an earlier version wrote it: the gap ids listed under `leads`."""
+    side = vault / ".watchdog" / "briefings" / f"{stem}.json"
+    data = json.loads(side.read_text())
+    data["review"] = {"at": "2026-10-01T09:00:00+00:00", "open": open_, "added": added}
+    side.write_text(json.dumps(data))
+
+
+GAP, INFERRED = "lead:unprofiled:ghost-co", "lead:inferred:pat"
+
+
+def _gap_and_lead_registry(vault):
+    _entities(vault, {
+        "ida-marsh": {"name": "Ida Marsh", "type": "person", "appears_in": ["a"], "roles": [
+            {"relationship": "director of", "target_id": "ghost-co", "source_sha256": "s1"},
+            {"relationship": "adviser to", "target_id": "ida-marsh", "basis": "inferred",
+             "source_sha256": "s1"}]}})
+
+
+def test_regroup_moves_gap_ids_out_of_leads_and_is_idempotent():
+    old = {"contradictions": ["c1"], "leads": [GAP, INFERRED, "lead:isolated:x"]}
+    new = triage.regroup(old)
+    assert new["leads"] == [INFERRED] and new["gaps"] == ["lead:isolated:x", GAP]
+    assert triage.regroup(new) == new
+    assert old["leads"] == [GAP, INFERRED, "lead:isolated:x"]      # the input is not changed
+    assert triage.regroup(None) is None
+
+
+def test_an_old_sidecar_does_not_make_every_gap_look_newly_added(tmp_path):
+    vault = make_vault(tmp_path)
+    _gap_and_lead_registry(vault)
+    _briefing(vault, "2026-10-01-09-00")
+    _old_sidecar(vault, "2026-10-01-09-00", {"leads": [GAP, "lead:inferred:ida-marsh"]},
+                 {"leads": [GAP, "lead:inferred:ida-marsh"]})
+    # Read as written by the new code: the old batch added one gap and one lead.
+    assert triage.batch_delta(vault, vault / "briefings" / "2026-10-01-09-00.md")["added"] == {
+        "contradictions": 0, "leads": 1, "alerts": 0, "duplicates": 0, "merges": 0, "gaps": 1}
+
+    _briefing(vault, "2026-10-02-09-00")
+    rec = triage.record_batch(vault, "briefings/2026-10-02-09-00.md")
+    assert rec["open"]["gaps"] == [GAP]
+    assert rec["added"]["gaps"] == [] and rec["added"]["leads"] == []     # nothing is new
+
+    # Review opened between the two briefings: only what the second batch added counts as new.
+    assert triage.new_since(vault, "2026-10-01T10:00:00+00:00")["added"]["gaps"] == 0

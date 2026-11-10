@@ -14,7 +14,9 @@ Stored at ``.watchdog/registry/resolutions.json``::
 Resolution ids (``rid``) are stable, human-copyable tokens the reports print next to each item
 (embedded as an unobtrusive ``<!--wid:<rid>-->`` marker so the id travels with the item):
 
-  * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``
+  * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``.
+    Review lists the first two as *gaps* and only ``inferred`` as *leads* (D399); the ids are the
+    same either way, so a mark made before that still holds
   * ``contradiction:<hash>``      — ``sha1[:12]`` of the normalized callout text
   * ``alert:<sha7>:<hash>``       — document ``sha256[:7]`` + ``sha1[:8]`` of the watch term
   * ``request:<hash>``            — ``sha1[:12]`` of the normalized ``what`` text (#365), keyed
@@ -58,6 +60,15 @@ def _callout_text(callout: str) -> str:
 
 def lead_id(signal: str, entity_id: str) -> str:
     return f"lead:{signal}:{entity_id}"
+
+
+# The two lead signals that are extraction leftovers rather than judgement calls: Review lists them
+# as "gaps in the record", under tidy-up (D399). Their ids keep the ``lead:`` prefix.
+GAP_PREFIXES = ("lead:unprofiled:", "lead:isolated:")
+
+
+def is_gap_id(rid: str) -> bool:
+    return isinstance(rid, str) and rid.startswith(GAP_PREFIXES)
 
 
 def contradiction_id(callout: str) -> str:

@@ -16,7 +16,7 @@ To open it, choose **Get started** or **Explore a sample investigation** at the 
 
 ![The Investigations screen, with the Port Calder sample investigation listed and its counts.](images/app-projects.png)
 
-The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a lead, Search, the timeline and network, what a run costs, adding documents and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
+The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a gap in the record, Search, the timeline and network, what a run costs, adding documents and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
 
 Two files are left waiting to be added to the sample, a change order and the notes of a site meeting. When the tour reaches **Adding documents**, choose **Read documents** to add them and watch a run from start to finish: Watchdog reads the files on your computer, extracts their facts and writes a new briefing, which points to a new contradiction. Prepared answers stand in for the AI model here too, so the run costs nothing, sends nothing anywhere and does not ask you to confirm that the files are public records.
 
@@ -102,7 +102,7 @@ If the same person or company shows up twice under different names, see [Duplica
 
 ## Review what needs a decision
 
-Choose **Review** to work through contradictions, leads, watchlist alerts, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview. Leads (names and threads worth chasing) and watchlist alerts are refreshed after every run.
+Choose **Review** to work through contradictions, leads, watchlist alerts, possible duplicates, possible same entities, document requests and gaps in the record, one tab each. A count beside Review in the sidebar shows how many items need your judgement; duplicates, possible same entities, requests and gaps are tidy-up, worked through in bulk. Mark an item handled and it stops appearing in briefings and on the Overview. Leads (relationships the model inferred), gaps (names never profiled, entities with no connections) and watchlist alerts are refreshed after every run.
 
 ## Ask Claude
 

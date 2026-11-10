@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion, RefreshCcw, Target
+  ShieldAlert, ShieldCheck, GitMerge, CircleDashed, ChevronDown, ChevronRight, Sparkles, FileQuestion, RefreshCcw, Target
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -84,7 +84,7 @@ export default function HomeView() {
   const judgement: WaitRow[] = s
     ? ([
         { kind: 'contradictions', n: s.contradictions, one: 'contradiction', many: 'contradictions', hint: 'Facts that disagree across documents', icon: Scale },
-        { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Names and threads worth chasing', icon: Lightbulb },
+        { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Relationships the model inferred, to verify', icon: Lightbulb },
         { kind: 'alerts', n: s.alerts, one: 'alert', many: 'alerts', hint: 'Matches for names you are watching', icon: Bell },
         { kind: 'verification', n: s.verification?.disputed ?? 0, one: 'disputed fact', many: 'disputed facts', hint: 'Facts you marked as not supported by the source', icon: ShieldAlert }
       ] as WaitRow[]).filter((w) => w.n > 0)
@@ -93,7 +93,8 @@ export default function HomeView() {
     ? ([
         { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
         { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge },
-        { kind: 'requests', n: s.requests ?? 0, one: 'document request', many: 'document requests', hint: 'Records to ask for, grouped by who holds them', icon: FileQuestion }
+        { kind: 'requests', n: s.requests ?? 0, one: 'document request', many: 'document requests', hint: 'Records to ask for, grouped by who holds them', icon: FileQuestion },
+        { kind: 'gaps', n: s.gaps ?? 0, one: 'gap in the record', many: 'gaps in the record', hint: 'Names never profiled, and entities with no connections', icon: CircleDashed }
       ] as WaitRow[]).filter((w) => w.n > 0)
     : []
 

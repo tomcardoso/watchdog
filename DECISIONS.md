@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — every decision, D1 to D398 (click to expand)</strong></summary>
+<summary><strong>Index — every decision, D1 to D399 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -396,6 +396,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D394** — Reconcile pairs discount common tokens and localities; post-processing chunks are sized by content
 - **D395** — A year-first numeric date is year-month-day, whatever the separator
 - **D398** — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
+- **D399** — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
 
 </details>
 
@@ -3458,3 +3459,11 @@ Post-flight copied every tagged fact onto each entity it tags as `evidence_fragm
 In the same change, `research_max_rounds` and `research_max_fetches` are removed from Settings and dropped from a saved `config.json` on read. No code read them, and a Web research session is denied `~/.watchdog`, so the skill could not honour them; its effort tiers (quick, standard, deep) are what bound a session. `section_overlap_tokens` becomes `auto` by default, which is what an unset key already did (D147), and `preprocess_timeout`, which pre-processing read but nothing could set, becomes a setting.
 
 Tradeoff: a tool outside Watchdog that read `evidence_fragments` from a stored extraction would have to read `key_facts` and their `entities` tags instead. A reporter who wanted a hard cap on research rounds has only the session's own check-ins. (D396 and D397 are taken by changes open at the time of writing.)
+
+### D399 — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
+
+Issue #844. A large investigation reported hundreds of Review items to judge, most of them leads of two kinds: an entity named as a relationship target but never given a record (`unprofiled`), and one in three or more documents with no relationships (`isolated`). Both are what extraction left unfinished, not a call for the reporter's judgement, so they are a new Review kind, `gaps` ("Gaps in the record"), in `triage.TIDY_UP`: a table worked in bulk, outside the Overview's headline number, the sidebar badge and Start here, and counted with the tidy-up. `leads` now holds only `inferred` relationships, which are still judged. Resolution ids are unchanged (`lead:unprofiled:<id>`, `lead:isolated:<id>`), so marks already made, their remapping on a merge and the briefing files' `wid` markers all still work, and `resolutions.is_gap_id` is the one test for which kind an id belongs to. The briefing sidecars an earlier version wrote list these ids under `leads`; `triage.regroup` files them under `gaps` when a sidecar is read, so the first batch after the upgrade does not count every gap as newly added. Nothing stored is rewritten, so no migration is needed (I19: stored records are unchanged; only how Review reads them differs). The lead sweep, `briefings/leads-<date>.md` and the Maintenance operation still list all four sections.
+
+In the same change, `reconcile` stops sending each record's stored synthesis `summary` in a pair side or a same-name group member. It is earlier model prose, can be stale after a merge, `prompts/reconcile.md` never described it, and the model already receives each side's facts and roles. `_GROUP_MEMBER_EST_CHARS` was fitted with the summary line included and now errs high; it is not refitted.
+
+Tradeoff: a reporter who relied on seeing an unprofiled name beside the contradictions must open the Gaps tab, and an old marked-handled gap is filed under Gaps rather than Leads in the Handled list. Without the summary, a pair that told apart a parent company from its subsidiary only by its prose now has the facts and roles alone; the merge decisions were not measured before or after, so the next reconciler measurement checks that precision and recall did not move.

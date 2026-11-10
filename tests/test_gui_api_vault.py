@@ -47,7 +47,7 @@ def test_summary_of_rich_vault(rich_vault, wdg_home):
     assert s["briefing"] == {"path": "briefings/2026-03-03-08-00.md", "name": "2026-03-03-08-00",
                              "date": "2026-03-03T08:00:00"}
     assert s["headline"] == "Three reports in; one date conflict."
-    assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 2, 1, 1)
+    assert (s["contradictions"], s["leads"], s["gaps"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1, 1)
     assert (s["incoming"], s["awaiting_dig"], s["awaiting_bark"], s["failed"]) == (2, 1, 1, 1)
     assert s["research_urls"] == 2 and s["has_work"] is True and s["pending_finalize"] is True
     assert s["context_unseeded"] is False
