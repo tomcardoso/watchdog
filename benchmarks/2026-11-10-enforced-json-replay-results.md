@@ -221,3 +221,45 @@ req_011Cgv2twmdj1CG2xadj5FW2, req_011Cgv2uoqve887EjgFDq7ve, req_011Cgv2vc3YSZM2v
 req_011Cgv2y51Krs7HebMU3YpjA, req_011Cgv3117xxXvmV886gHuic, req_011Cgv31qmvWcuwrsA6kpvRA,
 req_011Cgv32oifxrGhxJ4K64RNY, req_011Cgv33jRkBaGA19hE68zgS, req_011Cgv375gE3Yz1uGkVR9J8u,
 req_011Cgv37cKikW6beihy48yjM, req_011Cgv38zNYwM2m3MSFBt4VN, req_011Cgv393HvHzhpJLxAh4opC.
+
+## Addendum 3: the same request with every field required (20 runs, $0.27)
+
+Twenty more enforced runs, with the schema passed through `model_client._to_strict_schema` (the
+variant OpenAI's strict mode already gets: every property required, optional scalars widened to
+allow `null`). Anthropic's API rejected that variant as it stands, before any billing: a nullable
+`enum` (`basis`, and one other field) written as `{"type": ["string", "null"], "enum": [...]}` is
+an invalid schema there. Rewritten as `{"anyOf": [{"type": "string", "enum": [...]}, {"type":
+"null"}]}` it was accepted. Sets were run one after the other, the same afternoon.
+
+| | Enforced, as captured | `page` required | Every field required |
+|---|---|---|---|
+| Runs | 20 | 20 | 20 |
+| Collapsed | 5 | 0 | 0 |
+| Ran to the token limit | 2 | 0 | 0 |
+| Valid JSON passing the schema sent | 18 | 20 | 20 |
+| Facts, min / median / max | 1 / 27 / 37 | 24 / 27 / 31 | 21 / 27 / 34 |
+| Output tokens, median | 18,862 | 20,004 | 22,101 |
+| Facts with a page | 92% | 100% | 100% |
+| Facts with a date | 19% | 17% | 22% |
+| Facts with a `quote_locator` | 12% | 4% | 6% |
+| Facts marked `inferred` | 1 of 371 | 2 of 548 | 2 of 542 |
+| Facts tagged with an entity | 98% | 99% | 99% |
+| Entities, median; relationships per answer | 14; 15.5 | 14; 14.8 | 14; 16.0 |
+| Answers with a `plan` | 3 of 13 | 3 of 20 | 0 of 20 |
+
+(The first column's rates are over the 13 answers that completed with more than three facts. The
+prompted answers of the main run: date 21%, locator 18%, 6 of 606 inferred.)
+
+Requiring every field did not make the model fill them: unused fields came back `null`, and the
+date, locator and `inferred` rates sit within the range of the other sets. Both required variants
+carry fewer locators than the prompted answers; the cause is not known. Output grew by about
+2,000 tokens a call at the median over the `page`-only variant (about $0.01 on this model), part
+of it the written-out nulls. Fact quality was not scored in any set.
+
+Request ids: req_011Cgv3hgEKHZoEunLpEYbSZ, req_011Cgv3hgE4TiYbfH9NCGi8t,
+req_011Cgv3hgEoUif1rKosTvZ3r, req_011Cgv3hgDaJNYxPqcUAEeQP, req_011Cgv3oJYkKFDNY35X9Kz4Z,
+req_011Cgv3pNacyGtq9LP6XpVpF, req_011Cgv3qaj8y2knw2MX53tJ8, req_011Cgv3qfXNh38KkyqZZR1kz,
+req_011Cgv3uhP6e8FTmGchtgsV6, req_011Cgv3vQ93fngoXP37fbfUD, req_011Cgv3wzjwDd6e5RJP2Ztag,
+req_011Cgv3yz5ZMNASeg1hn9sYs, req_011Cgv41w7kx3Qi9CWUkSNZh, req_011Cgv42mdmt76HbMnFQs7WB,
+req_011Cgv45fzHgQvf8TzXBAe5S, req_011Cgv47oo9fqh23dSUisz9m, req_011Cgv49xmTDZ6Fh2FJcUPBS,
+req_011Cgv4AZfB1259DmPbBi3yV, req_011Cgv4C62aHQBJNgNdbAB6N, req_011Cgv4E3DDWVinHDE7vxzB9.
