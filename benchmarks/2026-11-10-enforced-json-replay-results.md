@@ -189,3 +189,35 @@ Reading: the failures follow from one pattern, a fact that skips the optional `p
 cannot go back to it. Why the model skips `page` in some enforced runs and never in prompted ones
 is not explained by these responses. An untested fix that keeps enforcement: make `page` required
 (it is already nullable), so the field after `fact` is always `page`.
+
+## Addendum 2: the same request with `page` required (20 runs, $0.24)
+
+The captured request was replayed 20 more times, enforced as in mode A, with one change to the
+schema it sends: a fact's `required` is `["fact", "page"]` instead of `["fact"]` (`page` stays
+`integer` or `null`). Same afternoon, four at a time, no errors or retries.
+
+| | A: enforced, as captured | Enforced, `page` required |
+|---|---|---|
+| Runs | 20 | 20 |
+| Collapsed | 5 | 0 |
+| Ran to the token limit | 2 | 0 |
+| Facts, min / median / max | 1 / 27 / 37 (18 answers) | 24 / 27 / 31 |
+| Output tokens, min / median / max | 14,445 / 18,862 / 115,200 | 15,904 / 20,004 / 28,109 |
+| Valid JSON passing the schema | 18 | 20 |
+| Facts with a page | 341 of 371 (answers that completed) | 548 of 548 |
+| Facts with a `quote_locator` | 43 of 371 (12%) | 21 of 548 (4%) |
+
+Failures of either kind: 7 of 20 against 0 of 20 (Fisher exact, two-sided, p = 0.008). No fact
+has a null page. Fewer facts carry a `quote_locator` than in mode A (4% against 12%; the prompted
+answers had 17%); the facts were not scored for quality.
+
+Still one document and one afternoon, and the modes were run one after the other, not interleaved.
+It has not been run through the pipeline or on the six-document benchmark.
+
+Request ids: req_011Cgv2iNBXcVuEU1G2dHVMF, req_011Cgv2iNAH2SrdeuW62evsN,
+req_011Cgv2iN9HWXH3FimZdBeRJ, req_011Cgv2iN8ngedos1XQ3aJLK, req_011Cgv2okHCaWb7MQ6gJPM2q,
+req_011Cgv2pBLL9hzt5g7WbiuqH, req_011Cgv2q4d2shKSBPDBa23GS, req_011Cgv2qbVfJpNVPPHGHBgdD,
+req_011Cgv2twmdj1CG2xadj5FW2, req_011Cgv2uoqve887EjgFDq7ve, req_011Cgv2vc3YSZM2vZ9ujrEQB,
+req_011Cgv2y51Krs7HebMU3YpjA, req_011Cgv3117xxXvmV886gHuic, req_011Cgv31qmvWcuwrsA6kpvRA,
+req_011Cgv32oifxrGhxJ4K64RNY, req_011Cgv33jRkBaGA19hE68zgS, req_011Cgv375gE3Yz1uGkVR9J8u,
+req_011Cgv37cKikW6beihy48yjM, req_011Cgv38zNYwM2m3MSFBt4VN, req_011Cgv393HvHzhpJLxAh4opC.
