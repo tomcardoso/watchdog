@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from watchdog.pipeline import merge
 from watchdog.pipeline.merge import merge_extractions
 
@@ -279,3 +281,29 @@ def test_cross_section_fold_needs_the_same_type_and_a_full_person_name():
     merged = merge_extractions(sections, sha="d" * 64)
     assert {e["id"] for e in merged["entities"]} == {"pier-9", "pier-9-project", "j-smith", "j-smith-2"}
     assert "identity" not in merged
+
+
+def _sections_with_kinds(*names_kinds):
+    return [{"document": {"key_facts": [{"fact": f"Fact {i}.", "page": i + 1, "entities": ["board"]}]},
+             "entities": [dict({"id": "board", "name": name, "type": "public-body", "aliases": [],
+                                "roles": []}, **({"name_kind": kind} if kind else {}))],
+             "morgue_entity_id": "board" if i == 0 else None, "morgue_document_type": None}
+            for i, (name, kind) in enumerate(names_kinds)]
+
+
+def test_a_name_kind_survives_a_sectioned_merge():
+    merged = merge_extractions(_sections_with_kinds(("Harbour Board", "proper"), ("Harbour Board", None)))
+    assert merged["entities"][0]["name_kind"] == "proper"
+
+
+def test_the_kept_name_brings_its_own_kind():
+    merged = merge_extractions(_sections_with_kinds(("Harbour Board", "stand-in"),
+                                                    ("Harbour Board of Northland", "proper")))
+    ent = merged["entities"][0]
+    assert ent["name"] == "Harbour Board of Northland" and ent["name_kind"] == "proper"
+
+
+@pytest.mark.parametrize("kinds", [("proper", "stand-in"), ("stand-in", "proper")])
+def test_sections_disagreeing_on_one_name_keep_stand_in(kinds):
+    merged = merge_extractions(_sections_with_kinds(("Harbour Board", kinds[0]), ("Harbour Board", kinds[1])))
+    assert merged["entities"][0]["name_kind"] == "stand-in"

@@ -562,3 +562,98 @@ def test_two_records_of_one_company_sharing_a_corporate_access_number_merge():
     a = _p("a", "Northgate Holdings Ltd.", org, identifiers=ids)
     b = _p("b", "The Northgate Group Holdings Ltd.", org, identifiers=ids)
     assert _tier(a, b) == ("high", "same-identifier")
+
+
+# ── a name's kind, as the extractor read it (D398) ───────────────────────────────────────────
+
+def _marked(eid, name, etype, kind, identifiers=None):
+    p = _p(eid, name, etype, identifiers=identifiers)
+    if kind:
+        p.mark_name(name, kind)
+    return p
+
+
+@pytest.mark.parametrize("etype", ["public-body", "organization", "proceeding", "asset"])
+def test_a_proper_name_of_generic_words_is_one_thing(etype):
+    v = identity.classify(_marked("a", "Government of Northland", etype, "proper"),
+                          _marked("b", "Government of Northland", etype, "proper"))
+    assert v["tier"] == "high" and v["rule"] == "proper-name"
+
+
+def test_without_marks_the_word_lists_still_decide():
+    v = identity.classify(_marked("a", "Government of Northland", "public-body", None),
+                          _marked("b", "Government of Northland", "public-body", None))
+    assert v["tier"] == "medium" and v["rule"] == "generic-name"
+
+
+def test_one_side_unmarked_falls_back_to_the_word_lists():
+    v = identity.classify(_marked("a", "Government of Northland", "public-body", "proper"),
+                          _marked("b", "Government of Northland", "public-body", None))
+    assert v["rule"] == "generic-name"
+
+
+@pytest.mark.parametrize("kinds", [("stand-in", "stand-in"), ("proper", "stand-in")])
+def test_a_stand_in_never_joins_on_its_name(kinds):
+    """Even a name the word lists call distinctive stays apart when a document used it in place
+    of a name."""
+    v = identity.classify(_marked("a", "Northgate Board of Review", "public-body", kinds[0]),
+                          _marked("b", "Northgate Board of Review", "public-body", kinds[1]))
+    assert v["tier"] == "medium" and v["rule"] == "stand-in-name"
+
+
+def test_a_proper_name_with_different_identifiers_is_two_things():
+    a = _marked("a", "General Holdings Corp.", "organization", "proper",
+                identifiers={"registration": {"7700000001"}})
+    b = _marked("b", "General Holdings Corp.", "organization", "proper",
+                identifiers={"registration": {"7700000002"}})
+    assert identity.classify(a, b) is None
+
+
+def test_a_dismissed_pair_is_never_joined_on_a_proper_name():
+    a = _marked("a", "General Holdings Corp.", "organization", "proper")
+    b = _marked("b", "General Holdings Corp.", "organization", "proper")
+    assert identity.classify(a, b, {identity.pair_id("a", "b")}) is None
+
+
+def test_a_proper_place_name_joins_but_a_bare_street_does_not():
+    v = identity.classify(_marked("a", "Northland", "place", "proper"),
+                          _marked("b", "Northland", "place", "proper"))
+    assert v["tier"] == "high" and v["rule"] == "proper-name"
+    v = identity.classify(_marked("a", "Main Street", "place", "proper"),
+                          _marked("b", "Main Street", "place", "proper"))
+    assert v["rule"] != "proper-name"
+
+
+def test_a_person_s_name_kind_is_ignored():
+    a, b = _p("a", "Jane Doe"), _p("b", "Jane Doe")
+    a.mark_name("Jane Doe", "proper")
+    b.mark_name("Jane Doe", "proper")
+    assert identity.classify(a, b)["rule"] == "same-name"
+
+
+def _body(eid, name, kind=None):
+    e = {"id": eid, "name": name, "type": "public-body", "aliases": [], "summary": None,
+         "timeline_events": [], "roles": []}
+    if kind:
+        e["name_kind"] = kind
+    return e
+
+
+def test_the_fold_joins_a_proper_name_across_documents(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_body("government-of-northland", "Government of Northland", "proper")])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_body("government-of-northland", "Government of Northland", "proper")])
+    _commit(vault, ["sha-b"])
+    reg = _registry(vault)
+    assert [k for k in reg if k.startswith("government-of-northland")] == ["government-of-northland"]
+
+
+def test_the_fold_keeps_unmarked_generic_names_apart(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_body("government-of-northland", "Government of Northland")])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_body("government-of-northland", "Government of Northland")])
+    _commit(vault, ["sha-b"])
+    reg = _registry(vault)
+    assert len([k for k in reg if k.startswith("government-of-northland")]) == 2

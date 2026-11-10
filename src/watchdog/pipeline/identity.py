@@ -435,6 +435,13 @@ class Profile:
         self.facts: list[dict] = []              # {"id", "fact", "page", "sha", "title", "date", "mark"}
         self.documents: list[str] = []
         self.identifiers: dict[str, set[str]] = {}
+        # name_key -> the kinds documents gave that name: "proper" or "stand-in" (D398).
+        self.name_kinds: dict[str, set[str]] = {}
+
+    def mark_name(self, name: str, kind) -> None:
+        """Record what a document said `name` is: its own name or a stand-in for one (D398)."""
+        if name and kind in NAME_KINDS:
+            self.name_kinds.setdefault(name_key(name), set()).add(kind)
 
     def add_surface(self, name: str) -> None:
         if name and name.lower() not in {s.lower() for s in self.surfaces}:
@@ -461,6 +468,8 @@ class Profile:
             mine = self.relations.setdefault(tid, {"name": r["name"], "type": r["type"], "rels": {}})
             for rel, toks in r["rels"].items():
                 mine["rels"].setdefault(rel, toks)
+        for key, kinds in other.name_kinds.items():
+            self.name_kinds.setdefault(key, set()).update(kinds)
         known = {f["id"] for f in self.facts}
         self.facts += [f for f in other.facts if f["id"] not in known]
         self.documents += [d for d in other.documents if d not in self.documents]
@@ -610,6 +619,22 @@ def classify(a: Profile, b: Profile, dismissed: frozenset[str] | set[str] = froz
                         "One name is an initialled or shortened form of the other.", surface=surface)
 
     if best == "same":
+        # What the documents said the shared name is (D398). Read by the model that saw the name
+        # in its sentence, so it replaces the word lists where every document gave it: a stand-in
+        # ("the Board") never joins on its name, and a proper name joins unless a different
+        # identifier or the reporter's "not the same" says otherwise (both checked above).
+        kind = _shared_name_kind(a, b)
+        if kind == "stand-in":
+            return _verdict("medium", "stand-in-name",
+                            f"The same name, {surface}, but the documents use it in place of a "
+                            f"name, so it may mean a different {word} in each.",
+                            same_name=True, surface=surface)
+        if kind == "proper":
+            proper = next(s for s in a.surfaces if "proper" in a.name_kinds.get(name_key(s), ())
+                          and "proper" in b.name_kinds.get(name_key(s), ()))
+            return _verdict("high", "proper-name",
+                            f"The same name, {proper}, which the documents give as the {word}'s "
+                            f"own name.", same_name=True, surface=proper)
         if is_distinctive(surface):
             return _verdict("high", "distinctive-name",
                             f"The same name, {surface}, specific enough to identify one {word}.",
@@ -621,6 +646,36 @@ def classify(a: Profile, b: Profile, dismissed: frozenset[str] | set[str] = froz
         return _verdict("medium", "reordered-name", "The same words in a different order.",
                         same_name=True, surface=surface)
     return _verdict("medium", "similar-name", "Similar names.", surface=surface)
+
+
+NAME_KINDS = ("proper", "stand-in")
+
+
+def _shared_name_kind(a: Profile, b: Profile) -> str | None:
+    """What the documents said the name two non-person records share is (D398): "stand-in" when
+    any document gave a shared name as one, "proper" when every shared name some document marked
+    was marked proper on both sides, else None, and the word lists decide as before (a record
+    from before D398 carries no mark). A place whose shared name is a bare street ("Main Street",
+    no civic number) is left to the word lists: many towns have one."""
+    shared = set(a.name_kinds) & set(b.name_kinds) & {name_key(s) for s in a.surfaces} \
+        & {name_key(s) for s in b.surfaces}
+    if not shared:
+        return None
+    kinds = [a.name_kinds[k] | b.name_kinds[k] for k in shared]
+    if any("stand-in" in k for k in kinds):
+        return "stand-in"
+    proper = [k for k in shared if "proper" in a.name_kinds[k] and "proper" in b.name_kinds[k]]
+    if not proper:
+        return None
+    if a.type == "place" and all(_bare_street(k) for k in proper):
+        return None
+    return "proper"
+
+
+def _bare_street(key: str) -> bool:
+    """A name made of a street and its type with no number ("main street"): shared by many towns."""
+    words = re.split(r"[^\w]+", key)
+    return any(w in _STREET_TYPES for w in words) and not any(c.isdigit() for c in key)
 
 
 # ── reading the evidence from the vault ───────────────────────────────────────────────────────
@@ -715,6 +770,7 @@ class Evidence:
                 if e.get("id") in ids:
                     hit = True
                     p.add_surface(e.get("name", ""))
+                    p.mark_name(e.get("name", ""), e.get("name_kind"))
                     for alias in e.get("aliases") or []:
                         p.add_surface(alias)
                     for role in e.get("roles") or []:

@@ -87,6 +87,13 @@ _ENTITY = _obj(
                                  "organization, public-body, place, asset, proceeding")},
         "aliases": {"type": "array", "items": {"type": "string"}},
         "roles": {"type": "array", "items": _ROLE},
+        # Whether `name` is the entity's own name or a description standing in for one (D398):
+        # entity identity merges same-named non-person records on the first, not the second.
+        "name_kind": {"type": "string", "enum": ["proper", "stand-in"],
+                      "description": ("for anything but a person: \"proper\" when `name` is the "
+                                      "entity's own name, \"stand-in\" when it is a description "
+                                      "the document uses in place of one (\"the Agency\", \"the "
+                                      "Company\")")},
     },
     ["id", "name", "type"],
 )

@@ -41,6 +41,7 @@ ENTITIES — the graph. Name the entities THIS document mentions. You are readin
     - `proceeding` — a legal or adjudicative matter that gathers parties and filings: a lawsuit, insolvency, arbitration, inquiry, or disciplinary case. Create ONE entity per matter/docket — individual hearings or motions are timeline events, not new entities.
   Do NOT create entities for one-off occurrences (a transaction, vote, or decision — capture those as facts, dated onto the timeline) or for documents (those live in the document store); record them in `key_facts` instead.
 - `aliases`: every other name or abbreviation used in this document.
+- `name_kind` (anything but a person): `"proper"` when `name` is the entity's own name, however ordinary its words ("Harbourview Holdings Ltd.", "Department of Port Services", "Northland"); `"stand-in"` when it is a description the document uses in place of a name ("the Agency", "the Company", "the Municipality", "the applicant"). Give a stand-in's proper name instead whenever the document states it; use `"stand-in"` only when it never does.
 - `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/basis/date_range — never a plain string. Identify the target by `target_id` only; its name and type are filled in automatically, so do not emit them.
 
 Create an entity for anything a fact, a role, or the timeline needs to refer to — including incidental actors (counsel, a clerk) named in a fact. Do NOT write a summary or per-entity prose: who the entity is follows from the facts tagged to it.

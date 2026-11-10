@@ -388,9 +388,11 @@ figures (D394):
   candidate pair from what the extractions record (names and aliases, roles, facts, and a
   type-gated harvest of labelled identifiers from facts about one entity): **high** (same
   identifier; a person's same full name plus a shared role, employer or street address; a
-  non-person's same, specific name) merges in code; **medium** (a person's same full name alone;
-  a short or generic name; reordered or similar names) goes to the model with both sides' facts and
-  roles; **low** (initialled or partial person names) is never merged and becomes a "possible
+  non-person's same name, when every document that marked it gave it as the record's own name
+  (`name_kind: "proper"`, read by the extractor, D398), or, where any side is unmarked, a name the
+  word lists call specific) merges in code; **medium** (a person's same full name alone; a name a
+  document used as a stand-in, or an unmarked short or generic name; reordered or similar names)
+  goes to the model with both sides' facts and roles; **low** (initialled or partial person names) is never merged and becomes a "possible
   same" item; a conflicting identifier, different people's names or a pair the reporter dismissed
   is no pair. A place name that reads as a street address is compared by its parts
   (`parse_address`/`same_address`, D388: unit, civic number, street, type, direction, with the

@@ -194,3 +194,9 @@ def test_key_fact_rejects_quote():
     key_fact = {"fact": "something happened", "quote": "A full verbatim sentence."}
     errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
     assert errors
+
+
+def test_entity_name_kind_is_an_optional_enum():
+    ent = schemas.EXTRACTION["properties"]["entities"]["items"]
+    assert ent["properties"]["name_kind"]["enum"] == ["proper", "stand-in"]
+    assert "name_kind" not in ent["required"]
