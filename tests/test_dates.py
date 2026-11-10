@@ -379,3 +379,81 @@ def test_app_timeline_event_carries_the_range_and_the_inferred_mark():
 
 def test_find_in_text_reads_a_year_first_slash_date():
     assert dates.find_in_text("Registered on 2010/03/02 by the clerk.") == ("2010-03-02", "2010/03/02")
+
+
+# ── the document's own day/month order (D397) ───────────────────────────────────────────
+
+@pytest.mark.parametrize("text,order", [
+    ("Date of filing (DD/MM/YYYY): 03/04/2021", dates.DAY_FIRST),
+    ("Date (JJ/MM/AAAA) : 03/04/2021", dates.DAY_FIRST),
+    ("Datum (TT.MM.JJJJ): 03.04.2021", dates.DAY_FIRST),
+    ("Date signed (mm/dd/yyyy): 03/04/2021", dates.MONTH_FIRST),
+    ("Received 25/04/2021, reviewed 03/04/2021.", dates.DAY_FIRST),
+    ("Received 04/25/2021, reviewed 03/04/2021.", dates.MONTH_FIRST),
+    ("Received 25-04-2021.", dates.DAY_FIRST),
+])
+def test_document_order_from_a_label_or_a_date_with_one_reading(text, order):
+    assert dates.document_order([text]) == order
+
+
+@pytest.mark.parametrize("texts", [
+    ["Reviewed 03/04/2021 and 05/06/2021."],             # every date reads both ways
+    ["Received 25/04/2021.", "Copied 04/25/2021."],      # both orders in one document
+    ["(DD/MM/YYYY) 03/04/2021", "(MM/DD/YYYY) 03/04/2021"],
+    ["Filed 2021/04/25, page 12 of 31, invoice 12-31-99."],  # year-first, a range, a two-digit year
+    ["The ADDRESS DD/MM label is not a format", "Totals 31/12"],
+    [],
+])
+def test_document_order_is_none_without_one_clear_order(texts):
+    assert dates.document_order(texts) is None
+
+
+def _ambiguous_ext(*printed):
+    return {"document": {"key_facts": [{"fact": f"Event {i}.", "date": d}
+                                       for i, d in enumerate(printed)]}}
+
+
+def test_sanitize_settles_an_ambiguous_date_from_the_page_label():
+    ext = _ambiguous_ext("03/04/2021")
+    dates.sanitize(ext, {1: "Date of meeting (DD/MM/YYYY): 03/04/2021"})
+    fact = ext["document"]["key_facts"][0]
+    assert fact["date"] == "2021-04-03" and fact["date_basis"] == "inferred"
+    assert "date_pending" not in fact and "date_readings" not in fact
+    assert fact["date_text"] == "03/04/2021"
+
+
+def test_sanitize_settles_from_another_fact_with_one_reading():
+    ext = _ambiguous_ext("03/04/2021", "04/25/2021")
+    dates.sanitize(ext)
+    first, second = ext["document"]["key_facts"]
+    assert first["date"] == "2021-03-04" and first["date_basis"] == "inferred"
+    assert second["date"] == "2021-04-25" and "date_basis" not in second
+
+
+@pytest.mark.parametrize("pages", [None, {1: "Met 03/04/2021."}, {1: "25/04/2021", 2: "04/25/2021"}])
+def test_sanitize_leaves_the_pass_its_item_without_one_clear_order(pages):
+    ext = _ambiguous_ext("03/04/2021")
+    dates.sanitize(ext, pages)
+    fact = ext["document"]["key_facts"][0]
+    assert fact["date"] == "2021" and fact["date_pending"] == dates.PENDING_AMBIGUOUS
+    assert fact["date_readings"] == ["2021-04-03", "2021-03-04"]
+    assert "date_basis" not in fact
+
+
+def test_postflight_settles_the_order_from_the_document_pages(tmp_path):
+    """Post-flight hands the queue's page text to `sanitize`, so a format label printed on the
+    page settles a fact's ambiguous date before it is staged (D397)."""
+    vault = tmp_path / "v"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    sha = "e" * 64
+    (vault / ".watchdog" / "queue" / f"{sha}.json").write_text(json.dumps(
+        {"pages": [{"page": 1, "markdown": "Notice of meeting\n\nMeeting date (DD/MM/YYYY): 03/04/2021"}]}))
+    ex = {"document": {"sha256": sha, "filename": "notice.pdf", "page_count": 1, "key_facts": [
+        {"fact": "The board met.", "page": 1, "date": "03/04/2021"}]},
+        "entities": [], "morgue_entity_id": "x", "morgue_document_type": "notice"}
+    path = tmp_path / "ex.json"
+    path.write_text(json.dumps(ex))
+    assert postflight.run(vault, path, warn=lambda m: None)["ok"]
+    staged = json.loads((vault / ".watchdog" / "extracted" / f"{sha}.json").read_text())
+    fact = staged["document"]["key_facts"][0]
+    assert fact["date"] == "2021-04-03" and fact["date_basis"] == "inferred"
