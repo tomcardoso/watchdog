@@ -161,3 +161,31 @@ without a placeholder locator.
 | 38 | B | req_011Cgv1duXRNJCG2HRPQuQqN | end_turn | 24,083 (10,171) | 19,417 | 12,841 | 29 | 16 | no | yes | 0 |
 | 39 | A | req_011Cgv1fNdMm7V2frhVAdY2D | max_tokens | 24,547 (11,582) | 115,200 | 10,987 | n/a | n/a | n/a | no | - |
 | 40 | B | req_011Cgv1hhZh7DNj8BtQAWsQp | end_turn | 24,083 (10,171) | 26,607 | 19,507 | 35 | 14 | no | no | 0 |
+
+## Addendum: where the enforced answers go wrong (same 40 responses, no new calls)
+
+Read against the schema's field order for a fact (`fact`, `page`, `basis`, `date`, `entities`,
+`quote_locator`; only `fact` is required):
+
+- **Every enforced failure starts at a fact written without `page`.** In all five collapsed
+  answers and both token-limit loops, the fact where the answer goes wrong has the fields `fact`,
+  `entities`, `quote_locator` and no `page` or `date`. The answer breaks inside that
+  `quote_locator`: a placeholder `"x"` (runs 3, 29, 35), page references written into the locator
+  (runs 31 and 39, the latter then looping on newlines), a repeated sentence (run 7), or, in run 25,
+  the rest of the facts list written *inside* the string with its quotation marks escaped
+  (`","page":1}, {"fact": …`), 11,000 characters of it.
+- **Run 25 shows the model trying to write `page` after `quote_locator`** and the text landing
+  inside the string instead. No enforced fact in any run has its fields out of the schema's order
+  (0 of 371 in the answers that did not collapse; 5 of 606 prompted facts do), which is consistent
+  with the API allowing fields only in the declared order, so `page` cannot follow `entities`.
+- **Starting without `page` nearly always failed.** Eight of the 20 enforced runs wrote their first
+  facts without `page`. Seven failed. The eighth completed with 30 facts, none of which has a page.
+  The 12 runs whose first fact has `page` all completed, with a page on every fact.
+- **Without enforcement the model never left `page` out:** 0 of 606 prompted facts lack it.
+- The prompted answers' own departures from the schema are elsewhere: after the facts list ends
+  (fields filed inside `document`, an extra closing brace). They do not line up with the collapses.
+
+Reading: the failures follow from one pattern, a fact that skips the optional `page` and then
+cannot go back to it. Why the model skips `page` in some enforced runs and never in prompted ones
+is not explained by these responses. An untested fix that keeps enforcement: make `page` required
+(it is already nullable), so the field after `fact` is always `page`.
