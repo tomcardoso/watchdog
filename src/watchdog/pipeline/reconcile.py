@@ -232,14 +232,6 @@ def _prefix_len(n_tokens: int) -> int:
     return n_tokens - math.ceil(_JACCARD_MIN * n_tokens - 1e-9) + 1
 
 
-def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
-    """`_ranked_pairs`, capped at `_MAX_PAIRS` and numbered by rank."""
-    pairs = _ranked_pairs(entities_reg, touched)[:_MAX_PAIRS]
-    for index, pair in enumerate(pairs):
-        pair["index"] = index
-    return pairs
-
-
 def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     """Block the duplicate-entity field down to pairs worth a model call.
 

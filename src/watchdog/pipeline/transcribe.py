@@ -69,7 +69,6 @@ LANGUAGES = (
     "ur uz vi yi yo yue zh"
 ).split()
 
-_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2}):(\d{2})\]")
 _SENTENCE_END_RE = re.compile(r"[.?!…][\"'”’)\]]*$")
 
 
@@ -107,14 +106,6 @@ def fmt_timestamp(seconds: float) -> str:
     reads the same way."""
     s = max(0, int(seconds))
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
-
-
-def parse_timestamp(text: str) -> float | None:
-    m = _TIMESTAMP_RE.search(text)
-    if not m:
-        return None
-    h, mi, s = (int(g) for g in m.groups())
-    return float(h * 3600 + mi * 60 + s)
 
 
 def page_range(page: int, duration: float, page_seconds: int = PAGE_SECONDS) -> tuple[float, float]:

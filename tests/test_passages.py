@@ -44,7 +44,7 @@ def test_names_are_strong_and_stopwords_dropped():
 
 
 def test_sentences_respect_abbreviations_and_blocks():
-    found = passages.split_passages(PAGE)
+    found = [text for text, _pair in passages._page_passages(PAGE)]
     assert "Mr. Pike advised that the vendor would entertain other offers." in found
     assert "Councillor Sofia Marchetti · Opposed" in found        # a table row, cleaned
     assert not any(p.startswith("---") or "| ---" in p for p in found)

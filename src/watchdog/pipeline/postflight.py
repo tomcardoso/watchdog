@@ -1,7 +1,7 @@
 """Post-flight: validate an extraction and stage it as a durable artifact.
 
-Validates the extraction, resolves quote locators, checks figures, explodes `key_facts` into
-per-entity fragments and timeline events, stages raw timeline NDJSON, and writes the result to
+Validates the extraction, resolves quote locators, checks figures, fans the dated `key_facts`
+out into per-entity timeline events, stages raw timeline NDJSON, and writes the result to
 `.watchdog/extracted/<sha>.json`. Returns {"ok": true} or {"errors": [...]}.
 
 It never writes to the vault: finalize's commit pass replays `write_vault.run()` over staged
@@ -436,9 +436,8 @@ def _timeline_event(fact: dict, text: str) -> dict:
         event["page"] = fact["page"]
     if fact.get("basis"):
         event["basis"] = fact["basis"]
-    # The figure annotations ride along too (D215). `leads.py` reads roles and timeline_events —
-    # not evidence_fragments — so without this a derived figure is invisible to the lead sweep no
-    # matter what that sweep looks for.
+    # The figure annotations ride along too (D215). `leads.py` reads roles and timeline_events,
+    # so without this a derived figure is invisible to the lead sweep no matter what it looks for.
     for k in ("figures_unverified", "figures_off_page"):
         if fact.get(k):
             event[k] = fact[k]
@@ -461,20 +460,20 @@ def refresh_timeline_events(extraction: dict) -> None:
 
 
 def explode_key_facts(extraction: dict) -> list[str]:
-    """Reconstruct the per-entity views from the unified `key_facts` primitive (#140).
+    """Fan the dated `key_facts` out onto the entities they tag, as each entity's
+    ``timeline_events`` (#140), which the commit, the timeline staging and the lead sweep read.
+    Mutates the entities in place; the document-level ``key_facts`` are left intact, and they are
+    what every entity note, summary and contradiction check reads (D280).
 
-    The model emits each material fact once on ``document.key_facts``, tagged with the entity ids
-    it concerns and an optional ``date``. Here we deterministically fan those tags back out onto
-    each entity as ``evidence_fragments`` (every tagged fact) and ``timeline_events`` (tagged facts
-    that carry a date), the per-entity shapes that write_vault already renders. Mutates the entities
-    in place. The document-level ``key_facts`` are left intact (the document note and the global
-    timeline read them directly).
+    Until D398 this also copied every tagged fact onto its entities as ``evidence_fragments``.
+    Nothing had read those since D280, so they are no longer written; a stored extraction that
+    still carries them is unaffected.
 
     A tag naming an id absent from ``entities`` is dropped rather than filed anywhere — there is
     nothing to attach it to, and inventing an entity here would bypass the schema's own required
     fields (name, type). A near miss of a defined id is pointed at it first
     (`_resolve_near_miss_tags`, #757); for the rest this returns one warning per dropped tag, so
-    the loss is visible to the ingest log instead of silent.
+    the loss is visible to the processing log instead of silent.
     """
     by_id = {e["id"]: e for e in extraction.get("entities", []) if e.get("id")}
     warnings: list[str] = []
@@ -482,14 +481,6 @@ def explode_key_facts(extraction: dict) -> list[str]:
         text = (fact.get("fact") or "").strip()
         if not text:
             continue
-        page = fact.get("page")
-        basis = fact.get("basis")
-        quote = fact.get("quote")
-        quote_verified = fact.get("quote_verified")
-        quote_found_page = fact.get("quote_found_page")
-        quote_spans_pages = fact.get("quote_spans_pages")
-        figures_unverified = fact.get("figures_unverified")
-        figures_off_page = fact.get("figures_off_page")
         date = (fact.get("date") or "").strip()
         for eid in fact.get("entities", []) or []:
             ent = by_id.get(eid)
@@ -499,24 +490,6 @@ def explode_key_facts(extraction: dict) -> list[str]:
                     "'entities' — dropped, not filed under any entity"
                 )
                 continue
-            frag = {"claim": text}
-            if page is not None:
-                frag["page"] = page
-            if basis:
-                frag["basis"] = basis
-            if quote:
-                frag["quote"] = quote
-            if quote_verified is False:
-                frag["quote_verified"] = quote_verified
-            if quote_found_page is not None:
-                frag["quote_found_page"] = quote_found_page
-            if quote_spans_pages:
-                frag["quote_spans_pages"] = quote_spans_pages
-            if figures_unverified:
-                frag["figures_unverified"] = figures_unverified
-            if figures_off_page:
-                frag["figures_off_page"] = figures_off_page
-            ent.setdefault("evidence_fragments", []).append(frag)
             if date:
                 ent.setdefault("timeline_events", []).append(_timeline_event(fact, text))
     return warnings
@@ -590,8 +563,8 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     # Deterministic quote resolution against the morgue text (#267/#529): resolves each
     # key_facts.quote_locator (the first several words of a source sentence) against the
     # cited page's text into a full quote, flagging any that can't be matched on (or near) that
-    # page — annotation only, never blocks the document. Runs before explode_key_facts so the
-    # fan-out below copies an already-resolved quote onto each entity's evidence fragment.
+    # page — annotation only, never blocks the document. Runs before explode_key_facts, whose
+    # timeline events carry the page this may correct.
     from watchdog.pipeline.quote_verify import resolve_quotes
     for warning in resolve_quotes(extraction, page_texts):
         _warn(warning)
@@ -601,7 +574,7 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     # advisory only, never blocks the document. Ordered between the two neighbours on
     # purpose (#623): after resolve_quotes, whose D177 page correction changes the very page
     # this reads; before explode_key_facts, so the fan-out copies the annotation onto each
-    # entity's evidence fragment the way it already copies the resolved quote.
+    # entity's timeline events.
     from watchdog.pipeline.figure_verify import verify_figures
     for warning in verify_figures(extraction, page_texts):
         _warn(warning)
@@ -613,8 +586,8 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     for warning in locate_passages(extraction, page_texts):
         _warn(warning)
 
-    # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
-    # write_vault and timeline staging consume (#140).
+    # Fan the dated key_facts out into the per-entity timeline_events that write_vault and the
+    # timeline staging consume (#140).
     for warning in explode_key_facts(extraction):
         _warn(warning)
 

@@ -1356,7 +1356,6 @@ class _BackendMeta:
     base_url: str | None = None          # fixed URL (openai/deepseek/gemini)
     dynamic_base_url: bool = False       # user-supplied at call time (local, openrouter, #380)
     supports_continuation: bool = False  # can prefill+continue past a max-token cut (#343)
-    enforces_max_tokens: bool = False    # wire enforces max_tokens with no way past it (#343)
     batch_only: bool = False             # selectable but never dispatched via acomplete_json (#214)
 
 
@@ -1365,8 +1364,7 @@ class _BackendMeta:
 # or Settings → Models & keys) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
 # `acomplete_json` partial-applies the resolved URL per call instead of at import time.
 _BACKEND_META: dict[str, _BackendMeta] = {
-    "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
-                                      enforces_max_tokens=True),
+    "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True),
     "claude-agent-sdk": _BackendMeta(provider="anthropic"),
     # claude-batch/openai-batch are real, selectable backends (settings validation, auth resolution)
     # but are never dispatched through the single-call acomplete_json path — each provider's
@@ -1375,15 +1373,13 @@ _BACKEND_META: dict[str, _BackendMeta] = {
     # a classifier/finalizer stage accidentally set to a batch backend) into a clear error instead
     # of the generic "unknown backend" one.
     "claude-batch":     _BackendMeta(provider="anthropic", batch_only=True),
-    "openai":     _BackendMeta(provider="openai",   base_url=_OPENAI_BASE["openai"],
-                                enforces_max_tokens=True),
+    "openai":     _BackendMeta(provider="openai",   base_url=_OPENAI_BASE["openai"]),
     "openai-batch":     _BackendMeta(provider="openai", batch_only=True),
     "deepseek":   _BackendMeta(provider="deepseek", base_url=_OPENAI_BASE["deepseek"],
-                                supports_continuation=True, enforces_max_tokens=True),
-    "gemini":     _BackendMeta(provider="gemini",   base_url=_OPENAI_BASE["gemini"],
-                                enforces_max_tokens=True),
-    "local":      _BackendMeta(provider="local",      dynamic_base_url=True, enforces_max_tokens=True),
-    "openrouter": _BackendMeta(provider="openrouter", dynamic_base_url=True, enforces_max_tokens=True),
+                                supports_continuation=True),
+    "gemini":     _BackendMeta(provider="gemini",   base_url=_OPENAI_BASE["gemini"]),
+    "local":      _BackendMeta(provider="local",      dynamic_base_url=True),
+    "openrouter": _BackendMeta(provider="openrouter", dynamic_base_url=True),
 }
 
 # Selectable backend names (public — Settings validates a stage's `backend:model` against this).

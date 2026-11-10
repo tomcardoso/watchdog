@@ -37,7 +37,7 @@ class NearDupIndex:
     against it, so near-duplicates landing in the same drop — common with court records, where one
     filing turns up in several productions — were never flagged, and each comparison was a Python
     loop over every prior signature. One vectorized comparison per document now covers all three
-    populations; the similarity is the same fraction of matching hash slots as `minhash_similarity`.
+    populations; the similarity is the fraction of hash slots on which two signatures agree.
     """
 
     def __init__(self):
@@ -75,7 +75,7 @@ class NearDupIndex:
         if self._n == 0 and self._sigs.shape[1] != len(sig):
             self._sigs = np.zeros((64, len(sig)), dtype=np.uint64)
         if len(sig) != self._sigs.shape[1]:
-            return   # a signature from a different NUM_HASHES; minhash_similarity scores it 0.0
+            return   # a signature from a different NUM_HASHES is never a match
         if self._n == len(self._sigs):
             grown = np.zeros((2 * len(self._sigs), self._sigs.shape[1]), dtype=np.uint64)
             grown[: self._n] = self._sigs

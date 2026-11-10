@@ -743,9 +743,12 @@ def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
     assert queued[flagged[0]]["near_duplicates"][0]["filename"] == other
 
 
-def test_near_dup_index_scores_like_minhash_similarity_past_its_initial_capacity(tmp_path):
+def test_near_dup_index_scores_the_share_of_matching_slots_past_its_initial_capacity(tmp_path):
     import random
-    from watchdog.pipeline.near_dup import NUM_HASHES, minhash_similarity
+    from watchdog.pipeline.near_dup import NUM_HASHES
+
+    def minhash_similarity(a, b):      # the definition the vectorized index must reproduce
+        return sum(x == y for x, y in zip(a, b)) / len(a)
     from watchdog.pipeline.preprocess_batch import NearDupIndex
     rng = random.Random(696)
     base = [rng.randrange(1000) for _ in range(NUM_HASHES)]

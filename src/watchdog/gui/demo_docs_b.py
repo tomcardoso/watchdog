@@ -661,5 +661,3 @@ DOCS_B.append(dict(
             "Port Calder Superior Court registry"),
     ],
 ))
-
-DOCS = None   # assembled in demo_story

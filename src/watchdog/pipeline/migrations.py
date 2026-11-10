@@ -311,7 +311,7 @@ def _free_fix(art: dict, page_texts: dict[int, str]) -> dict:
     if out["tags"] or out["pages"]:
         for e in art.get("entities") or []:
             if isinstance(e, dict):
-                e.pop("evidence_fragments", None)
+                e.pop("evidence_fragments", None)    # no longer written (D398)
                 e.pop("timeline_events", None)
         postflight.explode_key_facts(art)
     return out

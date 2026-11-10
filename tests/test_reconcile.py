@@ -40,7 +40,7 @@ def test_overlap_identical_token_sets_score_highest():
 
 def test_candidate_pairs_sends_identical_token_set_names():
     reg = _reg("Tom Cardoso", "Person", "Cardoso, Tom", "Person")
-    pairs = reconcile.candidate_pairs(reg, touched={"a", "b"})
+    pairs = reconcile._ranked_pairs(reg, {"a", "b"})
     assert len(pairs) == 1
     assert {pairs[0]["a"]["id"], pairs[0]["b"]["id"]} == {"a", "b"}
 
@@ -65,10 +65,10 @@ def test_overlap_below_floor_is_not_blocked():
     which is below the send floor — so they never reach the model as a candidate pair."""
     reg = _reg("University of Toronto", "Company", "University of Waterloo", "Company")
     assert reconcile._overlap("University of Toronto", "University of Waterloo") < reconcile._JACCARD_MIN
-    assert reconcile.candidate_pairs(reg, touched={"a", "b"}) == []
+    assert reconcile._ranked_pairs(reg, {"a", "b"}) == []
 
 
-# ── candidate_pairs: the blocking pass ────────────────────────────────────────
+# ── _ranked_pairs: the blocking pass ────────────────────────────────────────
 
 def _reg(a_name, a_type, b_name, b_type, a_id="a", b_id="b"):
     return {
@@ -80,23 +80,22 @@ def _reg(a_name, a_type, b_name, b_type, a_id="a", b_id="b"):
 def test_candidate_pairs_blocks_across_types():
     """A person and an organization are never the same real-world thing, whatever their names."""
     reg = _reg("Acme Holdings", "Person", "Acme Holdings International", "Company")
-    assert reconcile.candidate_pairs(reg, touched={"a", "b"}) == []
+    assert reconcile._ranked_pairs(reg, {"a", "b"}) == []
 
 
 def test_candidate_pairs_emits_a_plausible_same_type_pair():
     reg = _reg("Laurentian University", "Company", "Laurentian University of Sudbury", "Company")
-    pairs = reconcile.candidate_pairs(reg, touched={"a"})
+    pairs = reconcile._ranked_pairs(reg, {"a"})
     assert len(pairs) == 1
     assert {pairs[0]["a"]["id"], pairs[0]["b"]["id"]} == {"a", "b"}
-    assert pairs[0]["index"] == 0
 
 
 def test_candidate_pairs_requires_a_touched_side():
     """An ingest reconciles the entities it touched against the whole vault — but two entities that
     were *both* untouched this run are not re-litigated on every run."""
     reg = _reg("Laurentian University", "Company", "Laurentian University of Sudbury", "Company")
-    assert reconcile.candidate_pairs(reg, touched=set()) == []
-    assert len(reconcile.candidate_pairs(reg, touched={"b"})) == 1
+    assert reconcile._ranked_pairs(reg, set()) == []
+    assert len(reconcile._ranked_pairs(reg, {"b"})) == 1
 
 
 def test_candidate_pairs_ranked_and_capped(monkeypatch):
@@ -108,7 +107,8 @@ def test_candidate_pairs_ranked_and_capped(monkeypatch):
         "b": {"id": "b", "name": "Acme Holdings International", "type": "Company", "aliases": []},
         "c": {"id": "c", "name": "Acme Ventures", "type": "Company", "aliases": []},
     }
-    pairs = reconcile.candidate_pairs(reg, touched={"a", "b", "c"})
+    # `build_bundle` keeps the first `_MAX_PAIRS` of the ranking and carries the rest.
+    pairs = reconcile._ranked_pairs(reg, {"a", "b", "c"})[:reconcile._MAX_PAIRS]
     assert len(pairs) == 1
     # a/b is a strict subset (1.0) and must win over a/c's partial Jaccard.
     assert {pairs[0]["a"]["id"], pairs[0]["b"]["id"]} == {"a", "b"}
@@ -155,7 +155,7 @@ def test_candidate_pairs_index_matches_brute_force(monkeypatch):
                                 "aliases": [name() for _ in range(rng.randint(0, 2))]}
         ids = sorted(reg)
         touched = set(rng.sample(ids, rng.randint(0, len(ids))))
-        got = {(p["a"]["id"], p["b"]["id"]) for p in reconcile.candidate_pairs(reg, touched)}
+        got = {(p["a"]["id"], p["b"]["id"]) for p in reconcile._ranked_pairs(reg, touched)}
         want = {(a, b) for a, b, _ in _brute_force_pairs(reg, touched)}
         assert got == want
 
@@ -167,11 +167,11 @@ def test_candidate_pairs_scales_past_the_quadratic_walk():
     reg = {f"e{i}": {"id": f"e{i}", "name": f"name{i} other{i} inc", "type": "Company",
                      "aliases": []} for i in range(5000)}
     started = time.monotonic()
-    assert reconcile.candidate_pairs(reg, set(reg)) == []
+    assert reconcile._ranked_pairs(reg, set(reg)) == []
     assert time.monotonic() - started < 10
 
 
-# ── candidate_pairs: localities and common tokens (D394) ──────────────────────
+# ── _ranked_pairs: localities and common tokens (D394) ──────────────────────
 
 def _places(*rows):
     """A registry of invented records: (id, name, type, aliases)."""
@@ -180,7 +180,7 @@ def _places(*rows):
 
 def _pair_ids(reg, touched=None):
     return {(p["a"]["id"], p["b"]["id"])
-            for p in reconcile.candidate_pairs(reg, set(reg) if touched is None else touched)}
+            for p in reconcile._ranked_pairs(reg, set(reg) if touched is None else touched)}
 
 
 def test_a_locality_inside_an_address_is_not_its_duplicate():

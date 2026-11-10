@@ -190,16 +190,10 @@ def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult", *,
         if moved:
             for e in art.get("entities") or []:
                 if isinstance(e, dict):
-                    e.pop("evidence_fragments", None)
+                    e.pop("evidence_fragments", None)    # no longer written (D398)
                     e.pop("timeline_events", None)
             explode_key_facts(art)
             if restage:
                 timeline.restage_document(vault, art)
         path.write_text(json.dumps(art, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"retagged": retagged, "facts": changed_facts, "unmatched": unmatched}
-
-
-def inferred_for(fact: dict, eid: str) -> bool:
-    """Whether `fact` reached `eid` through a tag the model matched (D333). `eid` is the record's
-    current id; a merge since keeps the mark through `resolve` (an `entity_facts.FactIndex`)."""
-    return eid in (fact.get("entities_inferred") or [])

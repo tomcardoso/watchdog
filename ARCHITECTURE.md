@@ -228,7 +228,7 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    each fact's figures against the page text and annotates figures found nowhere or only on
    another page (D112, D200); stamps a source passage on every fact (`pipeline/passages.py`, D270:
    the resolved quote, else the best-matching sentence on the cited page found by code, else
-   `unlocated`; no model call); explodes `key_facts` into per-entity fragments and timeline events
+   `unlocated`; no model call); fans the dated `key_facts` out into per-entity timeline events
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
    OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
    `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
@@ -511,7 +511,7 @@ any other. A fact tag naming no entity of its own document, after post-flight's 
 three facts carrying it and the document's entities (at most 60, most similar first);
 `fact_tags.validate` accepts only an id the document defines. `apply` re-tags every fact of the
 document carrying that tag (original tags in `extracted_entities`), records the id in
-`entities_inferred`, rebuilds the document's `evidence_fragments`/`timeline_events`
+`entities_inferred`, rebuilds the document's `timeline_events`
 (`explode_key_facts`) and restages its raw timeline files; an unmatched tag is recorded in
 `tags_unmatched` and still dropped by the fan-out. `FactIndex` resolves `entities_inferred` through
 the merge log like any tag, and the entity note and app mark such a fact "link inferred". Every run

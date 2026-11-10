@@ -3,8 +3,7 @@
 The model emits only a short ``quote_locator`` — the first several words of a source sentence.
 ``resolve_quote`` finds it in the cited page's text (from the chew-time queue file) and expands it
 to the full sentence in Python, so a rendered quote is source text by construction.
-``verify_quote`` checks a model-supplied ``quote`` and exists only for extractions staged before
-locators. Annotation only, never a gate: an unresolved locator is flagged in the note and logged."""
+Annotation only, never a gate: an unresolved locator is flagged in the note and logged."""
 
 import html.entities as html_entities
 import re
@@ -35,19 +34,6 @@ _WRAP_COLUMN = 60               # a line at least this long, ending mid-sentence
 _SENTENCE_BACK_WINDOW = 300     # max chars scanned backward for a sentence start
 _SENTENCE_FORWARD_WINDOW = 400  # max chars scanned forward (past the match) for a sentence end
 _QUOTE_CAP = 500                # max rendered quote length, in characters
-
-# An ELIDED quote — one where the model cut the middle and kept both ends:
-#   "the payment due on March 30, 2021 … is stayed and suspended"
-# Something must follow the ellipsis, so a merely truncated quote ("the payment
-# due…") is not an elision and keeps its pre-#630 behaviour. The trailing side
-# tests for any non-space rather than a word character: a cut very often resumes
-# on a figure, and "the total was … $842,018.34" resumes on "$", which is not a
-# word character. Leading punctuation is consumed by the character classes, and
-# a part that turns out to be punctuation-only is rejected by the length floor.
-_ELISION_RE = re.compile(r"(?<=\w)[\s\"'’”)\]]*(?:…|\.\.\.)[\s\"'‘“(\[]*(?=\S)")
-_MIN_ELISION_PART = 12   # normalized chars; a shorter fragment matches by luck, not by content
-_MAX_ELISION_GAP = 600   # normalized chars the model may cut out between two kept parts
-
 
 _ENTITY_RE = re.compile(r"&(?:#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]{1,31});")
 
@@ -179,81 +165,6 @@ def _normalize_with_map(text: str) -> tuple[str, list[int]]:
         out_idx.pop()
 
     return "".join(out_chars), [entity_origin[i] for i in out_idx]
-
-
-def _elision_parts(quote: str) -> list[str] | None:
-    """Split an elided quote into its kept parts, normalized.
-
-    Returns ``None`` when the quote isn't elided, or when any part is too short
-    to carry a match on its own — a two-word fragment would verify against
-    almost any page, which is worse than the false negative it fixes.
-    """
-    if not _ELISION_RE.search(quote):
-        return None
-    parts = [_normalize(p) for p in _ELISION_RE.split(quote)]
-    if len(parts) < 2 or any(len(p) < _MIN_ELISION_PART for p in parts):
-        return None
-    return parts
-
-
-def _elided_match(norm_text: str, parts: list[str]) -> bool:
-    """True when every part appears in `norm_text`, in order, without the model
-    having stitched together fragments from opposite ends of the page.
-
-    Order and gap are both load-bearing. Without them this trades a
-    false-negative problem for a false-positive one: any two phrases that happen
-    to share a page would "verify" as a quote that was never written.
-    """
-    idx = 0
-    for i, part in enumerate(parts):
-        pos = norm_text.find(part, idx)
-        if pos < 0:
-            return False
-        if i and pos - idx > _MAX_ELISION_GAP:
-            return False
-        idx = pos + len(part)
-    return True
-
-
-def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> dict:
-    """Check a model-supplied ``quote`` against its cited page, then the pages either side (OCR noise,
-    page-marker drift). Only for extractions staged before quote locators; a locator is resolved by
-    `resolve_quote` instead. An elided quote (both ends kept, middle cut with an ellipsis) verifies
-    when its kept parts appear in order and close together (D204).
-
-    Returns ``{"verified": None}`` when there is nothing to check (no page, or no page text);
-    ``{"verified": True}`` on an exact match; ``{"verified": True, "found_page": N}`` for a normalized
-    match on a different page; ``{"verified": False}`` when page text exists but nothing matched."""
-    quote = quote.strip()
-    if not quote or page is None or not page_texts:
-        return {"verified": None}
-
-    exact_text = page_texts.get(page)
-    if exact_text and quote in exact_text:
-        return {"verified": True}
-
-    norm_quote = _normalize(quote)
-    if not norm_quote:
-        return {"verified": None}
-
-    parts = _elision_parts(quote)
-    for candidate in (page, page - 1, page + 1):
-        text = page_texts.get(candidate)
-        if not text:
-            continue
-        norm_text = _normalize(text)
-        # On each page the whole quote is tried first, so the elided form can
-        # recover an otherwise-lost match but never override a real one. Pages
-        # are still searched cited-first, so an elided match on the cited page
-        # is preferred over a whole-quote match on a neighbour — which is the
-        # right way round: the model told us which page it read.
-        if norm_quote in norm_text or (parts and _elided_match(norm_text, parts)):
-            result = {"verified": True}
-            if candidate != page:
-                result["found_page"] = candidate
-            return result
-
-    return {"verified": False}
 
 
 def _sentence_boundary_end(text: str, i: int) -> bool:
@@ -550,9 +461,7 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     are routine self-resolution, not warnings — live runs on live documents showed these three
     accounting for most of the warning volume with nothing for a reader to act on.
 
-    Runs BEFORE `explode_key_facts` — the fan-out copies an already-resolved ``quote`` onto
-    each entity's fanned-out evidence fragment, so it no longer walks
-    ``entities[].evidence_fragments`` itself.
+    Runs BEFORE `explode_key_facts`, whose timeline events carry the page this may correct.
     """
     warnings: list[str] = []
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):

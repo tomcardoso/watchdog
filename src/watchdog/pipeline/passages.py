@@ -241,11 +241,6 @@ def _page_passages(page: str) -> list[tuple[str, bool]]:
     return out
 
 
-def split_passages(page: str) -> list[str]:
-    """Candidate passages on one page, sentences first, then adjacent pairs."""
-    return [text for text, _pair in _page_passages(page)]
-
-
 class _DocIndex:
     """Every page's passages and their token sets, plus document-wide token rarity."""
 

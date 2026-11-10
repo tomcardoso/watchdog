@@ -1,7 +1,7 @@
 """Fixtures shared by the `tests/test_gui_api_*.py` files.
 
 `rich_vault` builds a small but fully-populated vault *through the pipeline's own renderers*
-(`write_vault.build_entity_note`, `_build_document_note`, `requests.record`,
+(`entity_notes.rebuild`, `_build_document_note`, `requests.record`,
 `watchlist.write_alerts`, …), so the GUI readers are tested against the real note and registry
 formats rather than hand-copied approximations of them. A vault produced end to end by the real
 ingest is covered separately by `tests/test_golden_vault.py::_run_fixture_ingest`.
@@ -18,9 +18,8 @@ from watchdog.gui import server
 from watchdog.pipeline import requests as _requests
 from watchdog.pipeline import resolutions
 from watchdog.pipeline import watchlist as _watchlist
-from watchdog.pipeline.write_vault import (
-    _build_document_note, _update_manifest, build_entity_note,
-)
+from watchdog.pipeline import entity_notes as _entity_notes
+from watchdog.pipeline.write_vault import _build_document_note, _update_manifest
 
 from tests.test_write_vault import make_vault
 
@@ -155,16 +154,6 @@ def make_rich_vault(tmp_path: Path) -> Path:
          "last_updated": "2026-03-03T08:00:00Z"}))
     _update_manifest(vault, ents)
 
-    notes_default = "\n## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
-    summaries = {"jane-doe": "Director of Acme Corp.\n\nSecond paragraph of the summary.",
-                 "acme-corp": "A company that files annual reports.", "bob-roe": None}
-    analysis = {"jane-doe": "*1 Mar 2026, via [[documents/report-one|Report One]]:* She chairs the board.",
-                "acme-corp": "", "bob-roe": ""}
-    for eid, e in ents.items():
-        note = build_entity_note(e, notes_default, docs, summaries[eid], analysis[eid],
-                                 CALLOUT if eid == "jane-doe" else "")
-        _write(vault / f"{e['note_path']}.md", note)
-
     for sha, d in docs.items():
         entity_entries = [ents[i] for i in d["entities_extracted"]]
         body = _build_document_note(
@@ -200,6 +189,10 @@ def make_rich_vault(tmp_path: Path) -> Path:
              "entities": ["acme-corp"], "figures_unverified": ["4500000"], "added_by": "verify",
              "quote": "an invented quote", "quote_verified": False},
         ]}, "entities": [], "morgue_entity_id": "acme-corp"}))
+
+    # Entity notes, by the renderer every run uses (D280): from the registry and the stored
+    # extraction above, never a renderer of the fixture's own.
+    _entity_notes.rebuild(vault, documents_too=False, index_search=False)
 
     # Timeline: canonical files, a raw leftover of a committed document, and one of a document
     # that was never committed (must not show).

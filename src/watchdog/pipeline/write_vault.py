@@ -2,9 +2,9 @@
 """Write every vault artifact for one staged extraction: the deterministic writer the finalize
 commit pass replays (D126, I7).
 
-Extraction JSON as consumed here, after `postflight.explode_key_facts` has fanned `key_facts` out
-into per-entity `evidence_fragments`/`timeline_events` (D26). The model itself emits only
-`key_facts` and the entity graph:
+Extraction JSON as consumed here, after `postflight.explode_key_facts` has fanned the dated
+`key_facts` out into per-entity `timeline_events` (D26). The model itself emits only `key_facts`
+and the entity graph:
 {
   "document": {
     "sha256": str, "filename": str, "original_path": str,
@@ -19,9 +19,6 @@ into per-entity `evidence_fragments`/`timeline_events` (D26). The model itself e
   "entities": [
     {
       "id": str, "name": str, "type": str, "aliases": [],
-      "evidence_fragments": [          // reconstructed by postflight from facts tagged to this id
-        {"claim": str, "page": int|null, "basis": "stated"|"inferred", "quote": str|null}
-      ],
       "contradictions": [str]|null,    // each a `> [!contradiction]` callout block
       "timeline_events": [             // reconstructed by postflight from this id's dated facts
         {
@@ -418,41 +415,6 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
     return result
 
 
-def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
-    """Render an entity note's ``## Timeline`` section from its dated tagged facts, year-grouped
-    and attributed to each event's source document. The *global* timeline is rendered separately
-    from the cross-document-deduped NDJSON (`timeline.rebuild_timeline`, #237)."""
-    if not events:
-        return ""
-
-    sorted_events = sorted(events, key=lambda e: _date_sort_key(e.get("date", "")))
-
-    lines_by_year: dict[str, list[str]] = {}
-    for ev in sorted_events:
-        date_str = ev.get("date", "")
-        year = date_str[:4] if date_str else "Unknown"
-        from watchdog.pipeline import dates
-        rendered_date = dates.render_span(date_str, ev.get("date_end"))
-        basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
-        basis_note += dates.inferred_note(ev)
-
-        doc_entry = docs_reg.get(ev.get("source_sha256", ""), {})
-        doc_note = doc_entry.get("document_note", "")
-        doc_title = doc_entry.get("title") or doc_entry.get("filename", "")
-        if doc_note and doc_title:
-            pg = _page_link(doc_entry.get("morgue_path", ""), ev.get("page"))
-            page_part = f", {pg}" if pg else ""
-            source_part = f" — *[[{doc_note}|{_defang(doc_title)}]]{page_part}*"
-        else:
-            source_part = ""
-
-        line = f"- **{rendered_date}** — {_defang(ev['event'])}{source_part}{basis_note}"
-        lines_by_year.setdefault(year, []).append(line)
-
-    sections = [f"### {year}\n" + "\n".join(lines_by_year[year]) for year in sorted(lines_by_year)]
-    return "\n## Timeline\n\n" + "\n\n".join(sections) + "\n"
-
-
 @contextmanager
 def _registry_lock(registry_dir: Path, name: str = ".write-lock"):
     """Exclusive per-vault lock so concurrent write-vault calls serialize safely. `name` picks a
@@ -710,39 +672,6 @@ def _page_link(morgue_path: str, page: int | None) -> str:
     return ""
 
 
-def _role_line(role: dict, docs_reg: dict) -> str:
-    """Format a role dict as a Markdown relationship line with pretty links."""
-    date_part = f" — {role['date_range']}" if role.get("date_range") else ""
-    basis_part = " *(inferred)*" if role.get("basis") == "inferred" else ""
-    from watchdog.pipeline.role_targets import inferred_note
-    basis_part += inferred_note(role)
-
-    # target_id sits in the wikilink *target* position. It's postflight-slugified for a profiled
-    # target, but a role can point at an unprofiled entity (leads.py: "named but never profiled"),
-    # whose target_id never passed through that pass — slugify here so a hostile dangling id can't
-    # close the wikilink early and forge a second one (#305, target side).
-    target_link = f"[[entities/{_type_dir(role['target_type'])}/{slugify(role['target_id'])}|{_defang(role['target_name'])}]]"
-
-    source_sha = role.get("source_sha256", "")
-    doc_entry = docs_reg.get(source_sha, {})
-    doc_note = doc_entry.get("document_note", "")
-    doc_title = doc_entry.get("title") or doc_entry.get("filename", "")
-
-    if doc_note and doc_title:
-        pg = _page_link(doc_entry.get("morgue_path", ""), role.get("page"))
-        page_part = f", {pg}" if pg else ""
-        source_part = f" — via [[{doc_note}|{_defang(doc_title)}]]{page_part}"
-    else:
-        pg = _page_link("", role.get("page"))
-        source_part = f" — {pg}" if pg else ""
-
-    relationship = _defang(role["relationship"])
-    if role.get("is_reverse"):
-        return f"- {target_link} — {relationship}{date_part}{basis_part}{source_part}"
-    else:
-        return f"- {relationship} {target_link}{date_part}{basis_part}{source_part}"
-
-
 # ── Entity registry operations ────────────────────────────────────────────────
 
 def _new_entity(entity: dict, doc_sha256: str) -> dict:
@@ -955,79 +884,6 @@ def _figure_verification_note(f: dict) -> str:
         parts.append(f"figure{'s' if len(off_page) > 1 else ''} {detail} found on another page, "
                      "not the one cited")
     return f" *({'; '.join(parts)})*" if parts else ""
-
-
-def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
-    """Render evidence-fragment claims as Markdown bullets.
-
-    Each claim becomes a bullet with an optional page link and `— reason`; an optional quote —
-    resolved from the page text at post-flight (#529), not model-supplied — renders as a
-    blockquote beneath it. With no morgue_path, pages render as plain "p. N" (used for the
-    finalizer digest, which needs no clickable links).
-    """
-    lines = []
-    for f in fragments:
-        claim = _defang((f.get("claim") or "").strip())
-        if not claim:
-            continue
-        pg = _page_link(morgue_path, f.get("page"))
-        page = f" ({pg})" if pg else ""
-        reason = f" — {_defang(f['reason'].strip())}" if f.get("reason") else ""
-        basis_note = " *(inferred)*" if f.get("basis") == "inferred" else ""
-        line = f"- {claim}{page}{reason}{basis_note}{_figure_verification_note(f)}"
-        quote = _defang((f.get("quote") or "").strip())
-        if quote:
-            line += f"\n  > {quote}{_quote_verification_note(f)}"
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def build_entity_note(
-    entry: dict,
-    notes_section: str,
-    docs_reg: dict,
-    summary: str | None,
-    accumulated_analysis: str,
-    contradictions: str = "",
-) -> str:
-    appears_in_links = []
-    for sha in entry.get("appears_in", []):
-        doc_entry = docs_reg.get(sha, {})
-        note = doc_entry.get("document_note")
-        title = doc_entry.get("title") or doc_entry.get("filename", "")
-        appears_in_links.append(f"[[{note}|{_defang(title)}]]" if note and title else sha[:16] + "…")
-
-    fm = _frontmatter({
-        "id":               entry["id"],
-        "name":             entry["name"],
-        "type":             entry["type"],
-        "aliases":          entry.get("aliases", []),
-        "appears_in":       appears_in_links,
-        "date_first_seen":  entry.get("date_first_seen", _today()),
-        "date_last_updated": entry.get("date_last_updated", _today()),
-    })
-
-    body = f"\n# {_defang(entry['name'])}\n"
-
-    if summary:
-        body += f"\n## Summary\n\n{summary}\n"
-
-    if accumulated_analysis:
-        body += f"\n## Analysis\n\n{accumulated_analysis}\n"
-
-    if contradictions:
-        body += f"\n## Contradictions\n\n{contradictions}\n"
-
-    timeline_section = _build_timeline_section(entry.get("timeline_events", []), docs_reg)
-    if timeline_section:
-        body += timeline_section
-
-    roles = entry.get("roles", [])
-    if roles:
-        lines = "\n".join(_role_line(r, docs_reg) for r in roles)
-        body += f"\n## Relationships\n\n{lines}\n"
-
-    return fm + body + notes_section
 
 
 # The label a fact the reporter disputes carries on its line in a note (D285), as in entity notes.
