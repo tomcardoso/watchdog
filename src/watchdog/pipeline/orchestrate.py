@@ -1567,7 +1567,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # giving up. Covers single-page docs too (force-sectioning splits their text into character
         # windows); the ≥2-section guard skips a doc that can't be split (nothing to re-try).
         if not ok:
-            fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
+            fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS,
+                             model=extract_model, backend=extract_backend)
             if fb.get("sectioned") and len(fb.get("sections", [])) > 1:
                 n_sections = len(fb.get("sections", []))
                 _step(f"↻  {filename}  {flow} · re-extracting in {n_sections} sections…",

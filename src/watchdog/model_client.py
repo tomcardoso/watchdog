@@ -62,8 +62,12 @@ from watchdog.model_catalog import (
     resolve_model_id,
 )
 from watchdog import config as user_config
+from watchdog import defaults
 
-DEFAULT_TIER = "sonnet"
+# The model a helper assumes when its caller names none: the pipeline's own default
+# (`defaults.EXTRACTOR_MODEL`), so there is one default, not two. Every run names its models
+# (`ops.ingest.resolve_plan`); this is for callers outside a run, and tests.
+DEFAULT_TIER = defaults.EXTRACTOR_MODEL
 
 # The output-token envelope sent on the wire (D197): one per-model number from the catalogued
 # `max_output_tokens`, less `_OUTPUT_HEADROOM`. An uncatalogued id falls back first to

@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 import pytest
 
+from watchdog import defaults
+
 from watchdog.pipeline import section
 from watchdog.pipeline.section import plan_ranges, char_windows, est_tokens, est_tokens_from_pages
 
@@ -123,7 +125,7 @@ def test_run_paginated_splits_on_pages(tmp_path, monkeypatch):
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 11)]  # 100 tok/page, 1000 total
     _write_queue(vault, "doc1", pages, 10)
 
-    result = section.run(vault, "doc1")
+    result = section.run(vault, "doc1", model="sonnet")   # a model that prices flat
     assert result["sectioned"] is True
     secs = result["sections"]
     assert all(s["paginated"] for s in secs)
@@ -142,7 +144,7 @@ def test_run_paginated_sections_follow_per_page_density(tmp_path, monkeypatch):
     pages = [{"page": n, "markdown": "x" * (800 if n == 3 else 400)} for n in range(1, 6)]
     _write_queue(vault, "doc1", pages, 5)
 
-    result = section.run(vault, "doc1")
+    result = section.run(vault, "doc1", model="sonnet")   # a model that prices flat
     assert [s["label"] for s in result["sections"]] == ["pages 1–2", "pages 3–3", "pages 4–5"]
     for sec in result["sections"]:
         assert est_tokens((vault / sec["pages_path"]).read_text()) <= 200 + 50   # + page markers
@@ -193,7 +195,7 @@ def test_run_default_overlap_scales_with_budget_not_a_fixed_value(tmp_path, monk
     pages = [{"page": n, "markdown": "x" * 4000} for n in range(1, 11)]   # 1000 tok/page, 10 pages
     _write_queue(vault, "doc1", pages, 10)
 
-    result = section.run(vault, "doc1")
+    result = section.run(vault, "doc1", model="sonnet")   # a model that prices flat
     assert result["sectioned"] is True
     labels = [s["label"] for s in result["sections"]]
     assert labels == ["pages 1–6", "pages 7–10"]
@@ -231,7 +233,8 @@ def test_model_defaults_scale_with_context_window():
     # (#617). Claude's 200K window gives the historical 120K/60K before that division; the new
     # Claude tokenizer's 1.235 (measured, D375) shrinks it to 97,165/48,582.
     assert section.model_defaults("sonnet") == (int(120_000 / 1.235), int(60_000 / 1.235))
-    assert section.model_defaults(None) == (97_165, 48_582)              # default tier
+    # No model named: the pipeline default (`defaults.EXTRACTOR_MODEL`), not a second default.
+    assert section.model_defaults(None) == section.model_defaults(defaults.EXTRACTOR_MODEL)
     assert section.model_defaults("deepseek-flash") == (740_740, 370_370)   # 1M window / 0.81
     # `gpt-5-mini` is NOT in the catalog, so it declares no
     # ratio and its window fractions pass through undivided — the uncorrected control.
@@ -459,3 +462,19 @@ def test_run_sections_earlier_on_new_tokenizer_claude_model(tmp_path, monkeypatc
     assert section.run(vault, "doc1", model=plain)["sectioned"] is False
     assert section.run(vault, "doc1", model="sonnet")["sectioned"] is True
 
+
+
+def test_overlap_setting_auto_scales_with_the_budget(monkeypatch):
+    """`section_overlap_tokens` is `auto` by default, like its two siblings: the overlap is a
+    share of the section budget (#490), and only a number pins it. Settings once showed a fixed
+    4,000 as the default, which was never what an unset key did."""
+    from watchdog import settings
+    assert settings.SETTINGS["section_overlap_tokens"]["default"] == "auto"
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: {"section_token_budget": 6000,
+                                      "section_overlap_tokens": "auto"}.get(k, d))
+    assert section.sizing("sonnet")["overlap"] == 400
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: {"section_token_budget": 6000,
+                                      "section_overlap_tokens": 0}.get(k, d))
+    assert section.sizing("sonnet")["overlap"] == 0

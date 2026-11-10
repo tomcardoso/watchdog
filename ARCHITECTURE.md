@@ -1051,8 +1051,8 @@ the journalist's step (I5).
   `credentials.json`'s `secrets`, encrypted like an API key, and handed only to the `research-fetch`
   and `fetch-links` jobs, which make no model call and so get no provider's key.
 - **`fetch-links`** downloads a given list of links through the same path, without a session.
-- Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
-  advisory; only the egress checks are enforced. Web tools are granted by the skill's own
+- Round summaries go to `briefings/research-<date>.md`, never `context.md`. The skill's effort
+  tiers are advisory (they are not settings, D398); only the egress checks are enforced. Web tools are granted by the skill's own
   `allowed-tools`, not the vault-wide permissions.
 
 See D45–D48.

@@ -188,6 +188,7 @@ Two settings belong to a single investigation and live on its Overview instead: 
 | Chunk size | `40` | Pages per chunk when a large PDF is split for parallel reading. Scanned pages read at a higher resolution go in smaller chunks, so each holds about as much as 40 pages at 216 DPI. |
 | Chunk workers | `auto` | Parallel workers for one large PDF's chunks. Workers and chunk workers multiply, so pin both low on a modest computer. |
 | Chunk timeout | `300` | Seconds before a chunk is stopped. |
+| PDF repair timeout | `120` | Seconds each repair step may take when a PDF is encrypted or damaged and Watchdog tries to read a repaired copy. Past it, the file is set aside as unreadable. |
 | Table structure | on | Table detection on PDFs. Turn it off to speed up text-only documents. |
 
 ### Transcription
@@ -208,7 +209,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Extraction token budget | `auto` | A cap on tokens per minute. `auto` uses the limit your provider reports; a Claude subscription reports none, so there it sets no cap. |
 | Classify pages | `5` | Opening pages shown to the classifier. |
 | Default skill | *(unset)* | Pins one [record skill](how-it-works.md#record-skills) for every document, skipping classification. |
-| Section token threshold / budget / overlap | `auto` / `auto` / `4000` | How a very large document is split into sections for extraction. `auto` sizes sections from the extractor's context window and keeps each request under any price step. Leave them on `auto`. |
+| Section token threshold / budget / overlap | `auto` / `auto` / `auto` | How a very large document is split into sections for extraction. `auto` sizes sections from the extractor's context window and keeps each request under any price step. Leave them on `auto`. |
 | Empty-extraction minimum words | `500` | A document with more words than this that comes back with no facts is retried once, then failed, rather than accepted as empty. |
 | <a id="thin-extraction-words-per-fact"></a>Thin-extraction words per fact | `1000` | A document whose extraction keeps fewer than one fact for every this many words of text is added, but marked **Few facts** with a [Retry extraction](using-watchdog.md#few-facts-and-retry-extraction) button. A healthy extraction keeps about one fact per 250 words. Nothing is retried or spent unless you choose to. Raise it to warn less often; `0` turns the warning off. |
 | <a id="unreadable-text-letter-share"></a>Unreadable-text letter share | `0.1` | A page whose text has fewer than this share of words containing a letter, and is mostly codes or symbols rather than figures, is counted as unreadable: the document is added but marked **Unreadable text** (see [Text could not be read](using-watchdog.md#text-could-not-be-read)). Tables are not checked. Lower it to warn less often; `0` turns the warning off. |
@@ -240,13 +241,6 @@ Each step's model is chosen in the **Models** table under **Models & keys**, not
 |---|---|---|
 | Embedding model | `BAAI/bge-small-en-v1.5` | The local model that indexes passages for search by meaning. After changing it, run **Rebuild the search index** under Activity → Maintenance. |
 | Reranker model | `BAAI/bge-reranker-base` | The local model that re-orders results. `none` turns it off. |
-
-### Research
-
-| Field | Default | What it controls |
-|---|---|---|
-| Research max rounds | `3` | Search rounds a standard Web research session makes before checking in. |
-| Research max fetches | `25` | Roughly how many sources a standard session captures. |
 
 ### Web archiving
 

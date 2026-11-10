@@ -601,7 +601,7 @@ def test_deepseek_rejects_xhigh(monkeypatch):
 @pytest.mark.parametrize("model, window", [
     ("sonnet", 200_000),                        # tier → claude
     ("haiku", 1_000_000),                       # the real window: its price line sizes calls (D370)
-    (None, 200_000),                            # default tier (sonnet)
+    (None, 1_000_000),                          # the pipeline default (haiku), not a second default
     ("deepseek-flash", 1_000_000),
     ("deepseek-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
     ("deepseek-v4-pro", 1_000_000),
