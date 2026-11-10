@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — every decision, D1 to D395 (click to expand)</strong></summary>
+<summary><strong>Index — every decision, D1 to D398 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -395,6 +395,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D393** — A document may have no subject; placeholder entities are dropped in code
 - **D394** — Reconcile pairs discount common tokens and localities; post-processing chunks are sized by content
 - **D395** — A year-first numeric date is year-month-day, whatever the separator
+- **D398** — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
 
 </details>
 
@@ -3449,3 +3450,11 @@ Tradeoff: a real duplicate whose shared words are all common in its type is no l
 `dates._numeric` read `2010-03-02` as ISO but treated `2010/03/02` and `2010.03.02` as ambiguous between year-month-day and year-day-month whenever both were valid, so they were stored as a year with two readings and left to the date pass, which did not settle them. In a live run many dated facts, from documents that print every date year-first, ended up year-only. Year-day-month is essentially unused (ISO 8601, East Asian and registry usage are all year-month-day), so a year-first date is now read year-month-day for every separator and is never ambiguous. When year-month-day is not a real date (`2010/25/03`, `2010/02/30`) the date is left unresolved for the pass, as hyphenated ones already were, not read as year-day-month: such a value is likelier a typo or a different format than a deliberate year-day-month date, and the pass is told to answer nothing when unsure. Day-first versus month-first (`A/B/YYYY`) is unchanged.
 
 Dates already stored as year-only with `date_pending` are not re-read (I19: forward-facing only, no migration); the next "Bring this investigation up to date" date pass may settle some. Tradeoff: a registry that genuinely prints year-day-month would be misread as a valid but wrong date; none is known.
+
+### D398 — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
+
+Post-flight copied every tagged fact onto each entity it tags as `evidence_fragments`, the shape the first entity-note renderer read. Since D280 every reader (entity notes, summaries, the contradiction check, the app) takes facts from the document's `key_facts`, and nothing read the copies; they roughly doubled the fact data in every stored extraction. `explode_key_facts` now writes only the dated facts' `timeline_events`, which the commit, the timeline staging and the lead sweep still read. No migration (I19): a stored extraction that still carries the field is read exactly as before, since no code looks at it, and the fact-tag pass and the free-fixes migration already drop it from any extraction they rewrite.
+
+In the same change, `research_max_rounds` and `research_max_fetches` are removed from Settings and dropped from a saved `config.json` on read. No code read them, and a Web research session is denied `~/.watchdog`, so the skill could not honour them; its effort tiers (quick, standard, deep) are what bound a session. `section_overlap_tokens` becomes `auto` by default, which is what an unset key already did (D147), and `preprocess_timeout`, which pre-processing read but nothing could set, becomes a setting.
+
+Tradeoff: a tool outside Watchdog that read `evidence_fragments` from a stored extraction would have to read `key_facts` and their `entities` tags instead. A reporter who wanted a hard cap on research rounds has only the session's own check-ins. (D396 and D397 are taken by changes open at the time of writing.)

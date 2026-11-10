@@ -115,7 +115,7 @@ def _unique_doc_slug(vault_path: Path, slug: str, sha256: str, filename: str,
     Ownership is decided by the registry, not by the note's `file:` line: two different documents
     can share a filename (every production has its `Order.pdf`), and keying on the filename let
     the second silently overwrite the first's note (D241). A document already in the registry keeps
-    the note it has, so a `--force` re-commit replaces its own note rather than forking a new one.
+    the note it has, so a forced re-extraction's commit replaces its own note rather than forking a new one.
     A note on disk that no registry entry claims (hand-made, or left by a crash) is still respected
     when it names a different file, as before."""
     own = (documents_reg.get(sha256) or {}).get("document_note")

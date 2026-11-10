@@ -497,9 +497,8 @@ def explode_key_facts(extraction: dict) -> list[str]:
 
 def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     """`warn`, when given, receives each warning message instead of the default raw
-    ``print(..., file=sys.stderr)`` — the caller can route it through a live-region-aware
-    printer and the ingest log (a raw stderr print during a LiveRegion redraw can be erased by
-    the next redraw's cursor-up/erase, and it never reaches processing.log)."""
+    ``print(..., file=sys.stderr)`` — the caller routes it to the run's output under the
+    document's own line and to the processing log, which a raw stderr print never reaches."""
     def _warn(msg: str) -> None:
         if warn is not None:
             warn(msg)

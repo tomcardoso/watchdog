@@ -79,8 +79,8 @@ class Lines:
     `update` is a document's or file's current state, `finish` its outcome, `note` anything
     else."""
 
-    def update(self, key: str, line: str, plain_line: str | None = None, *, pin: bool = False) -> None:
-        self._print(plain_line if plain_line is not None else line)
+    def update(self, key: str, line: str) -> None:
+        self._print(line)
 
     def finish(self, key: str, line: str) -> None:
         self._print(line)

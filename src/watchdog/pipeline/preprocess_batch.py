@@ -698,7 +698,7 @@ def _run_ingest_inner(
             ocr_note  = _ocr_note(result, is_garbled)
             garb_str  = f"  ·  {ocr_note}" if ocr_note else ""
 
-            # Settle this file's row: print its result above the live region, clearing the in-flight row.
+            # This file's outcome, as one line of the run's output.
             live.finish(str(path), f"  {status}  {rel}{label_str}{garb_str}")
             for note in ((result.get("metadata") or {}).get("language") or {}).get("notes") or []:
                 live.note(f"       ⚠  {note}")

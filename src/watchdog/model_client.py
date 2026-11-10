@@ -232,7 +232,7 @@ def effort_supported(backend: str | None, model: str | None, effort: str) -> boo
     exactly one case: `ops/ingest.py` applies `medium` as `extractor_effort`'s implicit default
     (D26) only when the resolved extractor model supports it, so routing extraction to a model
     with no effort control (e.g. Haiku) doesn't turn a setting the user never touched into a hard
-    failure — an *explicit* `--extractor-effort`/`finalizer_effort` request still goes straight to
+    failure — an *explicit* effort (a run option or a setting) still goes straight to
     `_resolve_effort` and fails loud exactly as before if unsupported."""
     provider = provider_for_backend(backend)
     model_id = resolve_model_id(model or DEFAULT_TIER)
