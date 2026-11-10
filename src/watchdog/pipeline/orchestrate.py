@@ -1,13 +1,14 @@
-"""Python ingest orchestrator (#118 Workstream 3).
+"""The run orchestrator: extraction (`run`) and post-processing (`finalize`).
 
-Replaces the Claude Code `/watchdog-ingest` skill: Python drives the loop and calls the
-model (`model_client.acomplete_json`) only for reasoning — classification, extraction,
-and (in `_post_ingest`, added in a later phase) synthesis/timeline/briefing. Everything
-mechanical reuses the existing deterministic pieces: `preflight.run`, `postflight.run`
-(validates + writes the vault), and the registry write-lock inside `write_vault`.
+Python drives the loop and calls the model (`model_client.acomplete_json`, through `_call_model`)
+only for judgement: classification, extraction, and the finishing calls (reconciliation,
+housekeeping chores, synthesis, timeline, briefing). Everything mechanical is deterministic code:
+`preflight.run`, `postflight.run` (validates and stages an extraction; it never writes the vault)
+and `write_vault.run` in the commit pass.
 
-Documents are extracted concurrently, bounded by a semaphore; the registry lock already
-serializes the vault writes and `_reconcile_entity_ids` handles the parallel new-id race.
+Documents are extracted concurrently, bounded by a semaphore, and touch no committed state. Every
+vault write happens in `finalize`'s serial commit pass (`_commit_pending`, I7), after the
+exact-name fold (`_batch_exact_fold`) and the pre-commit reconciliation have settled entity ids.
 """
 
 import asyncio
@@ -1120,7 +1121,7 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     )
     prompt, detail = base, sec["label"]
     # Marks where the section's model call — the thing that can silently run for minutes —
-    # actually begins, so ingest.log doesn't read as though the HARVEST line just above it
+    # actually begins, so processing.log doesn't read as though the HARVEST line just above it
     # (which finishes in seconds) is what the elapsed time belongs to (#556).
     _log(vault, f"SECTION {pf['filename']} [{detail}]: extracting…")
     r = await _call_model(task="extract-section", model=model, backend=backend,
@@ -1485,8 +1486,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
         # call even though a cached artifact (or a committed vault note) already exists — the
         # whole point of --force is to regenerate under a different model/effort/skill.
-        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-             f" — note will be replaced")
+        _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
     elif pf.get("already_extracted"):
         _say(f"–  {pf.get('filename')}  already extracted — skipping")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
@@ -1655,8 +1655,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-             f" — note will be replaced")
+        _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
     elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
         _say(f"–  {filename}  already extracted — skipping")
@@ -1756,7 +1755,7 @@ def _fmt_span(start_iso: str | None, end_iso: str | None) -> str | None:
 
 
 def _batch_log_line(state: dict, st: dict, collected_at: str) -> str:
-    """One-line `ingest.log` summary of a collected batch's full lifecycle: submitted (this
+    """One-line `processing.log` summary of a collected batch's full lifecycle: submitted (this
     run's own clock, persisted in batch state at submit time) -> ended (Anthropic's own record
     of when processing finished) -> collected (right now) — the middle and last of those
     routinely differ by hours under D52's submit-and-exit design, since collection happens in
@@ -1866,8 +1865,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
         if force and (pf.get("already_extracted") or pf.get("already_staged")):
-            _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-                 f" — note will be replaced")
+            _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
         elif pf.get("already_extracted"):
             _say(f"–  {pf.get('filename')}  already extracted — skipping")
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
@@ -2822,7 +2820,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
-        _say(f"→  briefing skipped{''}")
+        _say("→  briefing skipped")
     elif _stage_stop(vault, out):
         pass   # no briefing this run; `error` keeps the batch pending for the next one
     else:

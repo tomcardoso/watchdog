@@ -526,7 +526,7 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     """`warn`, when given, receives each warning message instead of the default raw
     ``print(..., file=sys.stderr)`` — the caller can route it through a live-region-aware
     printer and the ingest log (a raw stderr print during a LiveRegion redraw can be erased by
-    the next redraw's cursor-up/erase, and it never reaches ingest.log)."""
+    the next redraw's cursor-up/erase, and it never reaches processing.log)."""
     def _warn(msg: str) -> None:
         if warn is not None:
             warn(msg)
@@ -629,7 +629,7 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     # facts that actually persist. Persisted structurally on the document record — `coverage_gap`
     # is written explicitly even when None, so a record with the key present means "assessed by
     # the gap detector" (#339 follow-up: benchmark scoring and gap-frequency questions no longer
-    # need to scrape ingest.log).
+    # need to scrape processing.log).
     page_count = extraction.get("document", {}).get("page_count")
     gap = _find_coverage_gap(extraction, page_count)
     extraction["document"]["coverage_gap"] = gap

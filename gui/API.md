@@ -170,7 +170,10 @@ EntityRow = {
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents, grouped_by: "model"\|null, wordings: string[]}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last; a group the model joined across wordings (`request_sources.mapping`, D334) has a `src:` key, the model's label, `grouped_by: "model"` and the wordings it joined |
 | `vault.requestSourceSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping of request sources apart again (`request_sources.split`, D334): recorded in `registry/request_sources.json` and the vault's history; later runs never regroup those sources. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
+| `vault.addContextFiles` | `{vault, paths: string[]}` | `{added: string[], skipped: string[]}` — copies the chosen files into `context/` (D342); the originals stay where they are, a name already taken gets a number, and folders and hidden files are skipped. `bad_params` unless `paths` is a list of strings |
 | `vault.reasoningRuns` | `{vault}` | `{enabled, folder, runs: [{run_id, calls, with_reasoning, bytes, started\|null, documents: string[]}]}` — the runs whose model reasoning was saved in `.watchdog/reasoning/` (D368), newest first; `enabled` is the `save_reasoning` setting. Read-only |
+| `vault.troubleshootingSize` | `{vault}` | `{files, bytes, originals_files, originals_bytes}` — what a copy for troubleshooting would hold, without and with the originals, before compression (D323); reads file sizes only |
+| `vault.diagnosticsReport` | `{vault}` | `{text}` — the content-free diagnostics report as Markdown, to show in full before the `diagnostics-report` operation saves it (D331) |
 
 ```
 DocumentDetail = DocumentRow & {
@@ -508,6 +511,8 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `secrets.provide` | `{store: "encrypted"\|"plaintext", keys: {[blob data]: key}, backend?, reason?, unreadable?}` | `{ok, keys}` — **main process only** (the bridge refuses it from the window): the keys it decrypted, sent once each time the backend starts, before the window can call anything (D295). Kept in memory only |
 | `auth.renameKey` | `{provider, id, label}` | `auth.status` result — same name rules |
 | `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
+| `auth.setKeyLimit` | `{provider, id, usd?: number\|null}` | `auth.status` result — sets a stored key's spending limit in US dollars, counted from now in every investigation on this computer (D347); no `usd` removes it. `not_found` for a key this computer doesn't hold |
+| `auth.resetKeyLimit` | `{provider, id}` | `auth.status` result — counts the key's spending from now; what it spent before stays in Usage |
 | `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
 | `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
 | `spend.limit` | `{vault}` | `SpendingLimitInfo` — `{limit_usd\|null, reset_at\|null, spent_usd, remaining_usd\|null, reached, claude_mode, sample}`: the investigation's spending limit and the processing spend recorded since its last reset (D324); Claude subscription calls, Ask Claude and Research are not counted |
@@ -540,6 +545,7 @@ SettingKey = {key, short, help, is_set: bool, default, current (null for secrets
 | Method | Params | Result |
 |---|---|---|
 | `research.status` | `{vault}` | `{queued: [{url, title\|null, source_type\|null, relevance\|null}], wayback_configured: bool}` |
+| `research.dismiss` | `{vault, urls: string[]}` | `{removed}` — takes sources off the download queue; `bad_params` unless `urls` is a list of strings |
 
 Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-links` (`{targets}`) for links.
 

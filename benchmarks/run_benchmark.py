@@ -31,7 +31,6 @@ import argparse
 import contextlib
 import hashlib
 import io
-import os
 import shutil
 import sys
 import time

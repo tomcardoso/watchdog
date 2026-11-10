@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — all 250 decisions, D1 to D250 (click to expand)</strong></summary>
+<summary><strong>Index — every decision, D1 to D395 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -269,6 +269,132 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D262** — A test keeps answer-key terms out of every prompt and skill; the extraction prompt's remaining corpus examples are replaced
 - **D263** — Auto-approve applies only when every step runs on the Claude subscription; `add` never reads the vault back in; commands that resolve keep checkboxes in step
 - **D264** — `refresh-skills` rewrites Watchdog's part of a vault's `CLAUDE.md`, between markers; an older file is backed up and replaced
+- **D265** — A desktop app drives the same Python: reads in-process through a JSON-RPC sidecar, every mutation through the CLI command itself
+- **D266** — The vault's `_INCOMING/` and `_CONTEXT/` become `incoming/` and `context/`, and older vaults are renamed automatically
+- **D267** — The app installs its own Python engine, and the terminal commands are retired from the user's view
+- **D268** — The app writes only to folders the user has allowed, enforced inside Python by an audit hook
+- **D269** — Installers are built and released from the same tag as the Python package, and the app updates itself from GitHub Releases
+- **D270** — Every fact gets a source passage found by code, with a stated accuracy and no backfill
+- **D271** — A verification ledger records the reporter's own check of each fact, keyed so a mark can never move to different words
+- **D272** — The app's engine installs in two phases, and adding documents waits for the second
+- **D273** — Audio and video are transcribed locally by faster-whisper into five-minute timestamped pages; `medium` is the default model
+- **D274** — An app-run Claude session's shell commands are sandboxed on macOS and limited to pre-approved `watchdog` commands elsewhere
+- **D275** — The app and docs say pre-processing, processing and post-processing, not chew, dig and bark
+- **D276** — A vault's lock, state and log files are named for the app's stages, and older vaults are renamed on first use
+- **D277** — Bare `haiku` means Claude Haiku 5.5, before the benchmark measures it
+- **D278** — Benchmark arms can repeat and can set the investigation brief; extraction can withhold `context.md`, for benchmarks only
+- **D279** — Entity merges are tiered by confidence, people are never merged on a name alone, and every merge is logged
+- **D280** — An entity's facts are data and its note is a view of them; AI prose is stored apart and never fed back in
+- **D281** — A merge can be undone, exactly, by what its log entry recorded at the time
+- **D282** — A fold between two sections of one document needs the same type, and is logged
+- **D283** — Every citation in AI-written text is a checked link to a stored fact; uncited sentences are allowed
+- **D284** — Entity summaries are shown without an "AI-written" label or byline
+- **D285** — hot.md is retired: sessions start from a primer built by code, and the Overview reads the briefing's own status line
+- **D286** — Every generated or app-edited file keeps a version history, in a purpose-built store, shown and restored only in the app; I10 allows app-only mutations
+- **D287** — Contradictions among stored facts are re-checked on demand, in the app, with the cost shown first
+- **D288** — A reporter can remove a version from the history for good; the log is rewritten, not tombstoned
+- **D289** — Scanned pages are searchable in the app from OCR line positions saved at pre-processing, not by rewriting the PDF
+- **D290** — Labelled keys per provider; each investigation chooses its key, and a missing choice stops rather than bills another account
+- **D291** — The network draws one line per pair of entities listing every distinct relationship; wordings of one relationship are grouped by code, then by the finalizer, in a log the reporter can split
+- **D292** — Terminal wording becomes app wording through `WATCHDOG_APP` and `appmode.hint`, not by editing the messages
+- **D293** — Locks record their holder and clear themselves; the app has no unlock control
+- **D294** — Leads, requests and alerts are read-only summaries; the app edits the watchlist
+- **D295** — API keys are encrypted by the app's main process with the OS credential store; Python never decrypts and each process gets only the keys it needs
+- **D296** — Four gaps closed: saved-page notes survive a session's write; disputed facts labelled in the same-name check; Ask Claude costs in Usage; background dialogs name their investigation
+- **D297** — The app is released on its own `app-v*` tags, and updates from a rolling per-channel release through a generic feed
+- **D298** — The app's changes are library operations run in a worker process, not CLI commands; no backwards compatibility
+- **D299** — Ask Claude sessions use Watchdog's tools through an in-process MCP server, have no shell, and get their primer and hooks from the app; no backward compatibility
+- **D300** — The command line is deleted; the app is Watchdog's only front end
+- **D301** — No backwards compatibility: every migration, legacy reader and alias is removed
+- **D303** — New users learn on a sample built with prepared answers, not a public corpus run live
+- **D304** — Ask Claude sessions take their rules from the app, ask before every write to the records, and get an allowlist of tools
+- **D305** — The app's `dependencies` hold only what the main process loads at run time
+- **D306** — A run whose every stage is on a model server on this computer skips the public-records acknowledgement
+- **D307** — The sample investigation processes its waiting files with prepared answers, never a real model
+- **D308** — Ask Claude's write tools can be allowed for the whole conversation, except recording a contradiction; no spelling dictionaries from Google
+- **D309** — Ask Claude in the sample plays prepared conversations, built from the sample's records; a real session stays refused
+- **D310** — The catalogue and the benchmark hold each provider's frontier models only; a requested effort is always sent
+- **D311** — No flagship-class models: Claude Fable 5.1, GPT-6 Astra and GPT-6.1 Sol leave the catalogue
+- **D312** — Claude Opus 5.5 leaves the catalogue too
+- **D313** — Gemini 4 Argon leaves the catalogue; Ask Claude runs on Sonnet or Haiku, always named
+- **D314** — The frontier benchmark runs every arm once, with four models at three effort levels
+- **D315** — The extractor defaults to Claude Haiku 5.5 at `high`
+- **D316** — App releases are tagged `v<semver>` and the stable feed is GitHub's latest release
+- **D317** — The website is rendered from docs/ by a small script, not a site framework
+- **D318** — Ask Claude and Research can be billed apart from processing; an API key for documents is the recommendation
+- **D319** — A stable release can be started from the Actions tab; the workflow makes the tag
+- **D320** — A stable release retakes the docs' screenshots and merges them itself
+- **D321** — A relationship-target lead shows its mentions and documents; a target with only an id is shown, not dropped
+- **D322** — Facts are trusted until disputed: the thumbs-down leads, the verified count goes, inferred facts leave Leads
+- **D323** — A copy of an investigation for troubleshooting: records and notes always, originals on request, nothing from `~/.watchdog`
+- **D324** — A per-investigation spending limit stops processing on recorded cost, never an estimate
+- **D325** — Records sharing one name are judged as a group, and no possible duplicate is dropped unseen
+- **D326** — Removing an entity hides it from the views by id; it never edits a record or a model input
+- **D327** — Start here is a deterministic ranking; the Overview splits judgement from tidy-up and says what a batch added
+- **D328** — Review's tidy-up queues are worked in bulk, through the existing merge and resolutions store
+- **D329** — Printed dates are read with dateparser, in all its languages, under guards that never let it fill a part in
+- **D330** — Dates code cannot settle go to a checked model pass, the first chore on a housekeeping framework; ranges get an end date
+- **D331** — A diagnostics report of counts alone, built from an allowlist, is the public choice beside the private copy
+- **D332** — Relationship targets named by an id no entity has are matched by code, then by a checked model chore, before the commit
+- **D333** — Fact tags that name no entity of their document go to a checked model chore first in finalize
+- **D334** — Request sources named in several ways are grouped by a checked model chore into a mapping Review reads; requests are never rewritten
+- **D335** — A pair merge names the side to keep ("a" or "b"), not the kept record's id
+- **D336** — Existing investigations catch up through registered migrations, run as one estimated, resumable operation
+- **D337** — A benchmark run holds its vault root; an arm that extracted nothing is never scored
+- **D338** — Records-request letters are drafted on demand by an Ask Claude command, jurisdiction-neutral unless the reporter says where
+- **D339** — The finishing step's model overrides are two kinds of work, writing and housekeeping, not four stages
+- **D340** — Settings holds a default spending limit that a new investigation starts with; the Overview card is folded
+- **D341** — The Wayback Machine keys are encrypted like API keys and reach only the download jobs
+- **D342** — Context is its own screen under Work, asked for first on the Overview
+- **D343** — The watchlist is its own screen under Work; its matches stay in Review
+- **D344** — A Web research session searches and reads the web without asking
+- **D345** — Ask Claude can save a page to the Wayback Machine through a Watchdog tool that keeps the keys
+- **D346** — A research source whose download failed is recorded as failed, not left looking queued
+- **D347** — Spending limits on each stored key; each step's model is chosen on Models & keys; a first key adopts its provider's model
+- **D348** — Models & keys in three parts; Ask Claude can bill its own Anthropic key
+- **D349** — A session's messages from Claude may be up to 64 MB, not the SDK's 1 MB
+- **D350** — A pull request that changes only the app screenshots starts no CI or website build
+- **D351** — Reports: the reading list is named for what it holds; leads and alerts stay in Review
+- **D352** — A page Watchdog OCRs is rendered at the OCR's scale, not enlarged from 72 DPI
+- **D353** — A context session reads background files through pre-processing, not as whole PDFs
+- **D354** — An investigation's Claude setup is brought up to date before every conversation
+- **D355** — Every model download verifies TLS against the OS trust store, and a setup run that ends with warnings keeps its log on screen
+- **D356** — The model step downloads a model only when it is missing or its version changed
+- **D357** — Docling counts as downloaded only when its download finished; the capture browser installs from Settings → Setup; an update installs behind the start-up card
+- **D358** — Docling's models are loaded the way a conversion loads them, not downloaded to a folder nothing reads
+- **D359** — The fact-tag and relationship-target chores list a document's entities once, not once per item
+- **D360** — Why a file was not read is kept: jobs' output survives a restart, unreadable files keep their reason, an empty download is refused
+- **D361** — A refused or empty plain fetch is tried again in the capture browser, which keeps only a page that loaded
+- **D362** — The website publishes only for a stable release
+- **D363** — The folder watcher is removed; files that could not be read get Try again and Remove
+- **D364** — A page Watchdog OCRs is read at the resolution of the image on it
+- **D365** — The candidate harvest runs once, in pre-processing, and extraction reads it
+- **D366** — A request over a model's long-prompt line is priced at the upper card, and past calls are repriced by a migration
+- **D367** — A thin extraction is kept, flagged and retried only on request
+- **D368** — Model reasoning can be saved, off by default, and every benchmark saves it
+- **D370** — An extraction call's whole prompt, not its text, is planned under a model's long-prompt line; Haiku 5.5 carries its real 1M window
+- **D371** — The candidate checklist says its names are incomplete hints, not an entity list
+- **D372** — Each document records the OCR engine that read it, and a benchmark checks its chew against the frozen one
+- **D373** — `auto` OCR is RapidOCR outside macOS
+- **D375** — The benchmark preview prices whole prompts from real history; Claude's tokenizer ratio is measured
+- **D376** — An answer that ended early is flagged, and incomplete documents are offered for retry together
+- **D377** — Each page's text is exported from that page's own items
+- **D378** — Answer keys quote the page, not the OCR
+- **D379** — The `tesseract` and `easyocr` settings use the engine they name, or fail
+- **D380** — Macs keep Apple Vision, with its language correction on
+- **D381** — A document's details are set in the app, in its sidecar
+- **D382** — RapidOCR turns a page's lines together
+- **D383** — Each document is read in its own language
+- **D384** — CI runs the app's end-to-end tests
+- **D385** — End-to-end tests on every platform, in their own workflow that App release waits on
+- **D386** — The font signal also fires on simple fonts whose glyph names aren't characters
+- **D387** — A merge is applied only on an explicit "same" verdict
+- **D388** — A street address is compared by its parts, and registry numbers under their registries' own labels
+- **D390** — The document text is closed with an end marker, and Watchdog's own notes are labelled
+- **D392** — Unreadable source text is flagged on the document, not retried
+- **D393** — A document may have no subject; placeholder entities are dropped in code
+- **D394** — Reconcile pairs discount common tokens and localities; post-processing chunks are sized by content
+- **D395** — A year-first numeric date is year-month-day, whatever the separator
 
 </details>
 

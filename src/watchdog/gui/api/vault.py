@@ -888,7 +888,7 @@ def _sha256_of(path: Path) -> str | None:
 
 
 def _failure_reasons(vault: Path, names: list[str]) -> dict[str, str]:
-    """The latest `FAILED <name>: <reason>` line in `ingest.log` for each of `names`."""
+    """The latest `FAILED <name>: <reason>` line in `processing.log` for each of `names`."""
     reasons: dict[str, str] = {}
     log = vaultio.read_text(processing_log(vault))
     for line in reversed(log.splitlines()):

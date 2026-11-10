@@ -398,11 +398,6 @@ figures (D394):
   shared address. The fold (`_batch_exact_fold`, D127) folds only high matches, finding them
   through `write_vault.NameIndex` (normalized name, plus a place's street key), and gives a
   same-slug match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
-  canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
-  names, at least one side touched this run (or carried from the last run), then routes each by
-  tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
-  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
-  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0, a spelled-out legal form folded to
   its abbreviation), the shared tokens weighing at least one distinctive token's worth once tokens
   common across the type are discounted (IDF-style; identical token sets exempt), for places a

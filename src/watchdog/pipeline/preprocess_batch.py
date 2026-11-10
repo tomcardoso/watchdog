@@ -17,7 +17,7 @@ from pathlib import Path
 from watchdog import progress
 from watchdog.pipeline import harvest, sidecar, text_positions, transcribe
 from watchdog.pipeline.language import name as language_name
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json_or, write_json_atomic
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
 from watchdog.vault_paths import (INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir,
@@ -513,7 +513,7 @@ def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
                 info.setdefault("notes", []).append(
                     "Its original file was no longer there to read again, so its pages keep their first reading.")
                 info.pop("ask", None)
-                qf.write_text(json.dumps(result, ensure_ascii=False))
+                write_json_atomic(qf, result)
                 continue
             stored = text_positions.path_for(vault, q["sha"])
             try:
@@ -536,7 +536,7 @@ def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
             add_harvest(result)
             result["near_dup"] = _compute_near_dup(result, vault)
             text_positions.write(vault, q["sha"], result.pop("text_positions", None))
-            qf.write_text(json.dumps(result, ensure_ascii=False))
+            write_json_atomic(qf, result)
             done.append({"sha": q["sha"], "filename": result.get("filename"),
                          "reread": outcome["reread"]})
     finally:
@@ -764,9 +764,9 @@ def _run_ingest_inner(
                     # OCR'd lines' positions go to their own file, kept past the commit, never
                     # into the queue descriptor the model's input is read from (D289).
                     text_positions.write(vault, sha256, result.pop("text_positions", None))
-                    (queue / f"{sha256}.json").write_text(
-                        json.dumps(result, ensure_ascii=False)
-                    )
+                    # Written whole or not at all: a descriptor cut off mid-write would be
+                    # unreadable to every later step.
+                    write_json_atomic(queue / f"{sha256}.json", result)
 
 
     except KeyboardInterrupt:
