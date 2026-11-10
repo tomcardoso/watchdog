@@ -3324,6 +3324,18 @@ Tradeoff: a real duplicate whose shared words are all common in its type is no l
 
 Dates already stored as year-only with `date_pending` are not re-read (I19: forward-facing only, no migration); the next "Bring this investigation up to date" date pass may settle some. Tradeoff: a registry that genuinely prints year-day-month would be misread as a valid but wrong date; none is known.
 
+### D396 — dateparser is pinned to one exact release
+
+`dates.py` reads dates written in words through dateparser and guards against its guesses by comparing two parses (D329). Those guards depend on exactly what dateparser returns, and that changes between releases: 1.5 began reading an ISO week date (`2019-W12`) as a month, which broke a test on every pull request until code handled week dates itself (#853). The engine resolves its packages at install time from `pyproject.toml`, so an open range gave each new install, and each CI run, whatever release was newest. `pyproject.toml` and every CI install line now name `dateparser==1.5.0`, so a new release reaches users only through a deliberate bump that runs the date tests.
+
+Tradeoff: dateparser's own fixes (new languages, corrected parses) wait for a bump. An exact pin also constrains any other package that requires dateparser, which none in the engine does today.
+
+### D397 — An ambiguous numeric date takes the order its document shows
+
+A date in figures whose day and month can be read both ways (`03/04/2021`) kept only its year and went to the model date pass (D330), which settles it only when the fact shows which reading is meant, so most stayed year-only, while the document often shows its order plainly: a format label printed beside the date ("DD/MM/YYYY", "JJ/MM/AAAA", "MM/DD/YYYY"), or another date in it that can be read only one way (`25/04/2021` is day first). `dates.sanitize` now takes the document's page text from post-flight, and `dates.document_order` reads that evidence across the pages and every fact's printed date; when it all points one way, each ambiguous date in the document takes that reading, marked `date_basis: "inferred"` like a pass answer, with its printed wording kept. When the document shows no order, or both (a form quoting a date written the other way), the date goes to the pass as before, which is the model call this leaves for the cases code cannot settle.
+
+Tradeoff: one document is taken to write its dates one way, so a document whose own dates are in one order but which quotes an ambiguous date in the other, with no one-way date of that other order, gets the quoted date wrong. Year-first dates (D395), two-digit years and figure ranges count as no evidence. Forward-facing only (I19): dates already stored are not re-read.
+
 ### D399 — Review merges every record of one name in one action
 
 In a live investigation a generic name (a public body named in nearly every document) became many records and dozens of "possible same" pairs, each needing its own click. Review's Merges tab now offers **Merge all N records named "…"** when open pairs join three or more records of one type and one `identity.name_key`. It is a group action, not a new merge: `merge-entity-group` merges each record into the kept one through `merge-entity-pairs`, so every merge is the reporter's, logged and undoable on its own, and a failure does not stop the rest. The kept record is chosen as Merge ticked chooses it (most documents, then the longer name), with the id settling a remaining tie. Records are grouped only through open pairs, never by name across the registry, so the action never reaches a record the queue did not offer.
