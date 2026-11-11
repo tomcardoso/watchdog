@@ -548,9 +548,10 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
 
     # Read every printed date before it can reach explode_key_facts or timeline.py's filename
     # construction (D329): ISO or settled by code, else kept as printed and left for finalize's
-    # date pass (D330), which reports what it could not place.
+    # date pass (D330), which reports what it could not place. An ambiguous numeric date is settled
+    # here when the document's own pages show its day/month order (D397).
     from watchdog.pipeline import dates
-    for warning in dates.sanitize(extraction):
+    for warning in dates.sanitize(extraction, page_texts):
         _warn(warning)
 
     # A fact tag that is a near miss of an id the document defined is pointed at it (#757).

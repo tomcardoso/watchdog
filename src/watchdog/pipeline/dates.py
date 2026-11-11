@@ -14,8 +14,10 @@ The extraction prompt transcribes a fact's date as printed (TRANSCRIBE, DON'T CO
   in, not read, so the date is not settled by code.
 - A numeric date is read by code, never by `dateparser`. When both readings of a day/month pair
   are real and different (03/04/2021) code does not guess: the date keeps its year and goes to
-  the model pass with the two readings, the only answers it may give. A year-first date
-  (2010/03/02, 2010.03.02) is never ambiguous: it is year-month-day (D395).
+  the model pass with the two readings, the only answers it may give, unless the document itself
+  shows its order (D397): a printed format label ("DD/MM/YYYY") or another date in it that can be
+  read only one way (25/04/2021). A year-first date (2010/03/02, 2010.03.02) is never ambiguous:
+  it is year-month-day (D395).
 
 Everything else (ranges, quarters, dates in words, relative dates) is left for the pass: the
 fact keeps its printed wording in `date_text` and is marked `date_pending`. The pass
@@ -73,6 +75,18 @@ _Y_M = re.compile(rf"^(\d{{4}}){_SEP}(\d{{1,2}})$")
 _M_Y = re.compile(rf"^(\d{{1,2}}){_SEP}(\d{{4}})$")
 _A_B_Y = re.compile(rf"^(\d{{1,2}}){_SEP}(\d{{1,2}}){_SEP}(\d{{4}})$")
 _Y_A_B = re.compile(rf"^(\d{{4}}){_SEP}(\d{{1,2}}){_SEP}(\d{{1,2}})$")
+
+# A document's own evidence of the order it writes day and month in (D397). A format label such as
+# "DD/MM/YYYY" says it outright, in the letters several languages use (day: DD, JJ, TT, GG; year:
+# YYYY, AAAA, JJJJ, SSAA, YY, AA); a date in figures anywhere in the document that has only one
+# valid reading (25/04/2021, 04/25/2021) shows it. Day first and month first are the two answers.
+DAY_FIRST, MONTH_FIRST = "day-first", "month-first"
+_YEAR_LETTERS = r"(?:YYYY|AAAA|JJJJ|SSAA|YY|AA)"
+_LABEL_DAY_FIRST = re.compile(rf"(?<![A-Za-z])(?:DD|JJ|TT|GG)\s*[./-]\s*MM\s*[./-]\s*{_YEAR_LETTERS}"
+                              r"(?![A-Za-z])", re.IGNORECASE)
+_LABEL_MONTH_FIRST = re.compile(rf"(?<![A-Za-z])MM\s*[./-]\s*(?:DD|JJ|TT|GG)\s*[./-]\s*{_YEAR_LETTERS}"
+                                r"(?![A-Za-z])", re.IGNORECASE)
+_FIGURE_DATE = re.compile(r"(?<![\d./-])(\d{1,2})\s*([./-])\s*(\d{1,2})\s*\2\s*(\d{4})(?![\d/-]|\.\d)")
 
 # Two reference dates, far apart in month and day: a part dateparser filled in from the reference
 # differs between the two parses, a part it read does not.
@@ -257,13 +271,40 @@ def find_in_text(text) -> tuple[str, str] | str:
     return iso, wording
 
 
-def sanitize(extraction: dict) -> list[str]:
+def document_order(texts) -> str | None:
+    """The order a document writes day and month in, from its own text (D397): `DAY_FIRST`,
+    `MONTH_FIRST`, or None when it shows neither or both. Evidence is a format label
+    ("DD/MM/YYYY", "MM/DD/YYYY") or a date in figures with only one valid reading."""
+    found: set[str] = set()
+    for text in texts:
+        if not isinstance(text, str):
+            continue
+        if _LABEL_DAY_FIRST.search(text):
+            found.add(DAY_FIRST)
+        if _LABEL_MONTH_FIRST.search(text):
+            found.add(MONTH_FIRST)
+        for m in _FIGURE_DATE.finditer(text):
+            a, b, y = int(m[1]), int(m[3]), int(m[4])
+            dm, md = _iso(y, b, a), _iso(y, a, b)
+            if dm and not md:
+                found.add(DAY_FIRST)
+            elif md and not dm:
+                found.add(MONTH_FIRST)
+        if len(found) > 1:
+            return None
+    return found.pop() if found else None
+
+
+def sanitize(extraction: dict, page_texts: dict | None = None) -> list[str]:
     """Read every ``key_facts[].date`` (post-flight, before timeline staging). An ISO value is left
     alone; one code reads becomes ISO with its printed wording kept in `date_text`; the rest keep
     their wording, are marked `date_pending` for the pass and are taken off the timeline until it
-    settles them (an ambiguous numeric date keeps its year meanwhile). Returns no warnings: what
-    the pass cannot settle is reported once, by finalize."""
-    for fact in (extraction.get("document") or {}).get("key_facts") or []:
+    settles them (an ambiguous numeric date keeps its year meanwhile). An ambiguous numeric date
+    is settled here instead when the document shows its order (`document_order` over its pages and
+    its facts' printed dates, D397), and marked `date_basis: "inferred"`, as the pass's answers are.
+    Returns no warnings: what the pass cannot settle is reported once, by finalize."""
+    facts = (extraction.get("document") or {}).get("key_facts") or []
+    for fact in facts:
         if not isinstance(fact, dict):
             continue
         raw = fact.get("date")
@@ -279,6 +320,17 @@ def sanitize(extraction: dict) -> list[str]:
             fact["date_pending"] = r.pending
         if r.readings:
             fact["date_readings"] = list(r.readings)
+    ambiguous = [f for f in facts if isinstance(f, dict)
+                 and f.get("date_pending") == PENDING_AMBIGUOUS and len(f.get("date_readings") or []) == 2]
+    if ambiguous:
+        order = document_order([*(page_texts or {}).values(),
+                                *(f.get("date_text") for f in facts if isinstance(f, dict))])
+        if order:
+            for f in ambiguous:
+                day_first, month_first = f.pop("date_readings")
+                f["date"] = day_first if order == DAY_FIRST else month_first
+                f.pop("date_pending", None)
+                f["date_basis"] = "inferred"
     return []
 
 

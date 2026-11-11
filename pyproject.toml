@@ -62,8 +62,9 @@ dependencies = [
     "faster-whisper>=1.1",
     "av>=12",
     # Reads the dates documents print in words in ~200 languages (D329); pure Python, with
-    # regex, pytz and tzlocal, so it installs in the engine's first phase.
-    "dateparser>=1.2",
+    # regex, pytz and tzlocal, so it installs in the engine's first phase. Pinned exactly (D396):
+    # `dates.py`'s guards depend on what dateparser returns, which changes between releases.
+    "dateparser==1.5.0",
     # Detects each page's language offline (D383): a 4.4 MB model inside the package, numpy only,
     # the same answer every time, so it installs in the engine's first phase.
     "py3langid>=0.3",

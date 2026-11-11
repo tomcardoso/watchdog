@@ -395,6 +395,8 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D393** — A document may have no subject; placeholder entities are dropped in code
 - **D394** — Reconcile pairs discount common tokens and localities; post-processing chunks are sized by content
 - **D395** — A year-first numeric date is year-month-day, whatever the separator
+- **D396** — dateparser is pinned to one exact release
+- **D397** — An ambiguous numeric date takes the order its document shows
 - **D398** — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
 - **D399** — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
 
@@ -3452,13 +3454,25 @@ Tradeoff: a real duplicate whose shared words are all common in its type is no l
 
 Dates already stored as year-only with `date_pending` are not re-read (I19: forward-facing only, no migration); the next "Bring this investigation up to date" date pass may settle some. Tradeoff: a registry that genuinely prints year-day-month would be misread as a valid but wrong date; none is known.
 
+### D396 — dateparser is pinned to one exact release
+
+`dates.py` reads dates written in words through dateparser and guards against its guesses by comparing two parses (D329). Those guards depend on exactly what dateparser returns, and that changes between releases: 1.5 began reading an ISO week date (`2019-W12`) as a month, which broke a test on every pull request until code handled week dates itself (#853). The engine resolves its packages at install time from `pyproject.toml`, so an open range gave each new install, and each CI run, whatever release was newest. `pyproject.toml` and every CI install line now name `dateparser==1.5.0`, so a new release reaches users only through a deliberate bump that runs the date tests.
+
+Tradeoff: dateparser's own fixes (new languages, corrected parses) wait for a bump. An exact pin also constrains any other package that requires dateparser, which none in the engine does today.
+
+### D397 — An ambiguous numeric date takes the order its document shows
+
+A date in figures whose day and month can be read both ways (`03/04/2021`) kept only its year and went to the model date pass (D330), which settles it only when the fact shows which reading is meant, so most stayed year-only, while the document often shows its order plainly: a format label printed beside the date ("DD/MM/YYYY", "JJ/MM/AAAA", "MM/DD/YYYY"), or another date in it that can be read only one way (`25/04/2021` is day first). `dates.sanitize` now takes the document's page text from post-flight, and `dates.document_order` reads that evidence across the pages and every fact's printed date; when it all points one way, each ambiguous date in the document takes that reading, marked `date_basis: "inferred"` like a pass answer, with its printed wording kept. When the document shows no order, or both (a form quoting a date written the other way), the date goes to the pass as before, which is the model call this leaves for the cases code cannot settle.
+
+Tradeoff: one document is taken to write its dates one way, so a document whose own dates are in one order but which quotes an ambiguous date in the other, with no one-way date of that other order, gets the quoted date wrong. Year-first dates (D395), two-digit years and figure ranges count as no evidence. Forward-facing only (I19): dates already stored are not re-read.
+
 ### D398 — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
 
 Post-flight copied every tagged fact onto each entity it tags as `evidence_fragments`, the shape the first entity-note renderer read. Since D280 every reader (entity notes, summaries, the contradiction check, the app) takes facts from the document's `key_facts`, and nothing read the copies; they roughly doubled the fact data in every stored extraction. `explode_key_facts` now writes only the dated facts' `timeline_events`, which the commit, the timeline staging and the lead sweep still read. No migration (I19): a stored extraction that still carries the field is read exactly as before, since no code looks at it, and the fact-tag pass and the free-fixes migration already drop it from any extraction they rewrite.
 
 In the same change, `research_max_rounds` and `research_max_fetches` are removed from Settings and dropped from a saved `config.json` on read. No code read them, and a Web research session is denied `~/.watchdog`, so the skill could not honour them; its effort tiers (quick, standard, deep) are what bound a session. `section_overlap_tokens` becomes `auto` by default, which is what an unset key already did (D147), and `preprocess_timeout`, which pre-processing read but nothing could set, becomes a setting.
 
-Tradeoff: a tool outside Watchdog that read `evidence_fragments` from a stored extraction would have to read `key_facts` and their `entities` tags instead. A reporter who wanted a hard cap on research rounds has only the session's own check-ins. (D396 and D397 are taken by changes open at the time of writing.)
+Tradeoff: a tool outside Watchdog that read `evidence_fragments` from a stored extraction would have to read `key_facts` and their `entities` tags instead. A reporter who wanted a hard cap on research rounds has only the session's own check-ins.
 
 ### D399 — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
 
