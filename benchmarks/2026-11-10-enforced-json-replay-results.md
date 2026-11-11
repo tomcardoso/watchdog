@@ -263,3 +263,38 @@ req_011Cgv3uhP6e8FTmGchtgsV6, req_011Cgv3vQ93fngoXP37fbfUD, req_011Cgv3wzjwDd6e5
 req_011Cgv3yz5ZMNASeg1hn9sYs, req_011Cgv41w7kx3Qi9CWUkSNZh, req_011Cgv42mdmt76HbMnFQs7WB,
 req_011Cgv45fzHgQvf8TzXBAe5S, req_011Cgv47oo9fqh23dSUisz9m, req_011Cgv49xmTDZ6Fh2FJcUPBS,
 req_011Cgv4AZfB1259DmPbBi3yV, req_011Cgv4C62aHQBJNgNdbAB6N, req_011Cgv4E3DDWVinHDE7vxzB9.
+
+## Addendum 4: the quote locators (same responses, no new calls)
+
+The 12% locator rate in the first column of the Addendum 3 table is misleading. Thirty of its 43
+locators come from one answer, the one that skipped `page` on every fact and still completed.
+Without it the enforced answers as captured carry a locator on 13 of 341 facts (4%), the same as
+with `page` required (4%) or every property required (6%). Requiring properties did not lower
+the rate.
+
+Locators per answer, sorted:
+
+| Set | Locators per answer | Answers with none | Answers with 8 or more |
+|---|---|---|---|
+| Enforced, as captured (13 completed) | 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 4, 6, 30 | 7 | 1 (the answer with no pages) |
+| Enforced, `page` required (20) | twelve 0s, 1, 1, 2, 2, 2, 2, 3, 8 | 12 | 1 |
+| Enforced, every property required (20) | twelve 0s, 1, 1, 1, 3, 5, 6, 6, 8 | 12 | 1 |
+| Prompted, not enforced (20) | 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 4, 8, 9, 11, 12, 12, 20, 21 | 5 | 7 |
+
+- The gap is between enforced and unenforced output, and it comes from a minority of unenforced
+  answers that mark many facts: 7 of 20 carry 8 to 21 locators. Under enforcement most answers
+  carry none or a few, in every variant.
+- Which passages are marked is consistent, not scattered. The same handful recur across answers
+  and across sets (limits and carve-outs in the order: "shall not exceed…", "but not including
+  any…", "to make no payments…", "until and including February…"). Of the locators in the
+  `page`-required answers, 17 of 20 fall on the twelve passages the prompted answers mark most
+  often; with every property required, 17 of 28.
+- The extraction instruction asks for a locator "ONLY when the exact wording is itself significant
+  or quotable" and says "Usually omit it", so the enforced rate is not against the instruction.
+- Every enforced failure in the main run put a locator on its first fact. Eight enforced answers
+  began with a fact carrying a locator and no page; seven failed and the eighth is the 30-locator
+  answer. An answer inclined to mark many facts was, under the schema as captured, the one that
+  skipped `page`.
+
+Not explained: why enforced output so rarely produces a locator-heavy answer once `page` is
+required. One document, and counts only.
