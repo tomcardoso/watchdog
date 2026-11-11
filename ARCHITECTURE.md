@@ -960,7 +960,9 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 - **Backends.** `claude-agent-sdk` (the only subscription path; tools disabled, D145),
   `claude-api` (streaming Messages with structured output), and the OpenAI-compatible `openai`,
   `deepseek`, `gemini`, `local` and `openrouter`, registered in one `_BACKEND_META` table. Gemini
-  and OpenAI get wire-enforced JSON schemas (OpenAI's derived to strict form, D151); the others get
+  and OpenAI get wire-enforced JSON schemas (OpenAI's derived to strict form, D151), and a Claude
+  request sends the same every-property-required form (D400), its nulls dropped from the answer
+  before validation; the others get
   JSON mode plus the schema in the prompt (D98). `local`/`openrouter` take a configured base URL;
   `local` takes an optional `local_context_window` (D139). A failed call retries on the same model
   and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).

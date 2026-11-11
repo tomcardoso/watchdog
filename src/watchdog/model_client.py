@@ -576,18 +576,67 @@ def _strip_none(value):
     return value
 
 
-def _denormalize_strict_json(text: str) -> str:
-    """Undo `_to_strict_schema`'s null-for-omitted-field convention on a raw OpenAI strict-mode
-    response, before the shared `_extract_json`/`_validate`/`_prune_unknown` path sees it — so
-    that path keeps validating against `schemas.py`'s actual (non-strict) schema unmodified,
-    exactly as it does for every other backend. If the response isn't valid JSON (shouldn't
-    happen under real wire-level enforcement, but nothing here should assume it), the text is
-    returned unchanged and the ordinary invalid-JSON retry path handles it."""
+def _strip_optional_nulls(value, schema):
+    """`_strip_none`, reading the authored schema: a `null` is dropped only where the schema does
+    not require the key. A key the schema requires and allows to be null (an extraction's
+    `morgue_entity_id`, null when the document shows no subject, D393) keeps its null, where
+    dropping it would fail validation as a missing required property (D400)."""
+    if isinstance(value, dict):
+        props = schema.get("properties") if isinstance(schema, dict) else None
+        required = set(schema.get("required") or []) if isinstance(schema, dict) else set()
+        out = {}
+        for k, v in value.items():
+            if v is None and k not in required:
+                continue
+            out[k] = _strip_optional_nulls(v, (props or {}).get(k))
+        return out
+    if isinstance(value, list):
+        items = schema.get("items") if isinstance(schema, dict) else None
+        return [_strip_optional_nulls(v, items) for v in value]
+    return value
+
+
+def _denormalize_strict_json(text: str, schema: dict | None = None) -> str:
+    """Undo `_to_strict_schema`'s null-for-omitted-field convention on a raw strict-mode response
+    (OpenAI's, and Claude's since D400), before the shared `_extract_json`/`_validate`/
+    `_prune_unknown` path sees it — so that path keeps validating against `schemas.py`'s actual
+    (non-strict) schema unmodified, exactly as it does for every other backend. With `schema`
+    (the authored one) a null on a key that schema requires is kept. If the response isn't valid
+    JSON, the text is returned unchanged and the ordinary invalid-JSON retry path handles it."""
     try:
         parsed = json.loads(text)
     except (json.JSONDecodeError, TypeError):
         return text
-    return json.dumps(_strip_none(parsed))
+    return json.dumps(_strip_optional_nulls(parsed, schema) if schema is not None
+                      else _strip_none(parsed))
+
+
+def _claude_wire_schema(schema: dict) -> dict:
+    """The schema a Claude request sends (D400, #804): `_to_strict_schema`'s every-property-required
+    variant, with a nullable `enum` written as `anyOf` (Anthropic rejects an enum under a
+    `["string", "null"]` type as an invalid schema).
+
+    Claude's enforced output takes an object's properties only in their declared order. With an
+    optional property the model can skip it, write a later one, and then has no way back: on one
+    replayed extraction, 7 of 20 answers that skipped a fact's `page` ended after one or two facts
+    or ran to the output limit, and none of 20 did once the property was required
+    (`benchmarks/2026-11-10-enforced-json-replay-results.md`). Requiring every property removes
+    the skip everywhere; "no value" is an explicit `null`, which `_denormalize_strict_json` drops
+    from the answer again."""
+    def enums(node):
+        if isinstance(node, list):
+            return [enums(x) for x in node]
+        if not isinstance(node, dict):
+            return node
+        node = {k: enums(v) for k, v in node.items()}
+        t = node.get("type")
+        if "enum" in node and isinstance(t, list) and "null" in t:
+            rest = [x for x in t if x != "null"]
+            base = {**node, "type": rest[0] if len(rest) == 1 else rest,
+                    "enum": [e for e in node["enum"] if e is not None]}
+            return {"anyOf": [base, {"type": "null"}]}
+        return node
+    return enums(_to_strict_schema(schema))
 
 
 # ── backends: each is (prompt, model_id, schema, api_key) -> {text, usage, cost_usd} ──
@@ -941,7 +990,7 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     kwargs: dict = {}
     if prefix is None:
         # `effort` composes with the structured-output `format` inside the one output_config dict.
-        output_config = {"format": {"type": "json_schema", "schema": schema}}
+        output_config = {"format": {"type": "json_schema", "schema": _claude_wire_schema(schema)}}
         if effort:
             output_config["effort"] = effort
         kwargs["output_config"] = output_config
@@ -1324,7 +1373,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     choices = data.get("choices") or []
     text = (choices[0].get("message", {}).get("content") or "") if choices else ""
     if is_openai and response_format["type"] == "json_schema":
-        text = _denormalize_strict_json(text)
+        text = _denormalize_strict_json(text, schema)
     finish = choices[0].get("finish_reason") if choices else None
     usage = data.get("usage")
     if is_gemini:   # thinking tokens arrive only as a total_tokens gap (#547) — fold them in
@@ -1566,6 +1615,10 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
         usage = _merge_usage(usage, out.get("usage"))
         cost += out.get("cost_usd") or 0.0
         reasoning.append(out.get("reasoning"))
+    if backend == "claude-api":
+        # The request asked for every property, null where there is no value (D400); a continued
+        # answer is only whole JSON once joined, so the nulls are dropped here, not per call.
+        text = _denormalize_strict_json(text, schema)
     return {"text": text, "usage": usage, "cost_usd": cost,
             "truncated": _is_truncated(out.get("finish_reason")),
             "rate_limit": out.get("rate_limit"),

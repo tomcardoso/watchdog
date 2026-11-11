@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — every decision, D1 to D399 (click to expand)</strong></summary>
+<summary><strong>Index — every decision, D1 to D400 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -399,6 +399,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D397** — An ambiguous numeric date takes the order its document shows
 - **D398** — Extractions no longer carry a per-entity copy of their facts; two research settings that did nothing are removed
 - **D399** — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
+- **D400** — A Claude request asks for every property, null where there is no value
 
 </details>
 
@@ -3481,3 +3482,11 @@ Issue #844. A large investigation reported hundreds of Review items to judge, mo
 In the same change, `reconcile` stops sending each record's stored synthesis `summary` in a pair side or a same-name group member. It is earlier model prose, can be stale after a merge, `prompts/reconcile.md` never described it, and the model already receives each side's facts and roles. `_GROUP_MEMBER_EST_CHARS` was fitted with the summary line included and now errs high; it is not refitted.
 
 Tradeoff: a reporter who relied on seeing an unprofiled name beside the contradictions must open the Gaps tab, and an old marked-handled gap is filed under Gaps rather than Leads in the Handled list. Without the summary, a pair that told apart a parent company from its subsidiary only by its prose now has the facts and roles alone; the merge decisions were not measured before or after, so the next reconciler measurement checks that precision and recall did not move.
+
+### D400 — A Claude request asks for every property, null where there is no value
+
+Issue #804: Claude Haiku 5.5 at `high` sometimes returned an extraction with one or two facts, or wrote until the output limit. A replay of one captured request (`benchmarks/2026-11-10-enforced-json-replay-results.md`) traced every failure to one pattern. Claude's enforced output takes an object's properties only in their declared order, so a model that skips an optional property and writes a later one cannot go back to it. Each failed answer began with a fact written without `page`; the model then tried to add it, and the answer ended on a placeholder `quote_locator`, spilled the rest of the facts into that string, or looped. As sent, 7 of 20 answers failed; with `page` required, 0 of 20; with every property required, 0 of 20, and the unused properties came back `null` at the same rates of dates, locators and `inferred` marks.
+
+So `_claude_wire_schema` sends Claude the form OpenAI's strict mode already gets (`_to_strict_schema`, D151), with a nullable `enum` written as `anyOf` because Anthropic rejects it otherwise, on live calls and batch requests alike. The authored schemas, local validation and stored extractions are unchanged: `_denormalize_strict_json` drops the nulls from the answer first, once a continued answer is joined. That function now reads the authored schema and keeps a null on a key the schema requires (`morgue_entity_id`, D393), which the OpenAI path used to drop, failing validation and costing a repair retry on a document with no subject. Nothing stored changes, so no migration is needed.
+
+Tradeoff: measured on one document and one model, with fact counts and field rates but no quality score; it applies to every Claude call and every schema, of which only the extraction schema was replayed (the API accepts all sixteen in this form). An answer is a few hundred to a few thousand output tokens longer for the written nulls. Both required forms carried fewer quote locators than unenforced answers (4 to 6% of facts against 18%), for a reason not found. The ended-early check (D376) and the thin-extraction flag (D367) stay as they are.

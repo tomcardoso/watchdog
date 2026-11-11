@@ -3021,3 +3021,90 @@ def test_anthropic_402_is_a_billing_stop_whatever_its_message(monkeypatch):
     _fake_anthropic_client(monkeypatch, error=err)
     with pytest.raises(mc.ProviderAuthError):
         asyncio.run(mc._api_complete_async("p", "claude-sonnet-5-5", SCHEMA, "sk-x", 8000))
+
+
+# ── Claude requests ask for every property (D400, #804) ───────────────────────
+
+_FACTS = {"type": "object", "additionalProperties": False, "required": ["facts", "subject"],
+          "properties": {
+              "subject": {"type": ["string", "null"]},
+              "facts": {"type": "array", "items": {
+                  "type": "object", "additionalProperties": False, "required": ["fact"],
+                  "properties": {"fact": {"type": "string"},
+                                 "page": {"type": ["integer", "null"]},
+                                 "basis": {"type": "string", "enum": ["stated", "inferred"]},
+                                 "locator": {"type": "string"}}}}}}
+
+
+def test_claude_wire_schema_requires_every_property_in_declared_order():
+    fact = mc._claude_wire_schema(_FACTS)["properties"]["facts"]["items"]
+    assert fact["required"] == ["fact", "page", "basis", "locator"]
+    assert fact["properties"]["locator"]["type"] == ["string", "null"]
+    assert _FACTS["properties"]["facts"]["items"]["required"] == ["fact"]   # the original is untouched
+
+
+def test_claude_wire_schema_writes_a_nullable_enum_as_any_of():
+    """Anthropic rejects `{"type": ["string", "null"], "enum": [...]}` as an invalid schema."""
+    basis = mc._claude_wire_schema(_FACTS)["properties"]["facts"]["items"]["properties"]["basis"]
+    assert basis == {"anyOf": [{"type": "string", "enum": ["stated", "inferred"]}, {"type": "null"}]}
+
+
+def test_every_pipeline_schema_survives_the_claude_wire_form_and_back():
+    """An answer with a null in every optional place validates against the authored schema once
+    the nulls are dropped, for each schema a Claude call sends."""
+    from watchdog.pipeline import dates, fact_tags, request_sources, role_targets, schemas
+
+    def nulled(node):
+        if "anyOf" in node:
+            return None
+        t = node.get("type")
+        if isinstance(t, list):
+            return None
+        if t == "object":
+            return {k: nulled(v) for k, v in node["properties"].items()}
+        if t == "array":
+            return [nulled(node["items"])] if node.get("items") else []
+        if "enum" in node:
+            return node["enum"][0]
+        return {"string": "x", "integer": 1, "number": 1.0, "boolean": True}[t]
+
+    named = {n: getattr(schemas, n) for n in dir(schemas) if n.isupper() and not n.startswith("_")}
+    named.update(dates=dates.SCHEMA, fact_tags=fact_tags.SCHEMA,
+                 request_sources=request_sources.SCHEMA, role_targets=role_targets.SCHEMA)
+    for name, schema in named.items():
+        answer = json.dumps(nulled(mc._claude_wire_schema(schema)))
+        back = json.loads(mc._denormalize_strict_json(answer, schema))
+        assert mc._validate(back, schema) == [], name
+
+
+def test_denormalize_keeps_a_null_the_schema_requires():
+    """`subject` is required and may be null (an extraction's `morgue_entity_id`, D393): dropping
+    it would fail validation as a missing property."""
+    text = json.dumps({"subject": None, "facts": [{"fact": "f", "page": None, "basis": None,
+                                                   "locator": None}]})
+    back = json.loads(mc._denormalize_strict_json(text, _FACTS))
+    assert back == {"subject": None, "facts": [{"fact": "f"}]}
+    assert mc._validate(back, _FACTS) == []
+
+
+def test_api_complete_sends_the_wire_schema(monkeypatch):
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-haiku-5-5", _FACTS, "sk-x", 8000))
+    assert calls[0]["output_config"]["format"]["schema"] == mc._claude_wire_schema(_FACTS)
+
+
+def test_a_claude_answer_has_its_optional_nulls_dropped_after_continuations_join(monkeypatch):
+    """A truncated answer is only whole JSON once its continuation is joined, so the nulls are
+    dropped on the joined text."""
+    parts = iter([{"text": '{"subject": null, "facts": [{"fact": "f", "page": nu',
+                   "usage": {}, "cost_usd": 0.0, "finish_reason": "max_tokens"},
+                  {"text": 'll, "basis": null, "locator": null}]}',
+                   "usage": {}, "cost_usd": 0.0, "finish_reason": "end_turn"}])
+
+    async def backend(prompt, model_id, schema, api_key, max_tokens, effort, prefix=None):
+        return next(parts)
+
+    out = asyncio.run(mc._complete_with_pagination(backend, "claude-api", "p", "claude-haiku-5-5",
+                                                   _FACTS, "sk-x", 8000, None))
+    assert json.loads(out["text"]) == {"subject": None, "facts": [{"fact": "f"}]}
