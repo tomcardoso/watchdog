@@ -1,13 +1,14 @@
-// Review: the five queues (contradictions, leads, watchlist
-// hits, possible duplicates, possible same entities), what has been handled, the watchlist
-// itself, open document requests and the merge log. Built for triage by keyboard: J/K to move,
-// H to mark handled, O to open, U to undo. The tidy-up queues (possible duplicates, possible same
-// entities, requests) are tables worked in bulk, in TidyTab.tsx (D328).
+// Review: the queues (contradictions, leads, watchlist hits, possible duplicates, possible same
+// entities, gaps in the record), what has been handled, the watchlist itself, open document
+// requests and the merge log. Built for triage by keyboard: J/K to move, H to mark handled, O to
+// open, U to undo. The tidy-up queues (possible duplicates, possible same entities, requests, gaps
+// in the record) are tables worked in bulk, in TidyTab.tsx (D328, D399).
 
 import {
   ArrowUpRight,
   Bell,
   ChevronDown,
+  CircleDashed,
   ChevronRight,
   Check,
   CheckCheck,
@@ -29,12 +30,11 @@ import type { DocumentRequest, ReviewItem, ReviewKind, StartHereItem } from '@sh
 import { Button, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
 import { Markdown, useOpenWikilink } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
-import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { fmtRelative, plural } from '@renderer/lib/format'
 import { StartHereList } from '@renderer/components/StartHere'
 import { VerificationTab } from './VerificationTab'
-import { Key, TidyTab, type TidyKind } from './TidyTab'
+import { Key, TidyTab, copyLeads, leadPrompt, startLeadSweep, type TidyKind } from './TidyTab'
 import '../documents/documents.css'
 import './review.css'
 
@@ -58,7 +58,7 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
   leads: {
     label: 'Leads',
     icon: Lightbulb,
-    blurb: 'Places the record points but the investigation has not followed: entities named but never profiled, entities that recur with no relationships, and relationships the model inferred rather than read. Facts worth checking, such as inferred ones or figures not found in their document, are under Verification.',
+    blurb: 'Relationships the model inferred rather than read in a document. Each is a suggestion for reporting, not a finding: open the entity, read the documents it cites and decide whether the link holds. Facts worth checking, such as inferred ones or figures not found in their document, are under Verification. Entities named but never profiled, and entities that recur with no relationships, are under Gaps.',
     empty: 'No open leads. A full sweep reads every entity note again and lists anything left unexamined.'
   },
   alerts: {
@@ -79,6 +79,12 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     blurb: 'Pairs of records that may be the same person, organization or place, which Watchdog was not sure enough to merge: one name is an initialled or shortened form of the other, or the AI model compared their facts and was not confident. Tick the pairs that are one and merge them; tick the rest and mark them not the same, and they will never be merged automatically. Each merge can be undone under Recent merges.',
     empty: 'No possible same entities are waiting. Pairs appear here when two records share a name but nothing else ties them together.'
   },
+  gaps: {
+    label: 'Gaps in the record',
+    icon: CircleDashed,
+    blurb: 'Where the extraction left the record unfinished, one row each: entities that documents name but that were never given a record of their own, and entities that appear in several documents but are connected to nothing. Most are minor, so work through them in bulk. Open a row to see who names the entity and where, ask Claude about it, or open its page. Tick the ones you have looked at and mark them handled.',
+    empty: 'No gaps in the record. They appear here when documents name someone who was never profiled, or an entity recurs with no relationships.'
+  },
   requests: {
     label: 'Document requests',
     icon: FileQuestion,
@@ -92,9 +98,12 @@ export interface QItem extends ReviewItem {
   request?: DocumentRequest
 }
 
+// The queues in the order the tabs show them: judgement first, then tidy-up.
+const QUEUE_ORDER: QueueKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests', 'gaps']
+
 const nameFromTitle = (t: string) => t.split(' — ')[0].replace(/`/g, '')
 const stripMd = (p: string) => p.replace(/\.md$/, '')
-const TIDY: Tab[] = ['merges', 'duplicates', 'requests']
+const TIDY: Tab[] = ['merges', 'duplicates', 'requests', 'gaps']
 
 // ── triage state shared by the four queues and requests ─────────────────────────────────────
 function useTriage(vault: string) {
@@ -196,14 +205,14 @@ export default function ReviewView() {
   const requests = useRpc('vault.requests', vault ? { vault } : null, { staleTime: 5_000 })
 
   const counts = useMemo(() => {
-    const c: Record<QueueKind, number> = { contradictions: 0, leads: 0, alerts: 0, duplicates: 0, merges: 0, requests: 0 }
+    const c: Record<QueueKind, number> = { contradictions: 0, leads: 0, alerts: 0, duplicates: 0, merges: 0, gaps: 0, requests: 0 }
     items.data?.items.forEach((i) => !triage.hidden.has(i.rid) && c[i.kind]++)
     requests.data?.open.forEach((r) => !triage.hidden.has(r.rid) && c.requests++)
     return c
   }, [items.data, requests.data, triage.hidden])
 
   // Default tab: the first queue with something in it.
-  const defaultTab: Tab = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).find((k) => counts[k] > 0) ?? 'contradictions'
+  const defaultTab: Tab = QUEUE_ORDER.find((k) => counts[k] > 0) ?? 'contradictions'
   const [tab, setTab] = useState<Tab>(routeKind ?? defaultTab)
   const chosen = useRef(!!routeKind)
   useEffect(() => {
@@ -226,7 +235,7 @@ export default function ReviewView() {
   // Disputed facts need judgement too (D327); they are listed under Verification, not a queue.
   const summary = useRpc('vault.summary', vault ? { vault } : null, { staleTime: 20_000 })
   const judgement = counts.contradictions + counts.leads + counts.alerts + (summary.data?.verification?.disputed ?? 0)
-  const tidy = counts.duplicates + counts.merges + counts.requests
+  const tidy = counts.duplicates + counts.merges + counts.requests + counts.gaps
   const total = judgement + tidy
   const startHere = (items.data?.start_here ?? []).filter((i) => !(i.rids?.length ? i.rids : [i.rid]).every((r) => triage.hidden.has(r)))
   const [focusReq, setFocusReq] = useState<{ rid: string; n: number } | null>(focusRid ? { rid: focusRid, n: 0 } : null)
@@ -279,7 +288,8 @@ export default function ReviewView() {
             { value: 'alerts', label: 'Alerts', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
             { value: 'merges', label: 'Merges', icon: GitMerge, count: counts.merges },
-            { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests }
+            { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
+            { value: 'gaps', label: 'Gaps', icon: CircleDashed, count: counts.gaps }
           ]}
         />
 
@@ -494,10 +504,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
   const sweep = async () => {
     setSweeping(true)
     try {
-      await startJob('lead-sweep', {}, 'Full lead sweep')
-      toast({ kind: 'info', title: 'Lead sweep started', body: 'It reads every entity note again. Follow it in Activity.' })
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not start the sweep', body: errorMessage(e) })
+      await startLeadSweep()
     } finally {
       setSweeping(false)
     }
@@ -625,7 +632,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
 
 /** The way on from an emptied queue: the first other queue with something in it. */
 function GoNext({ kind, counts, go }: { kind: QueueKind; counts: Record<QueueKind, number>; go: (t: Tab) => void }) {
-  const next = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).find((k) => k !== kind && counts[k] > 0)
+  const next = QUEUE_ORDER.find((k) => k !== kind && counts[k] > 0)
   if (!next) return null
   return (
     <Button variant="primary" iconRight={ArrowUpRight} onClick={() => go(next)}>
@@ -732,9 +739,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
                     prompt:
                       kind === 'contradictions'
                         ? `Look into the contradiction recorded for ${name}: ${item.detail[0] ?? item.title}. Which documents say what, and which is more reliable?`
-                        : cited.length
-                          ? `${item.detail[0] ?? item.title}, according to ${cited.map((c) => c.filename).join(', ')}. Who or what is ${name} in ${cited.length === 1 ? 'that document' : 'those documents'}, and what should I verify first?`
-                          : `What do the documents say about ${name}, and what should I verify first?`
+                        : leadPrompt(item)
                   })
                 }
               >
@@ -746,24 +751,6 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
       </div>
     </div>
   )
-}
-
-// Leads as a table: HTML for an email or a spreadsheet, tab-separated text for anything else.
-async function copyLeads(items: QItem[]) {
-  const rows = items.map((it) => {
-    const [name, ...what] = it.title.split(' — ')
-    return [name.replace(/`/g, ''), what.join(' — '), it.detail.join('; '), (it.cited ?? []).map((c) => c.filename).join('; ')]
-  })
-  const head = ['Lead', 'Why', 'Detail', 'Documents']
-  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const html = `<table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`
-  const text = [head, ...rows].map((r) => r.map((c) => c.replace(/[\t\n]/g, ' ')).join('\t')).join('\n')
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
-    toast({ kind: 'success', title: `Copied ${plural(items.length, 'lead')}`, body: 'Paste into an email or a spreadsheet.' })
-  } catch (e) {
-    toast({ kind: 'error', title: 'Could not copy', body: errorMessage(e) })
-  }
 }
 
 // How an item was handled, when the label says more than "handled" (D328).

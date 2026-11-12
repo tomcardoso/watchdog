@@ -53,6 +53,18 @@ def isolate_telemetry_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_ambient_provider_keys(monkeypatch):
+    """Clear the provider variables a developer's shell may export, for every test: an
+    environment variable overrides every stored key (`auth.resolve_key`), so a real
+    `GEMINI_API_KEY` in the shell replaced the key a test had just saved and failed it
+    (`test_auth.py::test_status_lists_a_routed_key_as_in_use`). A test that wants one sets it
+    itself with `monkeypatch.setenv`."""
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
+                "LOCAL_API_KEY", "OPENROUTER_API_KEY", "LOCAL_BASE_URL", "OPENROUTER_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def isolate_job_logs(tmp_path, monkeypatch):
     """Save finished jobs (`watchdog.gui.jobs`) into `tmp_path`, never the developer's own
     `~/.watchdog/jobs/`: most job tests run without `wdg_home`."""

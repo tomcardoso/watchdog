@@ -35,9 +35,9 @@ def test_explode_fans_facts_to_tagged_entities():
     lu = next(e for e in extraction["entities"] if e["id"] == "lu")
     pbgf = next(e for e in extraction["entities"] if e["id"] == "pbgf")
 
-    assert {f["claim"] for f in lu["evidence_fragments"]} == {
-        "Paid $842,018.34 to the fund.", "Transfer ratio set at 65.8%."}
-    assert [f["claim"] for f in pbgf["evidence_fragments"]] == ["Paid $842,018.34 to the fund."]
+    # The per-entity copy of every tagged fact is no longer written (D398): entity notes read
+    # the document's key_facts themselves (D280).
+    assert "evidence_fragments" not in lu and "evidence_fragments" not in pbgf
     # Only the dated fact becomes a timeline event, and on every entity it tags.
     assert [ev["date"] for ev in lu["timeline_events"]] == ["2021-03-30"]
     assert [ev["date"] for ev in pbgf["timeline_events"]] == ["2021-03-30"]
@@ -45,7 +45,7 @@ def test_explode_fans_facts_to_tagged_entities():
     assert len(extraction["document"]["key_facts"]) == 3
 
 
-def test_explode_carries_page_and_basis_but_not_to_event_when_undated():
+def test_explode_adds_nothing_to_an_entity_for_an_undated_fact():
     extraction = {
         "document": {"key_facts": [
             {"fact": "An inferred claim.", "page": 7, "basis": "inferred", "entities": ["a"]},
@@ -53,16 +53,15 @@ def test_explode_carries_page_and_basis_but_not_to_event_when_undated():
         "entities": [{"id": "a", "name": "A", "type": "Person"}],
     }
     explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag == {"claim": "An inferred claim.", "page": 7, "basis": "inferred"}
-    assert "timeline_events" not in extraction["entities"][0]
+    assert extraction["entities"][0] == {"id": "a", "name": "A", "type": "Person"}
 
 
 def test_explode_ignores_unknown_tags():
-    extraction = {"document": {"key_facts": [{"fact": "x", "entities": ["ghost"]}]},
+    extraction = {"document": {"key_facts": [{"fact": "x", "date": "2021-03-30",
+                                              "entities": ["ghost"]}]},
                   "entities": [{"id": "real", "name": "R", "type": "Person"}]}
     explode_key_facts(extraction)
-    assert "evidence_fragments" not in extraction["entities"][0]
+    assert "timeline_events" not in extraction["entities"][0]
 
 
 def test_explode_warns_on_unknown_tag_instead_of_silently_dropping_it():
@@ -79,58 +78,8 @@ def test_explode_warns_on_unknown_tag_instead_of_silently_dropping_it():
     assert "key_facts[0]" in warnings[0]
 
 
-def test_explode_propagates_resolved_quote_fields_to_fragments():
-    """#529: `resolve_quotes` runs before `explode_key_facts` and annotates the key_fact with
-    `quote`/`quote_verified`/`quote_found_page` — the fan-out must copy all three onto the
-    fanned-out evidence fragment, not just `quote`."""
-    extraction = {
-        "document": {"key_facts": [
-            {"fact": "x", "page": 3, "entities": ["a"],
-             "quote": "The resolved sentence.", "quote_found_page": 4},
-        ]},
-        "entities": [{"id": "a", "name": "A", "type": "Person"}],
-    }
-    explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag["quote"] == "The resolved sentence."
-    assert frag["quote_found_page"] == 4
-    assert "quote_verified" not in frag   # only propagated when explicitly False
-
-
-def test_explode_propagates_quote_spans_pages_to_fragments():
-    """#560: `resolve_quotes` sets `quote_spans_pages` when a quote is only found by joining two
-    adjacent pages — the fan-out must copy it onto the fragment too, same as `quote_found_page`."""
-    extraction = {
-        "document": {"key_facts": [
-            {"fact": "x", "page": 2, "entities": ["a"],
-             "quote": "The joined sentence.", "quote_spans_pages": [2, 3]},
-        ]},
-        "entities": [{"id": "a", "name": "A", "type": "Person"}],
-    }
-    explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag["quote_spans_pages"] == [2, 3]
-
-
-def test_explode_propagates_figure_annotations_to_fragments():
-    """#623: `verify_figures` runs before `explode_key_facts` and annotates the key_fact with
-    the figures it couldn't ground — the fan-out must carry both keys onto the fragment, the
-    way it already carries the resolved quote, or the entity note shows the fact unflagged."""
-    extraction = {
-        "document": {"key_facts": [
-            {"fact": "x", "page": 3, "entities": ["a"],
-             "figures_unverified": ["430000"], "figures_off_page": {"197.6": [9]}},
-        ]},
-        "entities": [{"id": "a", "name": "A", "type": "Person"}],
-    }
-    explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag["figures_unverified"] == ["430000"]
-    assert frag["figures_off_page"] == {"197.6": [9]}
-
-
 def test_explode_propagates_figure_annotations_to_timeline_events():
-    """D215: `leads.py` reads roles and timeline_events, never evidence_fragments, so a dated
+    """D215: `leads.py` reads roles and timeline_events, so a dated
     fact's figure annotation has to reach the event too or the lead sweep can never see it."""
     extraction = {
         "document": {"key_facts": [
@@ -158,32 +107,6 @@ def test_explode_leaves_figure_keys_off_an_unflagged_timeline_event():
     assert "figures_unverified" not in event
     assert "figures_off_page" not in event
 
-
-def test_explode_leaves_figure_keys_off_an_unflagged_fragment():
-    extraction = {
-        "document": {"key_facts": [{"fact": "x", "page": 3, "entities": ["a"]}]},
-        "entities": [{"id": "a", "name": "A", "type": "Person"}],
-    }
-    explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert "figures_unverified" not in frag
-    assert "figures_off_page" not in frag
-
-
-def test_explode_propagates_quote_verified_false_to_fragments():
-    extraction = {
-        "document": {"key_facts": [
-            {"fact": "x", "page": 3, "entities": ["a"],
-             "quote": "the locator", "quote_verified": False},
-        ]},
-        "entities": [{"id": "a", "name": "A", "type": "Person"}],
-    }
-    explode_key_facts(extraction)
-    frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag["quote_verified"] is False
-
-
-# ── dates.sanitize at post-flight (#262 shape guard, D329 reading, D330 hand-off) ───────────
 
 def test_sanitize_dates_marks_unreadable_date_for_the_pass_without_warning():
     extraction = {"document": {"key_facts": [
@@ -489,9 +412,10 @@ def _extraction(sha="sha777aaa"):
     }
 
 
-def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
+def test_postflight_fans_dated_facts_out_as_entity_timeline_events(tmp_path):
     """The staged artifact — not a vault note (#403 phase 1: post-flight no longer writes to the
-    vault) — carries each entity's fanned-out evidence_fragments/timeline_events."""
+    vault) — carries each entity's fanned-out timeline_events, and the facts themselves once,
+    on the document."""
     vault = _full_vault(tmp_path)
     (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
@@ -504,12 +428,11 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     lu = next(e for e in staged["entities"] if e["id"] == "lu")
     pbgf = next(e for e in staged["entities"] if e["id"] == "pbgf")
 
-    lu_claims = {f["claim"] for f in lu["evidence_fragments"]}
-    assert lu_claims == {"Transfer ratio set at 65.8%.", "Stayed a $842,018.34 payment."}
+    assert {f["fact"] for f in staged["document"]["key_facts"] if "lu" in f.get("entities", [])} == {
+        "Transfer ratio set at 65.8%.", "Stayed a $842,018.34 payment."}
     assert [ev["date"] for ev in lu["timeline_events"]] == ["2021-03-30"]
-
-    pbgf_claims = {f["claim"] for f in pbgf["evidence_fragments"]}
-    assert pbgf_claims == {"Stayed a $842,018.34 payment."}   # not tagged to pbgf
+    assert [ev["event"] for ev in pbgf["timeline_events"]] == ["Stayed a $842,018.34 payment."]
+    assert "evidence_fragments" not in lu and "evidence_fragments" not in pbgf
 
 
 def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, capsys):
@@ -580,10 +503,10 @@ def test_postflight_run_rejects_and_does_not_stage_empty_extraction_on_substanti
 
 # ── Figure grounding reaches the staged artifact, not just the log (#363/#623) ──
 
-def test_postflight_annotates_ungrounded_figure_on_fact_and_fragment(tmp_path, capsys):
+def test_postflight_annotates_ungrounded_figure_on_fact_and_timeline_event(tmp_path, capsys):
     """The ordering that makes this work is the point: `verify_figures` has to run after
     `resolve_quotes` (which may move the page it reads) but before `explode_key_facts`, or the
-    entity's fragment is fanned out before the annotation exists."""
+    entity's timeline event is fanned out before the annotation exists."""
     vault = _full_vault(tmp_path)
     (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
@@ -603,8 +526,8 @@ def test_postflight_annotates_ungrounded_figure_on_fact_and_fragment(tmp_path, c
     assert fact["figures_unverified"] == ["430000"]
 
     lu = next(e for e in staged["entities"] if e["id"] == "lu")
-    frag = next(f for f in lu["evidence_fragments"] if "430,000" in f["claim"])
-    assert frag["figures_unverified"] == ["430000"]
+    event = next(ev for ev in lu["timeline_events"] if "430,000" in ev["event"])
+    assert event["figures_unverified"] == ["430000"]
 
     assert "may be derived or garbled" in capsys.readouterr().err
 
@@ -626,9 +549,9 @@ def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu = next(e for e in _staged(vault, "sha777aaa")["entities"] if e["id"] == "lu")
-    frag = next(f for f in lu["evidence_fragments"] if f["claim"] == "Transfer ratio set at 65.8%.")
-    assert frag["quote_verified"] is False
+    fact = next(f for f in _staged(vault, "sha777aaa")["document"]["key_facts"]
+                if f["fact"] == "Transfer ratio set at 65.8%.")
+    assert fact["quote_verified"] is False
 
     err = capsys.readouterr().err
     assert "Warning" in err and "not found on page" in err
@@ -649,9 +572,9 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu = next(e for e in _staged(vault, "sha777aaa")["entities"] if e["id"] == "lu")
-    frag = next(f for f in lu["evidence_fragments"] if f["claim"] == "Transfer ratio set at 65.8%.")
-    assert frag.get("quote_verified") is not False
+    fact = next(f for f in _staged(vault, "sha777aaa")["document"]["key_facts"]
+                if f["fact"] == "Transfer ratio set at 65.8%.")
+    assert fact.get("quote_verified") is not False
 
     err = capsys.readouterr().err
     assert "not found on page" not in err

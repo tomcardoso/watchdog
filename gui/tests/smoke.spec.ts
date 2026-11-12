@@ -24,6 +24,7 @@ const ROUTES = [
   { view: 'search', query: 'contract' },
   { view: 'review' },
   { view: 'review', kind: 'merges' },
+  { view: 'review', kind: 'gaps' },
   { view: 'briefings' },
   { view: 'ask' },
   { view: 'research' },
@@ -385,7 +386,7 @@ test('every screen renders against the demo investigation', async () => {
       return out
     })
     expect(offscreen, 'Review tabs out of view at 1000 px').toEqual([])
-    expect(await page.getByRole('tab').count()).toBe(6)
+    expect(await page.getByRole('tab').count()).toBe(7)
     // The watchlist has its own screen under Work (D343); Alerts links to it.
     await page.getByRole('tab', { name: /Alerts/ }).click()
     await page.getByRole('button', { name: 'Edit watchlist' }).click()

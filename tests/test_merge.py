@@ -2,7 +2,6 @@ import json
 
 import pytest
 
-from watchdog.pipeline import merge
 from watchdog.pipeline.merge import merge_extractions
 
 
@@ -188,57 +187,6 @@ def test_merge_leaves_morgue_entity_id_none_when_no_entities_to_fall_back_on():
     ]
     merged = merge_extractions(sections)
     assert merged["morgue_entity_id"] is None
-
-
-def test_run_merges_section_files(tmp_path):
-    vault = tmp_path / "vault"
-    tmp = vault / ".watchdog" / "tmp"
-    tmp.mkdir(parents=True)
-    (tmp / "section_ex_doc1_01.json").write_text(json.dumps({
-        "document": {"sha256": "doc1", "filename": "f"},
-        "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}],
-        "morgue_entity_id": "a", "morgue_document_type": "t"}))
-    (tmp / "section_ex_doc1_02.json").write_text(json.dumps({
-        "document": {},
-        "entities": [{"id": "b", "name": "B", "type": "Person", "aliases": [], "roles": []}]}))
-
-    result = merge.run(vault, "doc1")
-    assert result["ok"] is True
-    assert result["entity_count"] == 2
-    assert result["sections_merged"] == 2
-
-    out = vault / result["extraction_path"]
-    assert out.exists()
-    data = json.loads(out.read_text())
-    assert {e["id"] for e in data["entities"]} == {"a", "b"}
-    assert data["morgue_entity_id"] == "a"
-
-
-def test_run_splits_new_vs_updated_against_registry(tmp_path):
-    vault = tmp_path / "vault"
-    tmp = vault / ".watchdog" / "tmp"
-    tmp.mkdir(parents=True)
-    reg = vault / ".watchdog" / "registry"
-    reg.mkdir(parents=True)
-    reg.joinpath("entities.json").write_text(json.dumps({"a": {"id": "a", "name": "A"}}))
-
-    (tmp / "section_ex_doc1_01.json").write_text(json.dumps({
-        "document": {"sha256": "doc1", "filename": "f"},
-        "entities": [
-            {"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []},
-            {"id": "b", "name": "B", "type": "Person", "aliases": [], "roles": []},
-        ],
-        "morgue_entity_id": "a", "morgue_document_type": "t"}))
-
-    result = merge.run(vault, "doc1")
-    assert result["new_entities"] == {"b": "B"}        # not in registry
-    assert result["updated_entities"] == {"a": "A"}    # already in registry
-
-
-def test_run_no_section_files_errors(tmp_path):
-    vault = tmp_path / "vault"
-    (vault / ".watchdog" / "tmp").mkdir(parents=True)
-    assert "error" in merge.run(vault, "missing")
 
 
 # ── cross-section folds are typed and logged (D280) ───────────────────────────

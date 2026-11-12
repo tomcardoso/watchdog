@@ -505,9 +505,9 @@ def rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     # collision couldn't be resolved this run showed only the one document that was promoted, and
     # the timeline rebuild couldn't bring the rest back. Only committed documents' raws are shown —
     # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
-    # file isn't repeated. A committed document that `--force` has re-extracted is staged, not
+    # file isn't repeated. A committed document that a forced run has re-extracted is staged, not
     # committed, until `bark`: its queue file is waiting and its per-run result was written after
-    # it. A queue file alone isn't enough — `ingest --force` writes it before extracting, and a
+    # it. A queue file alone isn't enough — a forced run writes it before extracting, and a
     # result can outlive an earlier run whose briefing failed — and a run that never happens must
     # not hide the document's events. Until the next successful dedup a date may show
     # near-duplicate lines.

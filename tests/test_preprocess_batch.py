@@ -743,9 +743,12 @@ def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
     assert queued[flagged[0]]["near_duplicates"][0]["filename"] == other
 
 
-def test_near_dup_index_scores_like_minhash_similarity_past_its_initial_capacity(tmp_path):
+def test_near_dup_index_scores_the_share_of_matching_slots_past_its_initial_capacity(tmp_path):
     import random
-    from watchdog.pipeline.near_dup import NUM_HASHES, minhash_similarity
+    from watchdog.pipeline.near_dup import NUM_HASHES
+
+    def minhash_similarity(a, b):      # the definition the vectorized index must reproduce
+        return sum(x == y for x, y in zip(a, b)) / len(a)
     from watchdog.pipeline.preprocess_batch import NearDupIndex
     rng = random.Random(696)
     base = [rng.randrange(1000) for _ in range(NUM_HASHES)]
@@ -933,3 +936,23 @@ def test_reread_queued_without_the_original_keeps_the_first_reading(tmp_path, mo
     assert ppb.reread_queued(tmp_path, [sha]) == []
     lang = json.loads((tmp_path / ".watchdog" / "queue" / f"{sha}.json").read_text())["metadata"]["language"]
     assert "ask" not in lang and "no longer there" in lang["notes"][0]
+
+
+def test_write_json_atomic_replaces_whole_and_leaves_no_partial_file(tmp_path, monkeypatch):
+    """A queue descriptor is written through a temporary file and renamed into place, so a write
+    that fails partway leaves the earlier file (or none), never a cut-off one a later step would
+    fail to parse."""
+    from watchdog.pipeline import json_io
+    target = tmp_path / "abc.json"
+    json_io.write_json_atomic(target, {"filename": "résumé.pdf", "pages": []})
+    assert json.loads(target.read_text(encoding="utf-8"))["filename"] == "résumé.pdf"
+    assert [p.name for p in tmp_path.iterdir()] == ["abc.json"]      # no temporary file left
+
+    def boom(src, dst):
+        raise OSError("disk full")
+    monkeypatch.setattr(json_io.os, "replace", boom)
+    with pytest.raises(OSError):
+        json_io.write_json_atomic(target, {"filename": "new.pdf"})
+    assert json.loads(target.read_text(encoding="utf-8"))["filename"] == "résumé.pdf"
+    # The temporary name never matches the `*.json` every queue reader globs for.
+    assert not any(p.name != "abc.json" and p.suffix == ".json" for p in tmp_path.iterdir())

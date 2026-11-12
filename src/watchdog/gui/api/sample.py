@@ -85,7 +85,8 @@ def _entity(v: Path, ents: dict) -> dict | None:
 
 
 def _review(v: Path) -> tuple[dict | None, dict | None, dict | None]:
-    """An open contradiction, the possible-duplicate pair and a lead, from the Review queues."""
+    """An open contradiction, the possible-duplicate pair and a gap in the record (the tour's "lead"
+    step), from the Review queues."""
     from watchdog.gui.api import review as review_api
     items = review_api.items(str(v)).get("items") or []
 
@@ -94,7 +95,7 @@ def _review(v: Path) -> tuple[dict | None, dict | None, dict | None]:
         found.sort(key=lambda i: (prefer not in (i.get("rid") or ""), i.get("rid") or ""))
         return {"rid": found[0]["rid"], "title": found[0]["title"]} if found else None
 
-    return first("contradictions"), first("duplicates"), first("leads", "lead:unprofiled:")
+    return first("contradictions"), first("duplicates"), first("gaps", "lead:unprofiled:")
 
 
 def tour_targets(v: Path) -> dict:

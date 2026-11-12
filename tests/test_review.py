@@ -49,8 +49,9 @@ def test_open_items_covers_every_kind(vault):
     assert c["note"] == "entities/organization/acme"
     assert c["rid"] == resolutions.contradiction_id(_CALLOUT)
 
-    (lead,) = by_kind["leads"]
-    assert lead["title"].startswith("Ghost Co") and lead["rid"] == "lead:unprofiled:ghost"
+    assert by_kind["leads"] == []            # only inferred relationships are leads (D399)
+    (gap,) = by_kind["gaps"]
+    assert gap["title"].startswith("Ghost Co") and gap["rid"] == "lead:unprofiled:ghost"
 
     a1, a2 = by_kind["alerts"]
     assert (a1["title"], a1["note"], a1["detail"]) == (
@@ -67,7 +68,7 @@ def test_resolved_items_drop_out(vault):
     resolutions.resolve(vault, ["alert:aaaaaaa:t1", resolutions.duplicate_id("a" * 64),
                                 resolutions.contradiction_id(_CALLOUT)])
     items = review.open_items(vault)
-    assert [i["rid"] for i in items] == ["lead:unprofiled:ghost", "alert:bbbbbbb:t1"]
+    assert [i["rid"] for i in items] == ["alert:bbbbbbb:t1", "lead:unprofiled:ghost"]
     assert review.count_open_duplicates(vault) == 0
 
 
@@ -106,7 +107,7 @@ def test_an_unprofiled_lead_shows_who_names_it_and_where(vault):
     reg.write_text(json.dumps({"harbour": {"name": "Harbour Holdings Ltd", "roles": [
         {"relationship": "director", "target_id": "a", "target_name": "a",
          "source_sha256": "b" * 64, "page": 3}]}}))
-    (lead,) = review.open_items(vault, ("leads",))
+    (lead,) = review.open_items(vault, ("gaps",))
     assert lead["title"] == "a — named but never profiled"
     assert lead["detail"][0] == "Harbour Holdings Ltd — director → a (p. 3)"
     assert "only as the id “a”" in lead["detail"][1]
@@ -114,6 +115,28 @@ def test_an_unprofiled_lead_shows_who_names_it_and_where(vault):
 
 
 def test_a_named_unprofiled_lead_has_no_id_note(vault):
-    (lead,) = review.open_items(vault, ("leads",))
+    (lead,) = review.open_items(vault, ("gaps",))
     assert lead["detail"] == ["Acme → Ghost Co"]
     assert lead["cited"] == []
+
+
+def test_the_two_extraction_leftovers_are_gaps_and_an_inferred_relationship_stays_a_lead(vault):
+    """Named-but-never-profiled and mentioned-often-but-unconnected are the `gaps` kind; their ids
+    keep the `lead:` form, so marks made before D399 still hold. Inferred relationships stay leads."""
+    reg = vault / ".watchdog" / "registry" / "entities.json"
+    reg.write_text(json.dumps({
+        "loner": {"name": "Loner Ltd", "note_path": "entities/organization/loner", "roles": [],
+                  "appears_in": ["s1", "s2", "s3"]},
+        "pat": {"name": "Pat", "note_path": "entities/person/pat", "appears_in": ["s1"],
+                "roles": [{"relationship": "adviser to", "target_id": "loner", "target_name": "Loner Ltd",
+                           "basis": "inferred", "source_sha256": "c" * 64}]}}))
+    gaps = review.open_items(vault, ("gaps",))
+    assert [(i["kind"], i["rid"]) for i in gaps] == [("gaps", "lead:isolated:loner")]
+    assert gaps[0]["title"] == "Loner Ltd — mentioned often but unconnected"
+    leads = review.open_items(vault, ("leads",))
+    assert [(i["kind"], i["rid"]) for i in leads] == [("leads", "lead:inferred:pat")]
+
+    # A mark made under the old kind still hides the item under the new one.
+    resolutions.resolve(vault, ["lead:isolated:loner"])
+    assert review.open_items(vault, ("gaps",)) == []
+    assert [i["rid"] for i in review.open_items(vault, ("leads",))] == ["lead:inferred:pat"]

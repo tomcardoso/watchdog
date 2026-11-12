@@ -58,7 +58,7 @@ Before spending anything, confirm two things with the journalist:
    | **Standard** *(default)* | dozens (~20–30) | 2–3 | one hop |
    | **Deep** | 100+ | until the budget or the journalist stops | multi-hop |
 
-   The configured ceilings (the research settings in the app) are the defaults for Standard; honour them unless the journalist picks another tier or overrides.
+   Standard is the default; use it unless the journalist picks another tier or overrides.
 
 ---
 

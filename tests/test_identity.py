@@ -564,7 +564,7 @@ def test_two_records_of_one_company_sharing_a_corporate_access_number_merge():
     assert _tier(a, b) == ("high", "same-identifier")
 
 
-# ── a name's kind, as the extractor read it (D398) ───────────────────────────────────────────
+# ── a name's kind, as the extractor read it (D401) ───────────────────────────────────────────
 
 def _marked(eid, name, etype, kind, identifiers=None):
     p = _p(eid, name, etype, identifiers=identifiers)

@@ -80,6 +80,7 @@ def render(data: dict) -> str:
     waiting += _list("Open contradictions", [primer._safe(i["title"]) for i in data["contradictions"]],
                      "Review → Contradictions")
     waiting += _list("Open leads", [primer._safe(i["title"]) for i in data["leads"]], "Review → Leads")
+    waiting += _list("Gaps in the record", [primer._safe(i["title"]) for i in data["gaps"]], "Review → Gaps")
     waiting += _list("Documents to request",
                      [primer._safe(r.get("what") or "") for r in data["requests"]], "Review → Requests")
     waiting += _list("Possible same entities, not merged",

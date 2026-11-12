@@ -46,7 +46,7 @@ def test_demo_primer_covers_the_whole_investigation(demo):
     # The most-mentioned entities, linked to their notes.
     assert "- [[entities/public-body/city-of-port-calder|City of Port Calder]], public body: 11 documents" in text
     # What is waiting on the reporter.
-    for heading in ("**Open contradictions (6)**", "**Open leads (", "**Documents to request (",
+    for heading in ("**Open contradictions (6)**", "**Gaps in the record (", "**Documents to request (",
                     "**Possible same entities, not merged (1)**", "**Facts the reporter disputes (1)**"):
         assert heading in text, heading
     assert "|p. 1, disputed]]" in text                      # a disputed fact, cited and labelled

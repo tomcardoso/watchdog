@@ -34,8 +34,6 @@ from typing import NamedTuple
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 
-TIERS = ("high", "medium", "low")
-
 # ── names ─────────────────────────────────────────────────────────────────────────────────────
 
 # Titles and offices dropped from either end of a person's name before comparing: "Mayor Robert
@@ -435,11 +433,11 @@ class Profile:
         self.facts: list[dict] = []              # {"id", "fact", "page", "sha", "title", "date", "mark"}
         self.documents: list[str] = []
         self.identifiers: dict[str, set[str]] = {}
-        # name_key -> the kinds documents gave that name: "proper" or "stand-in" (D398).
+        # name_key -> the kinds documents gave that name: "proper" or "stand-in" (D401).
         self.name_kinds: dict[str, set[str]] = {}
 
     def mark_name(self, name: str, kind) -> None:
-        """Record what a document said `name` is: its own name or a stand-in for one (D398)."""
+        """Record what a document said `name` is: its own name or a stand-in for one (D401)."""
         if name and kind in NAME_KINDS:
             self.name_kinds.setdefault(name_key(name), set()).add(kind)
 
@@ -619,7 +617,7 @@ def classify(a: Profile, b: Profile, dismissed: frozenset[str] | set[str] = froz
                         "One name is an initialled or shortened form of the other.", surface=surface)
 
     if best == "same":
-        # What the documents said the shared name is (D398). Read by the model that saw the name
+        # What the documents said the shared name is (D401). Read by the model that saw the name
         # in its sentence, so it replaces the word lists where every document gave it: a stand-in
         # ("the Board") never joins on its name, and a proper name joins unless a different
         # identifier or the reporter's "not the same" says otherwise (both checked above).
@@ -652,10 +650,10 @@ NAME_KINDS = ("proper", "stand-in")
 
 
 def _shared_name_kind(a: Profile, b: Profile) -> str | None:
-    """What the documents said the name two non-person records share is (D398): "stand-in" when
+    """What the documents said the name two non-person records share is (D401): "stand-in" when
     any document gave a shared name as one, "proper" when every shared name some document marked
     was marked proper on both sides, else None, and the word lists decide as before (a record
-    from before D398 carries no mark). A place whose shared name is a bare street ("Main Street",
+    from before D401 carries no mark). A place whose shared name is a bare street ("Main Street",
     no civic number) is left to the word lists: many towns have one."""
     shared = set(a.name_kinds) & set(b.name_kinds) & {name_key(s) for s in a.surfaces} \
         & {name_key(s) for s in b.surfaces}

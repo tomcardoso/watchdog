@@ -663,3 +663,16 @@ def test_openai_collect_flags_unparseable_text_without_crashing(monkeypatch):
     out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.6-luna", backend="openai-batch"))
     assert out["sha1"]["ok"] is False
     assert out["sha1"]["parsed"] is None
+
+
+def test_anthropic_submit_sends_the_every_property_schema(tmp_path, monkeypatch):
+    """A batch request carries the same schema a live Claude call does (D400)."""
+    from watchdog import model_client
+    from watchdog.pipeline import schemas
+    vault = make_vault(tmp_path)
+    fake = FakeBatches(batch_id="batch_abc")
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    asyncio.run(be.submit(vault, [{"sha": "sha1", "prompt": [{"type": "text", "text": "p1"}]}],
+                          model="sonnet", effort=None, skills={"sha1": "bankruptcy"}, api_key="sk-x"))
+    sent = fake.create_calls[0][0]["params"]["output_config"]["format"]["schema"]
+    assert sent == model_client._claude_wire_schema(schemas.EXTRACTION)

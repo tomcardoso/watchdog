@@ -35,7 +35,6 @@ from watchdog import config as user_config
 
 
 
-DEFAULT_THRESHOLD = 0.85
 SHINGLE_SIZE = 3  # word 3-grams
 NUM_HASHES = 128
 _MOD = (1 << 31) - 1  # Mersenne prime keeps values to 10 digits in JSON
@@ -80,14 +79,6 @@ def shingles(tokens: list[str], k: int = SHINGLE_SIZE) -> set[str]:
     return {" ".join(tokens[i : i + k]) for i in range(len(tokens) - k + 1)}
 
 
-def jaccard(a: set[str], b: set[str]) -> float:
-    if not a and not b:
-        return 1.0
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
 def shingles_from_text(text: str, k: int | None = None) -> set[str]:
     if k is None:
         k = _config_get("shingle_size", SHINGLE_SIZE)
@@ -106,9 +97,3 @@ def minhash(sh: set[str], num_hashes: int = NUM_HASHES) -> list[int]:
         min((_MINHASH_A[i] * h + _MINHASH_B[i]) % _MOD for h in hashed)
         for i in range(num_hashes)
     ]
-
-
-def minhash_similarity(sig_a: list[int], sig_b: list[int]) -> float:
-    if not sig_a or not sig_b or len(sig_a) != len(sig_b):
-        return 0.0
-    return sum(a == b for a, b in zip(sig_a, sig_b)) / len(sig_a)

@@ -78,11 +78,11 @@ def test_run_output_unchanged_without_the_variable(tmp_path, monkeypatch, capsys
 
 def test_lines_writes_each_change_as_one_plain_line(capsys):
     """The run's progress lines are an append-only log: every update, outcome and note is one
-    whole line, the plain form when one is given, and nothing is redrawn in place."""
+    whole line, and nothing is redrawn in place."""
     from watchdog import progress
     board = progress.Lines()
     board.update("a", "  → a.pdf · extracting…")
-    board.update("a", "  styled a.pdf", "  → a.pdf · verifying…")
+    board.update("a", "  → a.pdf · verifying…")
     board.note("  a note")
     board.finish("a", "  ✓ a.pdf  3 entities")
     out = capsys.readouterr().out

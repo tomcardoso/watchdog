@@ -284,7 +284,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
         backend: str | None = None, effort: str | None = None, say=print, warn=None,
         check_keys: bool = True) -> dict:
     """Re-check `ids` (every recurring entity when None) under the processing lock, then file what
-    the model found. Raises `Busy` when a run holds the vault. A stop (Ctrl+C, the app's Cancel) or
+    the model found. Raises `Busy` when a run holds the vault. A stop (the app's Stop) or
     a failed call ends the calls early; what the finished calls found is still filed."""
     from watchdog import model_client
     from watchdog.pipeline import history, orchestrate, prompts, schemas

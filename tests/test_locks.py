@@ -58,7 +58,7 @@ def test_refresh_lock_resets_age(tmp_path):
     lock = tmp_path / ".lock"
     lock.write_text(_lock_of(os.getpid(), age=3600))
     locks.refresh_lock(lock)
-    age = locks.lock_age_seconds(lock)
+    age = _age(lock)
     assert age is not None and age < 5
     assert f"pid: {os.getpid()}" in lock.read_text()
 
@@ -72,9 +72,9 @@ def test_heartbeat_keeps_a_long_run_lock_fresh(tmp_path):
     lock.write_text(_lock_of(os.getpid(), age=3600))
     with locks.heartbeat(lock, interval=0.02):
         deadline = time.monotonic() + 5
-        while locks.lock_age_seconds(lock) > 5 and time.monotonic() < deadline:
+        while _age(lock) > 5 and time.monotonic() < deadline:
             time.sleep(0.01)
-    assert locks.lock_age_seconds(lock) < 5
+    assert _age(lock) < 5
     assert f"pid: {os.getpid()}" in lock.read_text()
     assert locks.acquire_or_take_stale(lock, "started_at: x\n", 1800) is False
 
@@ -150,6 +150,14 @@ def _dead_pid() -> int:
     proc = subprocess.Popen([sys.executable, "-c", "pass"])
     proc.wait()
     return proc.pid
+
+
+def _age(lock) -> float | None:
+    """Seconds since the lock's `started_at`, or None when it has none."""
+    for line in lock.read_text(encoding="utf-8").splitlines():
+        if line.startswith("started_at:"):
+            return locks._parse_iso_age(line.split(":", 1)[1].strip())
+    return None
 
 
 def _lock_of(pid: int, *, start: str | None = None, machine: str | None = "",
@@ -301,10 +309,10 @@ def test_heartbeat_keeps_a_new_format_lock_fresh_and_its_holder(tmp_path):
     with locks.heartbeat(lock, interval=0.02):
         lock.write_text(lock.read_text().replace("started_at: ", "started_at: 2000"))
         deadline = time.monotonic() + 5
-        while (locks.lock_age_seconds(lock) or 1e9) > 5 and time.monotonic() < deadline:
+        while (_age(lock) or 1e9) > 5 and time.monotonic() < deadline:
             time.sleep(0.01)
     after = locks._fields(lock.read_text())
-    assert locks.lock_age_seconds(lock) < 5
+    assert _age(lock) < 5
     assert {k: v for k, v in after.items() if k != "started_at"} == holder
 
 

@@ -59,7 +59,7 @@ _STOP_REASONS = frozenset({"end_turn", "max_tokens", "stop_sequence", "tool_use"
                            "refusal"})
 _LOG_KINDS = ("START", "OK", "FAILED", "WARN", "INGEST", "HARVEST", "SECTION", "VERIFY",
               "RECONCILE", "MERGED", "CONTRADICTION", "SPENDING LIMIT")
-_REVIEW_KINDS = ("contradictions", "leads", "alerts", "duplicates", "merges")
+_REVIEW_KINDS = ("contradictions", "leads", "alerts", "duplicates", "merges", "gaps")
 
 # Bucket edges (label, upper bound inclusive; None = no bound).
 _PAGES = (("1", 1), ("2-5", 5), ("6-20", 20), ("21-100", 100), ("101+", None))

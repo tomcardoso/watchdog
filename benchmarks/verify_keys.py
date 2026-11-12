@@ -135,7 +135,7 @@ def needles(span):
     `"the balance was $54.7 million … designated to support the endowments"`.
     The elided words are still in the page text, so the whole span will never
     be found as one run — each kept part has to be located separately. This
-    mirrors what `quote_verify.verify_quote` does for model-supplied quotes
+    mirrors the cited-page-then-neighbours search the pipeline's quote resolution makes
     (#630); a key checker that lacked it would report accurate quotes as
     missing, which is precisely the false alarm this tool exists to prevent.
     """

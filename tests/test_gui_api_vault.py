@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from watchdog.pipeline import resolutions
-from watchdog.pipeline.write_vault import _extract_notes_section, build_entity_note
+from watchdog.pipeline.write_vault import _extract_notes_section
 
 from tests.gui_support import CALLOUT, SHA1, SHA2, SHA3, call, call_error, register
 from tests.test_golden_vault import _run_fixture_ingest
@@ -47,7 +47,7 @@ def test_summary_of_rich_vault(rich_vault, wdg_home):
     assert s["briefing"] == {"path": "briefings/2026-03-03-08-00.md", "name": "2026-03-03-08-00",
                              "date": "2026-03-03T08:00:00"}
     assert s["headline"] == "Three reports in; one date conflict."
-    assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 2, 1, 1)
+    assert (s["contradictions"], s["leads"], s["gaps"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1, 1)
     assert (s["incoming"], s["awaiting_dig"], s["awaiting_bark"], s["failed"]) == (2, 1, 1, 1)
     assert s["research_urls"] == 2 and s["has_work"] is True and s["pending_finalize"] is True
     assert s["context_unseeded"] is False
@@ -220,9 +220,12 @@ def test_entity_detail(rich_vault):
     e = call("vault.entity", vault=V(rich_vault), id="jane-doe")
     assert e["name"] == "Jane Doe" and e["frontmatter"]["id"] == "jane-doe"
     assert e["sections"]["summary"].startswith("Director of Acme Corp.")
-    assert "chairs the board" in e["sections"]["analysis"]
+    # The note is the one every run writes (D280): the analysis sits under Summary, and the
+    # dated facts under Facts, so the note has no Analysis or Timeline heading of its own.
+    assert "chairs the board" in e["sections"]["summary"]
+    assert e["sections"]["analysis"] is None and e["sections"]["timeline"] is None
     assert "[!contradiction]" in e["sections"]["contradictions"]
-    assert "### 2019" in e["sections"]["timeline"] and "director of" in e["sections"]["relationships"]
+    assert "director of" in e["sections"]["relationships"]
     assert e["sections"]["notes"].startswith("<!--")
     assert [d["sha"] for d in e["documents"]] == [SHA2, SHA1]
     assert e["relationships"] == [{
@@ -388,9 +391,9 @@ def test_save_notes_replaces_only_the_notes_body(rich_vault):
                                                     "## A heading typed by the journalist\n\nMore.\n")
     assert not [p for p in path.parent.iterdir() if p.name.endswith(".tmp")]
     # The pipeline preserves the section verbatim when it next rewrites the note.
-    ents = json.loads((rich_vault / ".watchdog" / "registry" / "entities.json").read_text())
-    docs = json.loads((rich_vault / ".watchdog" / "registry" / "documents.json").read_text())
-    rebuilt = build_entity_note(ents["jane-doe"], _extract_notes_section(path), docs, "S", "", "")
+    from watchdog.pipeline import entity_notes
+    entity_notes.rebuild(rich_vault, ids={"jane-doe"}, documents_too=False, index_search=False)
+    rebuilt = path.read_text()
     assert "Called her office." in rebuilt and "A heading typed by the journalist" in rebuilt
     note = call("vault.note", vault=V(rich_vault), path="entities/person/jane-doe")
     assert note["frontmatter"]["name"] == "Jane Doe"
