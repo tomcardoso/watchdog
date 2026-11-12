@@ -1124,3 +1124,87 @@ def test_a_run_without_an_estimate_writes_none(tmp_path, monkeypatch):
     orchestrate._run.usage.append(_row("reconcile", 1000, 1.0))
     path, _ = orchestrate._end_usage_run(vault)
     assert "estimate" not in json.loads((vault / path).read_text())
+
+
+# ── rates from the telemetry store when an investigation has none (D405) ────────
+
+def _telemetry_run(tmp_path, run_id, model, rows, vault_name="elsewhere", backend="claude-api",
+                   arm=None):
+    """Record `rows` of (task, input_tokens, output_tokens, cost_usd) as one run of another
+    investigation in the telemetry store."""
+    from watchdog import telemetry_db
+    other = tmp_path / vault_name
+    other.mkdir(exist_ok=True)
+    for task, inp, out, cost in rows:
+        telemetry_db.record_call(
+            {"task": task, "model": model, "backend": backend, "input_tokens": inp,
+             "output_tokens": out, "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": cost},
+            vault=other, run_id=run_id, benchmark_arm_id=arm, prompt_hash=None, config_snapshot=None)
+
+
+def test_first_run_takes_its_rates_from_the_reporters_other_investigations(tmp_path, monkeypatch):
+    """With no priced run here, each line is priced at what the same model cost per input token
+    elsewhere, lowest to highest run, and extraction's measured output ratio sizes
+    post-processing; a benchmark arm, an Ask Claude session, another model and another backend
+    are not counted."""
+    from watchdog import model_client
+    from watchdog.ops.ingest import _format_cost_estimate
+    from watchdog.pipeline import ingest_setup
+    haiku = model_client.resolve_model_id("haiku")
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+    _telemetry_run(tmp_path, "20260101T000000Z", haiku, [
+        ("extract", 1000, 100, 1.0), ("extract-section", 1000, 300, 1.0), ("reconcile", 500, 10, 0.25)])
+    _telemetry_run(tmp_path, "20260102T000000Z", haiku, [("extract", 1000, 200, 3.0)], vault_name="third")
+    _telemetry_run(tmp_path, "20260103T000000Z", haiku, [("extract", 1, 1, 999.0)], arm="arm-1")
+    _telemetry_run(tmp_path, "session-abc", haiku, [("extract", 1, 1, 999.0)])
+    _telemetry_run(tmp_path, "20260104T000000Z", "some-other-model", [("extract", 1, 1, 999.0)])
+    _telemetry_run(tmp_path, "20260105T000000Z", haiku, [("extract", 1, 1, 999.0)], backend="claude-batch")
+
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    ex, post = est["extraction"], est["post"]
+    assert ex["basis"] == "other-investigations" and ex["runs_used"] == 2
+    assert ex["cost_low"] == pytest.approx(10_000 * 0.001) and ex["cost_high"] == pytest.approx(10_000 * 0.003)
+    assert post["basis"] == "other-investigations" and post["runs_used"] == 1
+    output = 10_000 * (0.2 + 0.2) / 2   # the two runs' output per input token
+    fixed = ingest_setup._post_fixed_est() * model_client.tokenizer_ratio("haiku", "claude-api", vault)
+    assert post["tokens_low"] == pytest.approx(fixed + output * ingest_setup._POST_PER_OUTPUT_TOKEN[0])
+    assert post["cost_low"] == pytest.approx(post["tokens_low"] * 0.0005)
+    assert est["basis"] == "other-investigations"
+    assert "based on this model's last 2 runs across your investigations" in _format_cost_estimate(est)
+
+
+def test_an_investigations_own_history_comes_before_other_investigations(tmp_path, monkeypatch):
+    from watchdog import model_client
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+    _telemetry_run(tmp_path, "20260101T000000Z", model_client.resolve_model_id("haiku"),
+                   [("extract", 1000, 100, 9.0), ("reconcile", 1000, 10, 9.0)])
+    _write_usage_file(vault, "20260201T000000Z", 0, None, calls=[
+        _row("extract", 1000, 1.0, output_tokens=200)])
+
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    assert est["extraction"]["basis"] == "history"
+    assert est["extraction"]["cost_high"] == pytest.approx(10_000 * 0.001)
+    # This investigation has never post-processed, so that line still looks elsewhere.
+    assert est["post"]["basis"] == "other-investigations" and est["basis"] == "mixed"
+
+
+def test_other_investigations_are_not_read_with_telemetry_off_or_no_store(tmp_path, monkeypatch):
+    from watchdog import model_client, telemetry_db
+    from watchdog.pipeline import ingest_setup
+    assert ingest_setup._other_investigations("haiku", "claude-api", False) == []
+    assert not telemetry_db.db_path().exists()   # reading never creates the store
+    _telemetry_run(tmp_path, "20260101T000000Z", model_client.resolve_model_id("haiku"),
+                   [("extract", 1000, 100, 1.0)])
+    assert len(ingest_setup._other_investigations("haiku", "claude-api", False)) == 1
+    assert ingest_setup._other_investigations("haiku", "claude-agent-sdk", False) == []
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: False)
+    assert ingest_setup._other_investigations("haiku", "claude-api", False) == []

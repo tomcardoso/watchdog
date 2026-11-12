@@ -531,6 +531,33 @@ def _stage_history(vault: Path, post: bool, max_runs: int,
     return runs
 
 
+# How many runs in the reporter's other investigations a stage's rate is taken from when this one
+# has no priced run of its own (D405). Judgement: more than a vault's own three, since documents
+# differ more between investigations than between one investigation's batches.
+_OTHER_RUNS = 5
+
+
+def _other_investigations(model: str | None, backend: str | None, post: bool) -> list[dict]:
+    """`_stage_history`'s ``{"rate", "out"}`` for one stage, from the telemetry store rather than
+    this investigation (D405): the last `_OTHER_RUNS` priced runs anywhere in which this model, on
+    this backend, made the stage's calls. Unlike `_stage_history` the dollars are those calls'
+    alone, since another stage's model (the classifier's) is a different choice in each run.
+    Empty when telemetry is off, the store is absent, or it holds no such run."""
+    from watchdog import model_client, telemetry_db
+    from watchdog.pipeline import orchestrate
+    if backend in (None, "claude-agent-sdk", "local") or not telemetry_db.enabled():
+        return []
+    tasks = tuple(sorted(orchestrate.FINALIZE_TASKS)) if post else EXTRACT_TASKS
+    model_id = model_client.resolve_model_id(model or model_client.DEFAULT_TIER)
+    runs = []
+    for row in telemetry_db.stage_runs(model_id, backend, tasks, _OTHER_RUNS):
+        inp = _real_input_tokens(row, backend)
+        if inp > 0:
+            runs.append({"rate": row["cost_usd"] / inp, "out": row["output_tokens"] / inp,
+                         "post_per_output": None})
+    return runs
+
+
 def _priced(model: str | None, backend: str | None) -> str | None:
     """The catalogue id to price `model` at list price, or None where there is no bill to project
     (a subscription, a local model) or no price (an uncatalogued id)."""
@@ -543,12 +570,15 @@ def _priced(model: str | None, backend: str | None) -> str | None:
 
 def _stage_cost(tokens_low: float, tokens_high: float, history: list[dict], model: str | None,
                 backend: str | None, output_ratio: tuple[float, float],
-                long_share: float = 0.0, long_scale: float = 1.0) -> dict:
+                long_share: float = 0.0, long_scale: float = 1.0,
+                elsewhere: list[dict] | None = None) -> dict:
     """Dollars for one stage sending `tokens_low` to `tokens_high` real input tokens: at this
-    investigation's own rate per input token where `history` has one (its lowest and highest),
-    else at `model`'s list price with every input token a cache miss and output at `output_ratio`
-    (so it errs high). ``{"cost_low", "cost_high", "basis", "runs_used"}``; no figure on a
-    subscription, a local model or an unpriced one."""
+    investigation's own rate per input token where `history` has one (its lowest and highest);
+    else at the rate the same model cost in the reporter's other investigations (`elsewhere`,
+    D405); else at `model`'s list price with every input token a cache miss and output at
+    `output_ratio` (so it errs high). ``{"cost_low", "cost_high", "basis", "runs_used"}``, `basis`
+    being ``history``, ``other-investigations`` or ``list-price``; no figure on a subscription, a
+    local model or an unpriced one."""
     from watchdog import model_catalog
     out = {"cost_low": None, "cost_high": None, "basis": None, "runs_used": 0}
     if backend in ("claude-agent-sdk", "local") or tokens_high <= 0:
@@ -558,6 +588,12 @@ def _stage_cost(tokens_low: float, tokens_high: float, history: list[dict], mode
         out.update(cost_low=tokens_low * min(rates) * long_scale,
                    cost_high=tokens_high * max(rates) * long_scale,
                    basis="history", runs_used=len(rates))
+        return out
+    if elsewhere:
+        rates = [h["rate"] for h in elsewhere]
+        out.update(cost_low=tokens_low * min(rates) * long_scale,
+                   cost_high=tokens_high * max(rates) * long_scale,
+                   basis="other-investigations", runs_used=len(rates))
         return out
     model_id = _priced(model, backend)
     if model_id is None:
@@ -582,8 +618,9 @@ def post_stage_cost(vault: Path, tokens_low: float, tokens_high: float, model: s
     """Price post-processing input of `tokens_low` to `tokens_high` real tokens: the one pricer
     behind both the Add documents estimate (`run_cost_estimate`) and the stand-alone one
     (`finalize_cost_estimate`), so the same work gets the same rate (#820)."""
-    return _stage_cost(tokens_low, tokens_high, _stage_history(vault, True, max_runs, usage_files),
-                       model, backend, _POST_OUTPUT_RATIO)
+    history = _stage_history(vault, True, max_runs, usage_files)
+    return _stage_cost(tokens_low, tokens_high, history, model, backend, _POST_OUTPUT_RATIO,
+                       elsewhere=None if history else _other_investigations(model, backend, True))
 
 
 def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
@@ -619,14 +656,17 @@ def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     result["long_prompt_calls"], result["long_prompt_documents"] = plan["calls"], plan["documents"]
 
     ex_history = _stage_history(vault, False, max_runs)
-    out_ratio = (sum(h["out"] for h in ex_history) / len(ex_history) if ex_history
+    ex_elsewhere = [] if ex_history else _other_investigations(model, backend, False)
+    measured_out = ex_history or ex_elsewhere
+    out_ratio = (sum(h["out"] for h in measured_out) / len(measured_out) if measured_out
                  else sum(_EXTRACT_OUTPUT_RATIO) / 2)
     scale = 1.0
     if plan["share"]:
         scale = (1 - plan["share"]) + plan["share"] * _long_prompt_factor(model, out_ratio)
     extraction = {"tokens_low": tokens, "tokens_high": tokens,
                   **_stage_cost(tokens, tokens, ex_history, model, backend, _EXTRACT_OUTPUT_RATIO,
-                                long_share=plan["share"], long_scale=scale)}
+                                long_share=plan["share"], long_scale=scale,
+                                elsewhere=ex_elsewhere)}
     result["extraction"] = extraction
 
     # Post-processing: what it will read of the batch, projected from extraction's output.
@@ -653,8 +693,8 @@ def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     result["cost_low"] = extraction["cost_low"] + (post["cost_low"] or 0.0)
     result["cost_high"] = extraction["cost_high"] + (post["cost_high"] or 0.0)
     result["runs_used"] = extraction["runs_used"]
-    result["basis"] = ("history" if extraction["basis"] == "history"
-                       and post["basis"] in ("history", None) else "list-price")
+    bases = {extraction["basis"], post["basis"]} - {None}
+    result["basis"] = bases.pop() if len(bases) == 1 else "mixed"
     return result
 
 
