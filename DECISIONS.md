@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — every decision, D1 to D401 (click to expand)</strong></summary>
+<summary><strong>Index — every decision, D1 to D402 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -401,6 +401,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D399** — Two extraction-leftover leads move to tidy-up as "gaps"; merge decisions no longer see a record's earlier summary
 - **D400** — A Claude request asks for every property, null where there is no value
 - **D401** — The extractor says whether a name is the entity's own; the word lists become the fallback
+- **D402** — Review merges every record of one name in one action
 
 </details>
 
@@ -3497,3 +3498,11 @@ Tradeoff: measured on one document and one model, with fact counts and field rat
 Whether two same-named non-person records were one thing was decided by hand-made English word lists (`_GENERIC`, `_LEGAL`, `is_distinctive`): a name needed two non-generic words, or one with a legal form or among three. The lists judge the wrong thing in both directions. A proper name made of ordinary words ("Government of Northland", "General Holdings Corp.") counted as generic, so in a live investigation one public body named in most documents stayed as many records and filled Review with pairs the model would not settle from boilerplate facts; and the lists cover one language and only the words someone wrote down. What matters is whether the document used the words as a name or as a description standing in for one ("the Board"), and the extractor reads the sentence. Each non-person entity now carries an optional `name_kind`, `"proper"` or `"stand-in"`. When every document that marked the shared name gave it as proper on both sides, `classify` merges in code (`proper-name`, high); a stand-in on either side is never merged on its name (`stand-in-name`, medium, to the model). A different registration number (no pair) and the reporter's "not the same" still keep records apart, and where either side is unmarked the word lists decide as before. A sectioned document keeps the kind of the name it keeps; two sections disagreeing on one name keep `stand-in`. People are unchanged: a person's name still needs something shared (D279), since people's names repeat. A place whose shared name is a bare street ("Main Street", no civic number) or a single word ("Kingston", "Victoria") is left to the word lists, since many towns have the first and towns in different provinces and countries share the second.
 
 Tradeoff: two different companies or bodies with the very same proper name and no registration number recorded are now joined, where the lists kept a generic-sounding one apart; the lists already joined any name they judged specific, so this widens an existing risk rather than adding one. A different address or jurisdiction does not yet keep two such records apart: there is no reliable signal for it (a company's addresses change over time). The prompt sentence is unmeasured (a `CLAUDE.md` follow-up), and adds one optional schema property (SECTION 21 of the 22 `tests/test_schemas.py` allows; since D400 a Claude request sends every property as required, and the API accepts both extraction schemas in that form with this one added). Forward-facing (I19): records extracted before D401 carry no mark and are judged by the lists until their documents are processed again.
+
+### D402 — Review merges every record of one name in one action
+
+In a live investigation a generic name (a public body named in nearly every document) became many records and dozens of "possible same" pairs, each needing its own click. Review's Merges tab now offers **Merge all N records named "…"** when open pairs join three or more records of one type and one `identity.name_key`. It is a group action, not a new merge: `merge-entity-group` merges each record into the kept one through `merge-entity-pairs`, so every merge is the reporter's, logged and undoable on its own, and a failure does not stop the rest. The kept record is chosen as Merge ticked chooses it (most documents, then the longer name), with the id settling a remaining tie. Records are grouped only through open pairs, never by name across the registry, so the action never reaches a record the queue did not offer.
+
+A record marked "Not the same" as the kept record, or as one taken into the group before it, is left out and named, because merging both would join records the reporter said differ; the operation reads the marks again rather than trusting the list the app showed. Two records are one pair, which Merge ticked already handles, so a group needs three that would become one.
+
+Tradeoff: which of two clashing records is left out follows the keep order, not the reporter; they can merge the left-out one by hand. No migration (I19): nothing stored changes shape.

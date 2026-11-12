@@ -4,12 +4,14 @@
 // the row's everyday answer (not the same, copies, handled), O opens, S keeps open, U undoes.
 //
 // "Merge ticked" runs merge-entity-pairs, which merges the pairs one at a time through the same
-// merge as Merge… (each logged, each undoable); "Not the same", "These are copies", "Different
-// documents" and "Mark handled" write the resolutions store, as every other queue does.
+// merge as Merge… (each logged, each undoable); "Merge all N records named …" runs
+// merge-entity-group, which does the same for every record of one name (D402). "Not the same",
+// "These are copies", "Different documents" and "Mark handled" write the resolutions store, as
+// every other queue does.
 
 import { ArrowUpRight, Check, CheckCircle2, CircleDashed, Copy, Files, GitCompare, GitMerge, ListTree, MessageCircle, RefreshCw, Undo2, X } from 'lucide-react'
 import { Fragment, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import type { DocumentRow, MergePairsResult, RequestGroup, SamePair } from '@shared/api'
+import type { DocumentRow, MergeGroupResult, MergePairsResult, RequestGroup, SameNameGroup, SamePair } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Kbd, Segmented, Skeleton, cx } from '@renderer/components/ui'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { useOpenWikilink } from '@renderer/components/Markdown'
@@ -226,7 +228,7 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
   const [flash, setFlash] = useState<{ text: string; undo: boolean } | null>(null)
   const [handledHere, setHandledHere] = useState(0)
   const [merging, setMerging] = useState<Set<string>>(new Set())
-  const [mergeReport, setMergeReport] = useState<MergePairsResult | null>(null)
+  const [mergeReport, setMergeReport] = useState<(MergePairsResult & { noun?: 'pair' | 'record' }) | null>(null)
   const [mergeFor, setMergeFor] = useState<{ keep: string; merge: string } | null>(null)
   const [sweeping, setSweeping] = useState(false)
   const sweep = async () => {
@@ -243,6 +245,11 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
   const focusId = focus && live.some((i) => i.rid === focus) ? focus : live[0]?.rid ?? null
   const focusIdx = live.findIndex((i) => i.rid === focusId)
   const tickedLive = live.filter((i) => ticked.has(i.rid))
+  // Records of one name joined by open pairs, three or more, offered as one merge (D402). A group
+  // with a pair handled or being merged here waits for the server's next answer (Review's
+  // resolve and undo refetch every review.* query).
+  const sameName = useRpc('review.sameNameGroups', kind === 'merges' && vault ? { vault } : null, { staleTime: 5_000 })
+  const nameGroups = (sameName.data?.groups ?? []).filter((g) => g.rids.every((r) => !triage.hidden.has(r) && !merging.has(r)))
 
   const say = (text: string, undo = false) => {
     setFlash({ text, undo })
@@ -305,6 +312,48 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
       setMerging((m) => {
         const n = new Set(m)
         rids.forEach((r) => n.delete(r))
+        return n
+      })
+    }
+  }
+
+  const mergeGroup = async (g: SameNameGroup) => {
+    if (!engine.ready) return toast({ kind: 'info', title: 'Not yet', body: ENGINE_WAIT_OTHER })
+    const inDocs = (r: { doc_count: number }) => plural(r.doc_count, 'document')
+    const list = g.merge.slice(0, 8).map((r) => `${r.name} (${inDocs(r)})`).join('; ')
+    const left = g.left_out.length
+      ? ` ${g.left_out.length === 1 ? 'One record is' : `${g.left_out.length} records are`} left out, because you marked ${g.left_out.length === 1 ? 'it' : 'them'} Not the same as a record in the group: ${g.left_out.map((r) => `${r.name} (${inDocs(r)}), not the same as ${r.not_same_as.name} (${inDocs(r.not_same_as)})`).join('; ')}.`
+      : ''
+    const ok = await window.watchdog.dialog.confirm({
+      title: `Merge all ${g.size} records named “${g.name}”?`,
+      message: `${g.keep.name} (${inDocs(g.keep)}) is kept: the record named in the most documents. Merged into it: ${list}${g.merge.length > 8 ? `; and ${g.merge.length - 8} more` : ''}.${left}`,
+      detail: 'The records are merged one at a time. Each merge is listed under Recent merges, where it can be undone on its own. If one fails, the others still go ahead.',
+      confirm: `Merge ${g.size} records`
+    })
+    if (!ok) return
+    setMerging((m) => new Set([...m, ...g.rids]))
+    setTicked(new Set())
+    setMergeReport(null)
+    setFocus(nextAfter(g.rids))
+    try {
+      const job = await startJob('merge-entity-group', { keep: g.keep.id, merge: g.merge.map((r) => r.id) }, `Merging ${g.size} records named ${g.name}`)
+      say(`Merging ${g.size} records named “${g.name}”…`)
+      const done = await waitForJob(job.id)
+      const result = (done.result as MergeGroupResult | null) ?? null
+      invalidate('vault.', 'review.')
+      if (result) {
+        setMergeReport(result.failed.length ? { ...result, noun: 'record' } : null)
+        const out = result.left_out.length ? `; ${result.left_out.length} left out as Not the same` : ''
+        say(`Merged ${plural(result.merged.length, 'record')} into ${g.keep.name}${result.failed.length ? `; ${result.failed.length} could not be merged` : ''}${out}. Each can be undone under Recent merges.`)
+      } else {
+        setMergeReport({ noun: 'record', merged: [], skipped: [], failed: g.merge.map((r) => ({ keep: g.keep.id, merge: r.id, keep_name: g.keep.name, merge_name: r.name, error: done.state === 'cancelled' ? 'Stopped before it finished.' : 'The merge did not finish. Open Activity to see what it reported.' })) })
+      }
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not start the merge', body: errorMessage(e) })
+    } finally {
+      setMerging((m) => {
+        const n = new Set(m)
+        g.rids.forEach((r) => n.delete(r))
         return n
       })
     }
@@ -625,10 +674,10 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
       {mergeReport && mergeReport.failed.length > 0 && (
         <Callout
           tone="warning"
-          title={`${plural(mergeReport.failed.length, 'pair')} could not be merged`}
+          title={`${plural(mergeReport.failed.length, mergeReport.noun ?? 'pair')} could not be merged`}
           action={<Button size="sm" variant="ghost" icon={X} tip="Dismiss" onClick={() => setMergeReport(null)} />}
         >
-          {mergeReport.merged.length ? `${plural(mergeReport.merged.length, 'pair')} merged; those merges stand. ` : ''}
+          {mergeReport.merged.length ? `${plural(mergeReport.merged.length, mergeReport.noun ?? 'pair')} merged; those merges stand. ` : ''}
           <ul className="rv-tt-failed">
             {mergeReport.failed.map((f, i) => (
               <li key={i}>
@@ -637,6 +686,27 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
             ))}
           </ul>
         </Callout>
+      )}
+
+      {kind === 'merges' && nameGroups.length > 0 && (
+        <div className="rv-groups">
+          {nameGroups.map((g) => (
+            <div key={g.key} className="rv-group">
+              <GitMerge className="rv-group-icon" />
+              <span className="rv-group-text">
+                <b>{g.size} records named “{g.name}”</b>
+                <span className="faint">
+                  {' '}
+                  · {plural(g.rids.length, 'possible pair')}
+                  {g.left_out.length ? ` · ${plural(g.left_out.length, 'record')} marked Not the same, left out` : ''}
+                </span>
+              </span>
+              <Button size="sm" icon={GitMerge} disabled={!engine.ready} tip={engine.ready ? `Keeps ${g.keep.name}, the record in the most documents` : ENGINE_WAIT_OTHER} onClick={() => void mergeGroup(g)}>
+                Merge all {g.size} records named “{g.name}”…
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
 
       {error ? (

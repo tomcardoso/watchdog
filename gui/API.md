@@ -28,7 +28,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
   then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`,
-  `requeue`, `unreadable-retry`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
+  `requeue`, `unreadable-retry`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `merge-entity-group`, `undo-merge`, `rebuild-notes`,
   `recheck-contradictions`, `migrate`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
@@ -345,6 +345,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
 | `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |
+| `merge-entity-group` | yes | `{keep, merge: string[]}` | `merge-entity-pairs`' result plus `left_out: [{id, name, not_same_as, not_same_as_name}]`; exit 1 when any failed. Each record merged into `keep` through `merge-entity-pairs`; a record marked Not the same as `keep` or as one merged before it is left out (D402) | index |
 | `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
@@ -491,6 +492,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
+| `review.sameNameGroups` | `{vault}` | `{groups: SameNameGroup[]}` — open possible-same pairs joining three or more records of one name and type: `{key, name, type, size, keep, merge, left_out, rids}`, the kept record first by documents then name length (D402) |
 
 `merge-entities` (after the app's own confirmation), `add-contradiction`, `watchlist-check` and
 `lead-sweep` are operations (see [operations](#operations)).

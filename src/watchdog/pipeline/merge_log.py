@@ -268,6 +268,93 @@ def open_candidates(vault: Path, entities: dict | None = None,
     return out
 
 
+def group_rank(entity: dict) -> tuple:
+    """Sort key putting first the record a merge keeps: the one named in the most documents, then
+    the longer name, then the id (Review's Merge ticked, D328)."""
+    return (-len(entity.get("appears_in") or []), -len(entity.get("name") or ""), entity.get("id") or "")
+
+
+def leave_out_not_same(order: list[str], dismissed) -> tuple[list[str], list[tuple[str, str]]]:
+    """Walk `order` (the kept record first) and keep each record unless the reporter marked it
+    "Not the same" as one already kept: merging both into one record would join them (D402).
+    Returns the records kept, and `(left out, the record it is not the same as)` for the rest."""
+    from watchdog.pipeline.identity import pair_id
+    kept: list[str] = []
+    left: list[tuple[str, str]] = []
+    for eid in order:
+        if eid in kept:
+            continue
+        clash = next((k for k in kept if pair_id(k, eid) in dismissed), None)
+        if clash:
+            left.append((eid, clash))
+        else:
+            kept.append(eid)
+    return kept, left
+
+
+def same_name_groups(vault: Path, entities: dict | None = None,
+                     resolved: frozenset[str] | None = None) -> list[dict]:
+    """Open "possible same" pairs that join three or more records of one name and type, as groups
+    Review offers to merge in one go (D402). Records are grouped through the open pairs between
+    them; the name is compared as `identity.name_key` folds it. Each group names the record kept
+    (`group_rank`), the records merged into it, the ones left out because the reporter marked them
+    "Not the same" as a record in the group, and the Review ids of its open pairs. A group is
+    offered only when at least three records would become one (`size`): two are one pair."""
+    from watchdog.pipeline import resolutions
+    from watchdog.pipeline.identity import name_key
+    from watchdog.pipeline.json_io import _read_json_or
+    if entities is None:
+        entities = _read_json_or(Path(vault) / ".watchdog" / "registry" / "entities.json", {})
+    resolved = resolved if resolved is not None else resolutions.resolved_ids(vault)
+    dismissed = frozenset(r for r in resolved if r.startswith("same:"))
+
+    def key(eid: str) -> tuple[str, str]:
+        e = entities.get(eid) or {}
+        return (str(e.get("type") or "").lower(), name_key(e.get("name") or ""))
+
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    pairs: list[tuple[str, str, str]] = []
+    for c in open_candidates(vault, entities=entities, resolved=resolved):
+        a, b = c["a"]["id"], c["b"]["id"]
+        if key(a) != key(b) or not key(a)[1]:
+            continue
+        pairs.append((c["id"], a, b))
+        parent[find(a)] = find(b)
+
+    members: dict[str, set[str]] = {}
+    for _, a, b in pairs:
+        members.setdefault(find(a), set()).update((a, b))
+    out = []
+    for root, ids in members.items():
+        if len(ids) < 3:
+            continue
+        order = sorted(ids, key=lambda i: group_rank({**entities[i], "id": i}))
+        kept, left = leave_out_not_same(order, dismissed)
+        if len(kept) < 3:   # two records are one pair, which Merge ticked already does
+            continue
+
+        def row(eid: str) -> dict:
+            e = entities[eid]
+            return {"id": eid, "name": e.get("name") or eid, "type": e.get("type"),
+                    "doc_count": len(e.get("appears_in") or [])}
+        keep = row(kept[0])
+        out.append({
+            "key": "|".join(key(kept[0])), "name": keep["name"], "type": keep["type"],
+            "size": len(kept), "keep": keep, "merge": [row(i) for i in kept[1:]],
+            "left_out": [{**row(i), "not_same_as": row(o)} for i, o in left],
+            "rids": sorted(cid for cid, a, _ in pairs if find(a) == root),
+        })
+    out.sort(key=lambda g: (-g["size"], g["name"]))
+    return out
+
+
 # ── merges.md ─────────────────────────────────────────────────────────────────────────────────
 
 _DECIDED = {"rule": "Watchdog's rules", "model": "the AI model", "reporter": "a reporter"}

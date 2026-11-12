@@ -242,6 +242,14 @@ def merge_log(vault: str, limit: int = 200) -> dict:
             "undo_available": not _log.too_new(data)}
 
 
+@method("review.sameNameGroups")
+def same_name_groups(vault: str) -> dict:
+    """Open "possible same" pairs that join three or more records of one name, as groups Review
+    offers to merge in one go with `merge-entity-group` (D402)."""
+    from watchdog.pipeline import merge_log
+    return {"groups": merge_log.same_name_groups(require_vault(vault))}
+
+
 @method("review.mergePreview")
 def merge_preview(vault: str, keep: str, merge: str) -> dict:
     """Both entities side by side before `merge-entities`, and whether both carry a Summary
