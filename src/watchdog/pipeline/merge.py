@@ -152,10 +152,20 @@ def merge_extractions(sections: list[dict], sha: str | None = None) -> dict:
                     "_surfaces": set(),
                     "roles": [],
                 }
+                if ent.get("name_kind"):
+                    cur["name_kind"] = ent["name_kind"]
                 by_id[eid] = cur
 
+            # The name's kind (D401) goes with the name kept; two sections disagreeing about the
+            # same name keep "stand-in", the cautious reading.
+            kind = ent.get("name_kind")
             if len(ent.get("name", "")) > len(cur["name"]):
                 cur["name"] = ent["name"]
+                cur.pop("name_kind", None)
+                if kind:
+                    cur["name_kind"] = kind
+            elif kind and ent.get("name", "") == cur["name"] and cur.get("name_kind") != kind:
+                cur["name_kind"] = "stand-in" if cur.get("name_kind") else kind
             cur["type"] = cur["type"] or ent.get("type", "")
 
             for nm in surfaces:
