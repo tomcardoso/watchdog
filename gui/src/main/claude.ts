@@ -40,6 +40,11 @@ export function parseAuthStatus(stdout: string): ClaudeStatus {
 
 const POLL_MS = 2000
 const GIVE_UP_MS = 10 * 60 * 1000
+// Once the status reports the login, how long the login command is left to exit by itself before
+// it is stopped (#840). It serves the localhost page the browser is sent back to, and the login
+// can be recorded before the browser has loaded that page: stopping the command at once could
+// leave the browser showing "nothing found at localhost" though sign-in worked.
+const EXIT_GRACE_MS = 8000
 
 export class ClaudeSignIn {
   private cli: () => string | null
@@ -100,6 +105,7 @@ export class ClaudeSignIn {
         done = true
         clearInterval(poll)
         clearTimeout(giveUp)
+        clearTimeout(grace)
         const c = this.child
         this.child = null
         this.stop = null
@@ -126,8 +132,13 @@ export class ClaudeSignIn {
         if (usesSubscription(this.status())) finish({ ok: true, message: null })
         else finish({ ok: false, message: code === 0 ? 'Sign-in did not complete.' : tail.slice(-2).join(' ') || 'Sign-in did not complete.' })
       })
+      let grace: ReturnType<typeof setTimeout> | undefined
       const poll = setInterval(() => {
-        if (usesSubscription(this.status())) finish({ ok: true, message: null })
+        if (!usesSubscription(this.status())) return
+        // Signed in. The command usually exits now, and its `close` above finishes; if it has
+        // not after the grace period, finish and stop it.
+        clearInterval(poll)
+        grace = setTimeout(() => finish({ ok: true, message: null }), EXIT_GRACE_MS)
       }, POLL_MS)
       const giveUp = setTimeout(() => finish({ ok: false, message: 'Sign-in timed out. Try again.' }), GIVE_UP_MS)
       this.stop = () => finish({ ok: false, message: 'Sign-in was cancelled.' })

@@ -83,6 +83,8 @@ class _RunState:
     # run began, keyed by the reset time it was counted from (D324). None outside a run.
     vault: "Path | None" = None
     spend_baseline: "tuple[str | None, float] | None" = None
+    # The estimate this run was started on (D404), kept with its usage; None when it had none.
+    estimate: "dict | None" = None
     # Saving each call's reasoning (D368): on for the run when the `save_reasoning` setting is on
     # or a benchmark arm is running; `reasoning_seq` numbers the run's reasoning files.
     save_reasoning: bool = False
@@ -461,7 +463,7 @@ def usage_files(vault: Path) -> list[Path]:
 
 
 def _write_usage_file(vault: Path, records: list[dict], ts: str,
-                      est_input_tokens: int | None = None) -> str:
+                      est_input_tokens: int | None = None, estimate: dict | None = None) -> str:
     """Write `records` to `.watchdog/registry/usage/usage-<ts>.json` for an explicit `ts`,
     shared by `_write_usage` (fresh timestamp, end of run) and `_consolidate_orphaned_usage`
     (the orphaned partial's own timestamp, #407).
@@ -471,20 +473,25 @@ def _write_usage_file(vault: Path, records: list[dict], ts: str,
     this run's successfully extracted documents (`_compact_result`'s own field), so a later
     the estimate can compare estimate to actual across this vault's own history the same way
     `cost_estimate` already does for dollars. Orphaned-partial recovery has no such per-run total
-    to hand in (the individual call records don't carry it) and leaves it out."""
+    to hand in (the individual call records don't carry it) and leaves it out.
+
+    `estimate` (D404) is the estimate the run was started on (`ingest_setup.estimate_record`),
+    written as the file's own `estimate` key so it can be set against the calls beside it."""
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     relpath = f".watchdog/registry/usage/usage-{ts}.json"
     totals = _usage_totals(records)
     if est_input_tokens is not None:
         totals["est_input_tokens"] = est_input_tokens
-    (vault / relpath).write_text(
-        json.dumps({"calls": records, "totals": totals}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
+    data = {"calls": records, "totals": totals}
+    if estimate is not None:
+        data["estimate"] = estimate
+    (vault / relpath).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return relpath
 
 
-def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None = None) -> str | None:
+def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None = None,
+                 estimate: dict | None = None) -> str | None:
     """Persist this run's per-call token/cost telemetry to
     `.watchdog/registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
     in #319 since this one accumulates a new file every run, unlike the fixed-size registries
@@ -492,7 +499,8 @@ def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None 
     model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    return _write_usage_file(vault, records, _free_usage_ts(vault), est_input_tokens=est_input_tokens)
+    return _write_usage_file(vault, records, _free_usage_ts(vault), est_input_tokens=est_input_tokens,
+                             estimate=estimate)
 
 
 def _free_usage_ts(vault: Path) -> str:
@@ -535,7 +543,8 @@ def _consolidate_orphaned_usage(vault: Path) -> None:
 
 
 def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
-                     config_snapshot: dict | None = None) -> None:
+                     config_snapshot: dict | None = None,
+                     estimate: dict | None = None) -> None:
     """Start this run's usage accumulation (#407): first consolidate any orphaned partial from
     a previous aborted run, then open this run's own `usage-<ts>.partial.jsonl` that
     `_record_usage` appends each call's record to as it completes. Called by every top-level
@@ -557,6 +566,7 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     _run.admission_reserved.clear()
     _run.vault = Path(vault)
     _run.spend_baseline = None
+    _run.estimate = estimate
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -581,7 +591,14 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     mirrored onto the returned `totals` so both the persisted file and the in-memory summary
     agree. The two `finalize()` exit points never extract anything, so they call this with the
     default `None` and no such field appears."""
-    path = _write_usage(vault, _run.usage, est_input_tokens=est_input_tokens)
+    path = _write_usage(vault, _run.usage, est_input_tokens=est_input_tokens, estimate=_run.estimate)
+    if path and _run.estimate is not None and _run.telemetry_on:
+        try:   # like a call's row, a telemetry write never fails the run it observes
+            telemetry_db.record_estimate(_run.estimate, vault=vault, run_id=_run.run_id,
+                                         benchmark_arm_id=_run.benchmark_arm_id)
+        except Exception as e:  # noqa: BLE001
+            _log(vault, f"WARN  telemetry: the run's estimate was not recorded ({e})")
+    _run.estimate = None
     telemetry_db.close()
     _run.telemetry_on = False
     totals = _usage_totals(_run.usage) if _run.usage else None
@@ -3565,7 +3582,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_token_budget: int | None = None,
               benchmark_arm_id: str | None = None,
               only_shas: list[str] | None = None,
-              withhold_brief: bool = False) -> dict:
+              withhold_brief: bool = False,
+              estimate: dict | None = None) -> dict:
     """Extract every queued document (at most `concurrency` at a time), then finalize.
 
     Per-stage `*_model`, `*_effort` and `*_backend` choose each stage's model; a non-Claude backend
@@ -3575,6 +3593,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     - `skip_finalize`: stop after extraction, leaving the batch pending for post-processing.
     - `force`: re-extract even when an extraction is cached.
     - `skip_briefing`, `finalizer_overrides`: passed to `finalize`.
+    - `estimate`: the estimate the run was started on, kept with its usage (D404).
     - `verify`: add the verification pass (not available on batch backends).
     - `extract_token_budget`: tokens/minute ceiling for admission control; `None` uses the
       provider's reported limit.
@@ -3609,7 +3628,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             raise ValueError(f"the verification pass is not supported with {extract_backend}: it "
                              f"re-reads a document immediately after extracting it, and a batch's "
                              f"results arrive hours later in a separate run")
-        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
+        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot,
+                         estimate=estimate)
         brief = None if withhold_brief else _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
@@ -3632,7 +3652,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         brief = None if withhold_brief else _read_brief(vault)
         # One line per document as its state changes, through the extraction phase (#151).
         _run.board = progress.Lines()
-        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
+        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot,
+                         estimate=estimate)
         # Admission control (#563): every queued document's pre-flight output is read once, up
         # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
         # per-document token estimate `_admit` gates on (`section.est_tokens_from_pages`, the same

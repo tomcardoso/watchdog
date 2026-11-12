@@ -664,6 +664,7 @@ def test_finalize_cost_estimate_empty_tmp_returns_zero(tmp_path):
     vault = _make_vault(tmp_path)
     est = finalize_cost_estimate(vault, backend="claude-api")
     assert est == {"docs": 0, "est_tokens": 0, "cost_low": None, "cost_high": None, "runs_used": 0,
+                   "basis": None,
                    "same_name_groups": {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0},
                    "housekeeping": {"items": 0, "calls": 0, "est_tokens": 0}}
 
@@ -693,71 +694,196 @@ def test_finalize_cost_estimate_counts_the_same_name_group_calls(tmp_path):
     assert est["est_tokens"] > groups["est_tokens"]
 
 
-def test_finalize_cost_estimate_no_standalone_history_omits_cost(tmp_path):
-    """A staged batch with no prior *standalone* finalize to price against gets tokens only —
-    same 'not enough history yet' treatment `cost_estimate` gives a first-run vault."""
-    vault = _make_vault(tmp_path)
-    _stage_finalize_corpus(vault, {"sha1": "a" * 400})
-
-    est = finalize_cost_estimate(vault, backend="claude-api")
-
-    assert est["docs"] == 1
-    assert est["est_tokens"] > 0
-    assert est["cost_low"] is None and est["runs_used"] == 0
+def _row(task, input_tokens, cost_usd, output_tokens=0, backend="claude-api"):
+    """One usage row with the fields the stage history reads (D403)."""
+    return {"task": task, "backend": backend, "model": "m", "input_tokens": input_tokens,
+            "output_tokens": output_tokens, "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "cost_usd": cost_usd}
 
 
-def test_finalize_cost_estimate_derives_range_from_standalone_finalize_history(tmp_path):
-    vault = _make_vault(tmp_path)
-    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})   # result_sha1.json (4035 chars) + notes (4000) → 2008 est_tokens
-    finalize_calls = [{"task": "reconcile"}, {"task": "entity-synthesis"}]
-    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, calls=finalize_calls)
-    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=2.0, calls=finalize_calls)
-
-    est = finalize_cost_estimate(vault, backend="claude-api")
-
-    assert est["docs"] == 1
-    assert est["est_tokens"] == 2008
-    assert est["cost_low"] == 2.008
-    assert est["cost_high"] == 4.016
-    assert est["runs_used"] == 2
+def _real(vault, est_tokens, model=None):
+    from watchdog import model_client
+    return est_tokens * model_client.tokenizer_ratio(model, "claude-api", vault)
 
 
-def test_finalize_cost_estimate_excludes_runs_with_extraction_calls(tmp_path):
-    """A `run()` ingest's own finalize tail shares its usage file with extraction — that file
-    must not be mistaken for a standalone finalize's $/token profile."""
+def test_finalize_cost_estimate_without_history_is_at_list_price(tmp_path):
+    """With no priced post-processing here, the staged batch is priced at the finalizer's list
+    price and says so (D403), rather than shown as tokens only."""
+    from watchdog import model_catalog, model_client
+    from watchdog.pipeline import ingest_setup
     vault = _make_vault(tmp_path)
     _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
-    mixed_calls = [{"task": "extract"}, {"task": "reconcile"}]
-    standalone_calls = [{"task": "reconcile"}, {"task": "briefing"}]
-    _write_usage_file(vault, "20260101T000000Z", input_tokens=999999, cost_usd=999.0, calls=mixed_calls)
-    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0, calls=standalone_calls)
+
+    est = finalize_cost_estimate(vault, backend="claude-api", model="haiku")
+
+    real = _real(vault, est["est_tokens"], "haiku")
+    low_r, high_r = ingest_setup._POST_OUTPUT_RATIO
+    model_id = model_client.resolve_model_id("haiku")
+    assert est["basis"] == "list-price" and est["runs_used"] == 0
+    assert est["cost_low"] == pytest.approx(model_catalog.list_price(model_id, real, real * low_r))
+    assert est["cost_high"] == pytest.approx(model_catalog.list_price(model_id, real, real * high_r))
+
+
+def test_finalize_cost_estimate_takes_its_rate_from_post_processing_rows(tmp_path):
+    """The rate is dollars per input token over a run's post-processing rows only, whether or not
+    the run also extracted (D403): the extraction rows of a mixed run are left out of it."""
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})   # 2008 est tokens
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[
+        _row("extract", 999_999, 999.0), _row("reconcile", 600, 0.6), _row("briefing", 400, 0.4)])
+    _write_usage_file(vault, "20260102T000000Z", 0, None, calls=[
+        _row("reconcile", 1000, 2.0)])
 
     est = finalize_cost_estimate(vault, backend="claude-api")
 
-    assert est["runs_used"] == 1   # only the standalone run counted
-    assert est["cost_low"] == est["cost_high"] == 2.008
+    real = _real(vault, 2008)
+    assert est["est_tokens"] == 2008 and est["basis"] == "history" and est["runs_used"] == 2
+    assert est["cost_low"] == pytest.approx(real * 0.001)
+    assert est["cost_high"] == pytest.approx(real * 0.002)
+
+
+def test_finalize_cost_estimate_skips_runs_with_no_cost(tmp_path):
+    """A subscription run records no dollars, so it is no rate."""
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[_row("reconcile", 1000, None)])
+
+    assert finalize_cost_estimate(vault, backend="claude-api")["basis"] == "list-price"
 
 
 def test_finalize_cost_estimate_usage_files_param_overrides_vault_history(tmp_path):
-    """Same override as `cost_estimate`'s own (issue #478), for the standalone-`bark` path."""
+    """Same override as `cost_estimate`'s own (issue #478), for the standalone path."""
     vault = _make_vault(tmp_path)
     _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
-    standalone_calls = [{"task": "reconcile"}]
-    _write_usage_file(vault, "20260101T000000Z", input_tokens=999999, cost_usd=999.0,
-                      calls=standalone_calls)  # ignored
-
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[_row("reconcile", 1, 999.0)])
     other = tmp_path / "elsewhere"
     other.mkdir()
     uf = other / "usage-20260102T000000Z.json"
-    uf.write_text(json.dumps({"calls": standalone_calls, "totals": {
-        "input_tokens": 1000, "output_tokens": 0, "cache_read_tokens": 0,
-        "cache_write_tokens": 0, "cost_usd": 1.0,
-    }}))
+    uf.write_text(json.dumps({"calls": [_row("reconcile", 1000, 1.0)], "totals": {}}))
 
     est = finalize_cost_estimate(vault, backend="claude-api", usage_files=[uf])
 
     assert est["runs_used"] == 1
-    assert est["cost_low"] == est["cost_high"] == 2.008
+    assert est["cost_low"] == est["cost_high"] == pytest.approx(_real(vault, 2008) * 0.001)
+
+
+# ── the Add documents estimate: two lines (D403, #820) ──────────────────────────
+
+def _queue_doc(vault, sha="abc123", chars=4000):
+    (vault / ".watchdog" / "queue" / f"{sha}.json").write_text(json.dumps({
+        "filename": "x.pdf", "page_count": 3, "sha256": sha,
+        "pages": [{"page": 1, "markdown": "word " * (chars // 5)}]}))
+
+
+def test_run_cost_estimate_first_run_is_at_list_price_on_whole_prompts(tmp_path, monkeypatch):
+    """A first run gets a dollar figure (D403): both lines at list price, extraction on the
+    planned whole prompts (far more than the document text of a short file), post-processing
+    projected from extraction's expected output plus its fixed prompts."""
+    from watchdog import model_catalog, model_client
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[9000.0, 3000.0]])
+
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    ex, post = est["extraction"], est["post"]
+    model_id = model_client.resolve_model_id("haiku")
+    low_r, high_r = ingest_setup._EXTRACT_OUTPUT_RATIO
+    assert ex["tokens_high"] == 12000.0 and est["basis"] == ex["basis"] == post["basis"] == "list-price"
+    assert ex["cost_low"] == pytest.approx(model_catalog.list_price(model_id, 12000, 12000 * low_r))
+    assert ex["cost_high"] == pytest.approx(model_catalog.list_price(model_id, 12000, 12000 * high_r))
+    output = 12000 * (low_r + high_r) / 2
+    fixed = ingest_setup._post_fixed_est() * model_client.tokenizer_ratio("haiku", "claude-api", vault)
+    k_low, k_high = ingest_setup._POST_PER_OUTPUT_TOKEN
+    assert post["tokens_low"] == pytest.approx(fixed + output * k_low)
+    assert post["tokens_high"] == pytest.approx(fixed + output * k_high)
+    assert est["cost_low"] == pytest.approx(ex["cost_low"] + post["cost_low"])
+    assert est["cost_high"] == pytest.approx(ex["cost_high"] + post["cost_high"])
+
+
+def test_run_cost_estimate_uses_each_stages_own_history(tmp_path, monkeypatch):
+    """With priced runs, each line takes its own rate from its own rows, and post-processing's
+    size follows this investigation's measured input per extraction output token."""
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+    # One run: extraction sent 1,000 tokens and wrote 200 for $1 (classification's $0.50 rides
+    # in extraction's dollars); post-processing sent 800 tokens for $0.40.
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[
+        _row("classify", 300, 0.5), _row("extract", 1000, 1.0, output_tokens=200),
+        _row("reconcile", 800, 0.4)])
+
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    assert est["basis"] == "history" and est["runs_used"] == 1
+    assert est["extraction"]["cost_low"] == est["extraction"]["cost_high"] == pytest.approx(10_000 * 0.0015)
+    post_tokens = 10_000 * 0.2 * (800 / 200)
+    assert est["post"]["tokens_low"] == est["post"]["tokens_high"] == pytest.approx(post_tokens)
+    assert est["post"]["cost_high"] == pytest.approx(post_tokens * 0.0005)
+    assert est["cost_high"] == pytest.approx(15.0 + post_tokens * 0.0005)
+
+
+def test_run_cost_estimate_subscription_shows_no_dollars(tmp_path, monkeypatch):
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-agent-sdk",
+                                         post_backend="claude-agent-sdk")
+
+    assert est["subscription"] is True and est["cost_low"] is None and est["cost_high"] is None
+    assert est["extraction"]["cost_low"] is None and est["post"]["cost_low"] is None
+
+
+def test_run_cost_estimate_leaves_a_subscription_post_processing_unpriced(tmp_path, monkeypatch):
+    """Extraction on a key and post-processing on a subscription: the total is extraction's."""
+    from watchdog.ops.ingest import _format_cost_estimate
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000_000.0]])
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-agent-sdk")
+
+    assert est["post"]["cost_low"] is None
+    assert est["cost_high"] == pytest.approx(est["extraction"]["cost_high"])
+    text = _format_cost_estimate(est)
+    assert "Extraction about $" in text and "Post-processing is not priced" in text
+    assert "at list price" in text
+
+
+def test_format_cost_estimate_says_each_basis_when_they_differ():
+    from watchdog.ops.ingest import _format_cost_estimate
+    est = {"documents": 1, "pages": 2, "est_tokens": 1, "cost_low": 3.0, "cost_high": 5.004,
+           "runs_used": 1, "basis": "list-price", "subscription": False,
+           "extraction": {"tokens_high": 9000, "cost_low": 3.0, "cost_high": 5.0,
+                          "basis": "history", "runs_used": 1},
+           "post": {"cost_low": 0.001, "cost_high": 0.004, "basis": "list-price", "runs_used": 0}}
+    assert _format_cost_estimate(est).splitlines()[1] == (
+        "  Extraction about $3.00-5.00 (based on your last run) · post-processing under $0.01 "
+        "(at list price, with no finished runs here to measure from; a likely ceiling) · "
+        "total about $3.00-5.00")
+
+
+def test_format_cost_estimate_shows_both_lines_and_the_total():
+    from watchdog.ops.ingest import _format_cost_estimate
+    est = {"documents": 18, "pages": 410, "est_tokens": 1, "cost_low": 11.1, "cost_high": 16.4,
+           "runs_used": 3, "basis": "history", "subscription": False,
+           "extraction": {"tokens_low": 2_100_000, "tokens_high": 2_100_000, "cost_low": 9.0,
+                          "cost_high": 12.0, "basis": "history", "runs_used": 3},
+           "post": {"tokens_low": 1, "tokens_high": 2, "cost_low": 2.1, "cost_high": 4.4,
+                    "basis": "history", "runs_used": 3}}
+    assert _format_cost_estimate(est).splitlines() == [
+        "  18 documents · ~410 pages · est. ~2.1M tokens in for extraction",
+        "  Extraction about $9.00-12 · post-processing about $2.10-4.40 · total about $11-16 "
+        "(based on your last 3 runs)"]
 
 
 def test_finalize_cost_estimate_subscription_backend_never_shows_cost(tmp_path):
@@ -899,3 +1025,102 @@ def test_finalize_cost_estimate_all_models_uses_standalone_finalize_history(tmp_
 
     assert {r["id"] for r in rows} == {m["id"] for m in all_models()}
     assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)
+
+
+# ── the estimate a run keeps (D404) ─────────────────────────────────────────────
+
+def _held(vault, documents=3, entities=5):
+    reg = vault / ".watchdog" / "registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    (reg / "documents.json").write_text(json.dumps({f"d{i}": {} for i in range(documents)}))
+    (reg / "entities.json").write_text(json.dumps({f"e{i}": {} for i in range(entities)}))
+
+
+def test_run_cost_estimate_warns_when_the_registry_is_not_in_the_forecast(tmp_path, monkeypatch):
+    """An investigation that already holds documents, with no earlier run that did both stages,
+    is told its post-processing line may be low; a first batch and a measured ratio are not."""
+    from watchdog.ops.ingest import _format_cost_estimate
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000_000.0]])
+    args = dict(model="haiku", post_backend="claude-api", post_model="haiku")
+
+    first = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert first["post_may_be_low"] is False
+    assert "may cost more" not in _format_cost_estimate(first)
+
+    _held(vault)
+    held = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert held["post_may_be_low"] is True
+    assert "Post-processing may cost more than shown" in _format_cost_estimate(held)
+
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[
+        _row("extract", 1000, 1.0, output_tokens=200), _row("reconcile", 800, 0.4)])
+    measured = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert measured["post_may_be_low"] is False
+
+
+def test_estimate_record_keeps_both_lines_and_the_registry_size(tmp_path, monkeypatch):
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    _held(vault, documents=3, entities=5)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    rec = ingest_setup.estimate_record(vault, est)
+
+    assert rec["registry"] == {"entities": 5, "documents": 3} and rec["documents"] == 1
+    assert rec["extraction"]["tokens_high"] == 10_000.0 and rec["extraction"]["basis"] == "list-price"
+    assert rec["post"]["cost_high"] == est["post"]["cost_high"] and rec["post_may_be_low"] is True
+    json.dumps(rec)   # it is stored as JSON
+    assert ingest_setup.estimate_record(vault, {"extraction": None}) is None
+
+
+def test_a_run_keeps_its_estimate_with_its_usage_and_in_telemetry(tmp_path, monkeypatch):
+    """The estimate lands in the run's usage file and in the telemetry store under the run's id,
+    and leaves the store with the investigation when it is moved, then purged."""
+    import sqlite3
+    from watchdog import telemetry_db
+    from watchdog.pipeline import orchestrate
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(telemetry_db, "db_path", lambda: tmp_path / "telemetry.db")
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: True)
+    monkeypatch.setattr("watchdog.auth.use_investigation", lambda v: None)
+    estimate = {"version": 1, "extraction": {"cost_high": 2.0}, "registry": {"entities": 5, "documents": 3}}
+    try:
+        orchestrate._begin_usage_run(vault, estimate=estimate)
+        run_id = orchestrate._run.run_id
+        orchestrate._run.usage.append(_row("extract", 1000, 1.0))
+        path, _ = orchestrate._end_usage_run(vault)
+
+        assert json.loads((vault / path).read_text())["estimate"] == estimate
+        assert orchestrate._run.estimate is None
+        rows = sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT run_id, vault_name, estimate_json FROM run_estimates").fetchall()
+        assert [(r[0], r[1], json.loads(r[2])) for r in rows] == [(run_id, vault.name, estimate)]
+
+        moved = tmp_path / "moved"
+        assert telemetry_db.relocate_vault(vault.resolve(), moved) == 0   # no call rows to move
+        assert sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT vault_name FROM run_estimates").fetchall() == [("moved",)]
+        telemetry_db.purge_vault(moved)
+        telemetry_db.close()
+        assert sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT count(*) FROM run_estimates").fetchone()[0] == 0
+    finally:
+        telemetry_db.close()
+
+
+def test_a_run_without_an_estimate_writes_none(tmp_path, monkeypatch):
+    from watchdog import telemetry_db
+    from watchdog.pipeline import orchestrate
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: False)
+    monkeypatch.setattr("watchdog.auth.use_investigation", lambda v: None)
+    orchestrate._begin_usage_run(vault)
+    orchestrate._run.usage.append(_row("reconcile", 1000, 1.0))
+    path, _ = orchestrate._end_usage_run(vault)
+    assert "estimate" not in json.loads((vault / path).read_text())

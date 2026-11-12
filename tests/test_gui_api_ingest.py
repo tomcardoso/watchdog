@@ -27,7 +27,7 @@ def config(home, **values):
 def usage_file(vault, name="usage-20260301T000000Z", input_tokens=1000, output_tokens=200, cost=0.5):
     d = vault / ".watchdog" / "registry" / "usage"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{name}.json").write_text(json.dumps({"calls": [{"task": "extract", "model": "m"}],
+    (d / f"{name}.json").write_text(json.dumps({"calls": [{"task": "extract", "model": "m", "backend": "claude-api", "input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": cost}],
         "totals": {"input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": cost}}))
 
 
@@ -222,7 +222,7 @@ def test_estimate_dig(rich_vault, wdg_home):
     r = call("ingest.estimate", vault=V(rich_vault), stage="dig")
     assert r["estimate"]["documents"] == 2 and r["estimate"]["subscription"] is True
     assert r["estimate"]["cost_low"] is None
-    assert re.fullmatch(r"2 documents · ~8 pages · est\. ~\d+ tokens in", r["text"])
+    assert re.fullmatch(r"2 documents · ~8 pages · est\. ~\d+K? tokens in for extraction", r["text"])
     assert r["all_models"] is None
 
 

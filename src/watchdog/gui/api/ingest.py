@@ -288,8 +288,10 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
                     if failed else "The queue is empty — nothing to estimate.")
             return {"text": text, "estimate": None, "all_models": None}
         mode = resolve_auth()["mode"] if backend is None else None
-        est = ingest_setup.cost_estimate(v, queue_files, _effective_extract_backend(backend, mode),
-                                         model=plan.extract[1])
+        post_mode = resolve_auth()["mode"] if plan.post[0] is None else None
+        est = ingest_setup.run_cost_estimate(
+            v, queue_files, _effective_extract_backend(backend, mode), model=plan.extract[1],
+            post_backend=_effective_extract_backend(plan.post[0], post_mode), post_model=plan.post[1])
         text = strip_ansi(_format_cost_estimate(est)).strip()
 
         def rows_fn(vault, est_tokens):
@@ -300,7 +302,8 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
             return {"text": "Nothing to finish — run processing first.", "estimate": None,
                     "all_models": None}
         mode = resolve_auth()["mode"] if backend is None else None
-        est = ingest_setup.finalize_cost_estimate(v, _effective_extract_backend(backend, mode))
+        est = ingest_setup.finalize_cost_estimate(v, _effective_extract_backend(backend, mode),
+                                                  model=plan.post[1])
         text = strip_ansi(_format_finalize_estimate(est)).strip()
         rows_fn = ingest_setup.finalize_cost_estimate_all_models
 

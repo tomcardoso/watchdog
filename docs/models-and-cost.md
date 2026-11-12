@@ -95,7 +95,7 @@ You can keep several named keys for one provider, to bill different accounts: a 
 
 Everything mechanical runs on your computer and costs nothing: OCR, conversion, search, the lead sweep and the watchlist scan. The model is called only for classifying, extracting and the finishing steps, and each document loads only the one record skill that matches it.
 
-**Get a number first.** **Estimate cost** in the Add documents dialog quotes a batch before anything is sent, and **Compare all models** quotes it across every model. On a metered key with earlier runs in the investigation, it gives a dollar range from your own history; on a subscription, a token count.
+**Get a number first.** **Estimate cost** in the Add documents dialog quotes a batch before anything is sent, and **Compare all models** quotes it across every model. On a metered key it gives a dollar range on two lines, extraction and post-processing, with their total. Once the investigation has finished runs, both lines are priced from what those runs really cost. Before that, they are priced at the models' list prices and the estimate says so; that figure assumes no caching discount, so treat it as a likely ceiling. Post-processing is the less certain line: its size depends on how much the new documents overlap with what the investigation already holds, which cannot be known until they are read. When an investigation already holds documents but has no finished run to measure that from, the estimate says post-processing may cost more than shown. On a subscription the estimate is a token count, with no dollar figure. Each run keeps the estimate it started on beside its recorded cost, so the two can be compared later.
 
 The main levers, roughly in order of effect:
 
@@ -259,7 +259,7 @@ Each step's model is chosen in the **Models** table under **Models & keys**, not
 
 | Field | Default | What it controls |
 |---|---|---|
-| Telemetry | on | Keeps a local record of every model call (`telemetry.db` in Watchdog's settings folder): model, tokens, cost, time, and the investigation and file each call was about. It never leaves your computer and holds no document text, but it lists your documents' names, so keep it out of shared folders and backups. |
+| Telemetry | on | Keeps a local record of every model call (`telemetry.db` in Watchdog's settings folder): model, tokens, cost, time, and the investigation and file each call was about. It also keeps the cost estimate each processing run started on. It never leaves your computer and holds no document text, but it lists your documents' names, so keep it out of shared folders and backups. |
 
 ### Troubleshooting
 
