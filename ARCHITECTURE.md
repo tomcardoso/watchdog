@@ -157,8 +157,9 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   extraction and post-processing apart (`ingest_setup.run_cost_estimate`): extraction from the
   whole prompts the run plans (`planned_prompts`), post-processing projected from the output
   extraction is expected to write. Each line takes this vault's own dollars per input token from
-  that stage's usage rows (by `task`), or the stage's model at list price when it has no priced
-  run. The stand-alone post-processing estimate prices the staged batch through the same pricer
+  that stage's usage rows (by `task`), or, when it has no priced run, what the same model on the same backend cost per input token
+  in the reporter's other investigations (the telemetry store, `telemetry_db.stage_runs`, D405),
+  or failing that the stage's model at list price. The stand-alone post-processing estimate prices the staged batch through the same pricer
   (`post_stage_cost`). The all-models view still starts from the document-text estimate (chars/4,
   calibrated against this vault's past runs) and prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
   gets token counts, never dollars. For a model priced by prompt length, each document's planned

@@ -187,6 +187,33 @@ def relocate_vault(old: Path, new: Path) -> int:
                   (str(new.resolve()), new.name, str(old)))
 
 
+def stage_runs(model: str, backend: str, tasks: tuple[str, ...], limit: int) -> list[dict]:
+    """The last `limit` priced runs, across every investigation, in which `model` on `backend`
+    made calls with a task in `tasks`, newest first (D405): for each, the summed
+    ``{"input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens", "cost_usd"}``
+    of those calls. Benchmark arms and Ask Claude sessions are left out, as are runs with no cost
+    recorded (a subscription, the sample). Reads only: an absent store is not created, and any
+    failure to read it is an empty answer, since an estimate must not fail on its fallback."""
+    if not tasks or not db_path().exists():
+        return []
+    marks = ",".join("?" * len(tasks))
+    sql = f"""SELECT SUM(input_tokens), SUM(cache_read_tokens), SUM(cache_write_tokens),
+                     SUM(output_tokens), SUM(cost_usd)
+              FROM calls
+              WHERE model = ? AND backend = ? AND task IN ({marks})
+                AND benchmark_arm_id IS NULL AND run_id NOT LIKE 'session-%'
+              GROUP BY run_id, vault_path
+              HAVING SUM(cost_usd) > 0 AND SUM(input_tokens) > 0
+              ORDER BY MAX(id) DESC LIMIT ?"""
+    try:
+        with _lock:
+            rows = _connect().execute(sql, (model, backend, *tasks, limit)).fetchall()
+    except sqlite3.Error:
+        return []
+    keys = ("input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens", "cost_usd")
+    return [dict(zip(keys, (v or 0 for v in row))) for row in rows]
+
+
 def record_estimate(estimate: dict, *, vault: Path, run_id: str,
                     benchmark_arm_id: str | None = None) -> None:
     """Keep the estimate a run was started on (D404): one `run_estimates` row whose `run_id` and

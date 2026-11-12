@@ -133,6 +133,9 @@ def _estimate_basis(basis: str | None, runs: int) -> str:
     """Where an estimate's dollars come from, for the end of its line."""
     if basis == "list-price":
         return "at list price, with no finished runs here to measure from; a likely ceiling"
+    if basis == "other-investigations":
+        return ("based on this model's last "
+                + ("run" if runs == 1 else f"{runs} runs") + " across your investigations")
     return "based on your last run" if runs == 1 else f"based on your last {runs} runs"
 
 
