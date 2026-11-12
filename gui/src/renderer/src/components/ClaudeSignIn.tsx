@@ -65,6 +65,7 @@ export function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { on
       {phase === 'waiting' && url && (
         <div className="signin-note">
           If the browser did not open, <a href={url} onClick={(e) => { e.preventDefault(); void window.watchdog.shell.openExternal(url) }}>open the sign-in page</a>.
+          {' '}If your browser ends on a page that will not load, come back here: sign-in may still have worked, and this screen will say so.
         </div>
       )}
       {error && <Callout tone="danger">{error}</Callout>}
