@@ -654,7 +654,8 @@ def _shared_name_kind(a: Profile, b: Profile) -> str | None:
     any document gave a shared name as one, "proper" when every shared name some document marked
     was marked proper on both sides, else None, and the word lists decide as before (a record
     from before D401 carries no mark). A place whose shared name is a bare street ("Main Street",
-    no civic number) is left to the word lists: many towns have one."""
+    no civic number) or a single word ("Kingston") is left to the word lists: many towns have
+    the first and share the second."""
     shared = set(a.name_kinds) & set(b.name_kinds) & {name_key(s) for s in a.surfaces} \
         & {name_key(s) for s in b.surfaces}
     if not shared:
@@ -665,9 +666,15 @@ def _shared_name_kind(a: Profile, b: Profile) -> str | None:
     proper = [k for k in shared if "proper" in a.name_kinds[k] and "proper" in b.name_kinds[k]]
     if not proper:
         return None
-    if a.type == "place" and all(_bare_street(k) for k in proper):
+    if a.type == "place" and all(_bare_street(k) or _one_word(k) for k in proper):
         return None
     return "proper"
+
+
+def _one_word(key: str) -> bool:
+    """A place name of one word ("Kingston", "Victoria"): a proper name, and still shared by towns
+    in different provinces and countries, so it does not join two places on its own."""
+    return len([w for w in re.split(r"[^\w]+", key) if w]) == 1
 
 
 def _bare_street(key: str) -> bool:

@@ -615,10 +615,18 @@ def test_a_dismissed_pair_is_never_joined_on_a_proper_name():
     assert identity.classify(a, b, {identity.pair_id("a", "b")}) is None
 
 
-def test_a_proper_place_name_joins_but_a_bare_street_does_not():
+def test_a_proper_place_name_joins_but_a_bare_street_or_a_one_word_name_does_not():
+    v = identity.classify(_marked("a", "Port of Northland", "place", "proper"),
+                          _marked("b", "Port of Northland", "place", "proper"))
+    assert v["tier"] == "high" and v["rule"] == "proper-name"
+    # One word names towns in more than one province or country.
     v = identity.classify(_marked("a", "Northland", "place", "proper"),
                           _marked("b", "Northland", "place", "proper"))
-    assert v["tier"] == "high" and v["rule"] == "proper-name"
+    assert v["rule"] != "proper-name"
+    # The same one word is still a public body's or a company's own name.
+    v = identity.classify(_marked("a", "Northland", "organization", "proper"),
+                          _marked("b", "Northland", "organization", "proper"))
+    assert v["rule"] == "proper-name"
     v = identity.classify(_marked("a", "Main Street", "place", "proper"),
                           _marked("b", "Main Street", "place", "proper"))
     assert v["rule"] != "proper-name"

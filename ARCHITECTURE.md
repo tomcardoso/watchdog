@@ -389,7 +389,8 @@ figures (D394):
   type-gated harvest of labelled identifiers from facts about one entity): **high** (same
   identifier; a person's same full name plus a shared role, employer or street address; a
   non-person's same name, when every document that marked it gave it as the record's own name
-  (`name_kind: "proper"`, read by the extractor, D401), or, where any side is unmarked, a name the
+  (`name_kind: "proper"`, read by the extractor, D401; not a place's one-word or bare-street
+  name), or, where any side is unmarked, a name the
   word lists call specific) merges in code; **medium** (a person's same full name alone; a name a
   document used as a stand-in, or an unmarked short or generic name; reordered or similar names)
   goes to the model with both sides' facts and roles; **low** (initialled or partial person names) is never merged and becomes a "possible
