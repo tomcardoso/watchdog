@@ -305,7 +305,7 @@ def planned_prompts(queue_files: list[dict], model: str | None, backend: str | N
 
 
 def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
-                     vault: Path | None = None) -> dict:
+                     vault: Path | None = None, planned: list[list[float]] | None = None) -> dict:
     """Which of the queue's planned extraction calls (`planned_prompts`) will be billed at
     `model`'s long-prompt card (D366). Planning holds every call under the line, so a call counted
     here is one that a single page too large for the line forces over it.
@@ -323,7 +323,8 @@ def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | 
         return out
     out["threshold"] = tier[0]
     total = over = 0.0
-    for prompts in planned_prompts(queue_files, model, backend, vault):
+    for prompts in (planned_prompts(queue_files, model, backend, vault) if planned is None
+                    else planned):
         crossed = False
         for prompt in prompts:
             total += prompt
@@ -468,6 +469,192 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     return result
 
 
+# --- The run estimate: extraction and post-processing priced apart (D403, #820) -----------------
+
+EXTRACT_TASKS = ("extract", "extract-section")
+
+# Output tokens per whole-prompt input token, low and high, used only when this investigation has
+# no priced run to measure from. Judgement, bracketing the sample investigation's three runs
+# (extraction 0.06 to 0.16, post-processing 0.06 to 0.08); a real model at `high` effort also
+# bills its reasoning as output, which is why the high ends sit well above those.
+_EXTRACT_OUTPUT_RATIO = (0.10, 0.30)
+_POST_OUTPUT_RATIO = (0.05, 0.20)
+
+# Post-processing input tokens per extraction output token for a batch (what reconcile, entity
+# synthesis and the briefing read of it), low and high, used when no earlier run here did both
+# stages. The sample's two runs into a near-empty registry measured 3.1 and 4.6 once the fixed
+# prompts were taken out. A batch added to a large registry also pulls stored facts, which only
+# this investigation's own history can show (`_post_per_output`); the sample's two-document run
+# into a 14-document registry measured 22.
+_POST_PER_OUTPUT_TOKEN = (3.0, 5.0)
+
+# chars/4 of the prompts the small passes send whatever the batch (relationship labels, timeline,
+# dates, role targets, fact tags, request sources): about 3,000 on each of the sample's runs.
+_SMALL_PASSES_EST = 3_000
+
+
+def _stage_history(vault: Path, post: bool, max_runs: int,
+                   usage_files: list[Path] | None = None) -> list[dict]:
+    """This investigation's last `max_runs` priced runs of one stage, newest first, read from the
+    usage rows by their `task` (so a run that extracted and post-processed counts for both):
+    ``{"rate", "out", "post_per_output"}``. `rate` is dollars per input token the stage's main
+    calls really sent: for post-processing, every row in `FINALIZE_TASKS`; for extraction, the
+    `extract`/`extract-section` rows, with every other non-post-processing row's cost
+    (classification, request dedup) carried in the dollars. `out` is output per input token on
+    those rows. `post_per_output` is the run's post-processing input per extraction output token,
+    None when the run did only one stage. A run with no cost recorded (a subscription) is skipped."""
+    from watchdog.pipeline import orchestrate
+    files = orchestrate.usage_files(vault) if usage_files is None else usage_files
+    runs: list[dict] = []
+    for uf in reversed(files):
+        try:
+            calls = _read_json(uf).get("calls") or []
+        except (OSError, json.JSONDecodeError):
+            continue
+        cost = {True: 0.0, False: 0.0}
+        inp = {True: 0, False: 0}
+        out = {True: 0, False: 0}
+        for c in calls:
+            if not isinstance(c, dict):
+                continue
+            is_post = c.get("task") in orchestrate.FINALIZE_TASKS
+            cost[is_post] += c.get("cost_usd") or 0.0
+            if is_post or c.get("task") in EXTRACT_TASKS:
+                inp[is_post] += _real_input_tokens(c, c.get("backend"))
+                out[is_post] += c.get("output_tokens") or 0
+        if inp[post] <= 0 or cost[post] <= 0:
+            continue
+        runs.append({"rate": cost[post] / inp[post], "out": out[post] / inp[post],
+                     "post_per_output": inp[True] / out[False] if inp[True] and out[False] else None})
+        if len(runs) >= max_runs:
+            break
+    return runs
+
+
+def _priced(model: str | None, backend: str | None) -> str | None:
+    """The catalogue id to price `model` at list price, or None where there is no bill to project
+    (a subscription, a local model) or no price (an uncatalogued id)."""
+    from watchdog import model_catalog, model_client
+    if backend in ("claude-agent-sdk", "local"):
+        return None
+    model_id = model_client.resolve_model_id(model or model_client.DEFAULT_TIER)
+    return model_id if model_catalog.rate_card(model_id) is not None else None
+
+
+def _stage_cost(tokens_low: float, tokens_high: float, history: list[dict], model: str | None,
+                backend: str | None, output_ratio: tuple[float, float],
+                long_share: float = 0.0, long_scale: float = 1.0) -> dict:
+    """Dollars for one stage sending `tokens_low` to `tokens_high` real input tokens: at this
+    investigation's own rate per input token where `history` has one (its lowest and highest),
+    else at `model`'s list price with every input token a cache miss and output at `output_ratio`
+    (so it errs high). ``{"cost_low", "cost_high", "basis", "runs_used"}``; no figure on a
+    subscription, a local model or an unpriced one."""
+    from watchdog import model_catalog
+    out = {"cost_low": None, "cost_high": None, "basis": None, "runs_used": 0}
+    if backend in ("claude-agent-sdk", "local") or tokens_high <= 0:
+        return out
+    if history:
+        rates = [h["rate"] for h in history]
+        out.update(cost_low=tokens_low * min(rates) * long_scale,
+                   cost_high=tokens_high * max(rates) * long_scale,
+                   basis="history", runs_used=len(rates))
+        return out
+    model_id = _priced(model, backend)
+    if model_id is None:
+        return out
+    out.update(cost_low=model_catalog.list_price(model_id, tokens_low, tokens_low * output_ratio[0], long_share),
+               cost_high=model_catalog.list_price(model_id, tokens_high, tokens_high * output_ratio[1], long_share),
+               basis="list-price")
+    return out
+
+
+def _post_fixed_est() -> int:
+    """chars/4 of the instructions post-processing sends whatever the batch: one reconcile, one
+    entity-synthesis and one briefing prompt, plus the small passes' allowance."""
+    from watchdog.pipeline import prompts
+    return _SMALL_PASSES_EST + sum(len(prompts._text(name)) // 4
+                                   for name in ("reconcile", "synthesis", "briefing"))
+
+
+def post_stage_cost(vault: Path, tokens_low: float, tokens_high: float, model: str | None,
+                    backend: str | None, max_runs: int = 3,
+                    usage_files: list[Path] | None = None) -> dict:
+    """Price post-processing input of `tokens_low` to `tokens_high` real tokens: the one pricer
+    behind both the Add documents estimate (`run_cost_estimate`) and the stand-alone one
+    (`finalize_cost_estimate`), so the same work gets the same rate (#820)."""
+    return _stage_cost(tokens_low, tokens_high, _stage_history(vault, True, max_runs, usage_files),
+                       model, backend, _POST_OUTPUT_RATIO)
+
+
+def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
+                      model: str | None = None, post_backend: str | None = None,
+                      post_model: str | None = None, max_runs: int = 3) -> dict:
+    """The Add documents estimate (D403, #820): extraction and post-processing forecast and priced
+    apart, each from the whole prompts it will send rather than from chars/4 of the document text.
+
+    **Extraction** is the sum of the queue's planned calls (`planned_prompts`, the run's own
+    sectioning plan with the brief and the largest record skill), in the model's real tokens; a
+    queue preflight cannot read falls back to the calibrated document estimate. **Post-processing**
+    cannot be planned before the facts exist, so it is projected from the output extraction is
+    expected to write: at this investigation's own post-processing-input-per-extraction-output
+    ratio where an earlier run did both stages (which carries what its registry adds), else at
+    `_POST_PER_OUTPUT_TOKEN` plus the fixed prompts.
+
+    Each line is priced by `_stage_cost`: this investigation's own dollars per input token for
+    that stage's rows where it has priced runs, else the stage's model at list price (`basis`
+    says which). Returns `cost_estimate`'s keys (`cost_low`/`cost_high` are the total) plus
+    ``extraction`` and ``post`` (``{"tokens_low", "tokens_high", "cost_low", "cost_high",
+    "basis", "runs_used"}``) and ``basis``. A subscription extraction gets no dollar figure at
+    all; a subscription or local post-processing leaves its line unpriced and the total is
+    extraction's alone."""
+    from watchdog import model_client
+    base = cost_estimate(vault, queue_files, "claude-agent-sdk", max_runs, model=model)
+    result = {**base, "subscription": backend == "claude-agent-sdk", "basis": None,
+              "extraction": None, "post": None}
+    if not queue_files:
+        return result
+    planned = planned_prompts(queue_files, model, backend, vault)
+    tokens = sum(sum(p) for p in planned) or float(base["est_tokens"])
+    plan = long_prompt_plan(queue_files, model, backend, vault, planned)
+    result["long_prompt_calls"], result["long_prompt_documents"] = plan["calls"], plan["documents"]
+
+    ex_history = _stage_history(vault, False, max_runs)
+    out_ratio = (sum(h["out"] for h in ex_history) / len(ex_history) if ex_history
+                 else sum(_EXTRACT_OUTPUT_RATIO) / 2)
+    scale = 1.0
+    if plan["share"]:
+        scale = (1 - plan["share"]) + plan["share"] * _long_prompt_factor(model, out_ratio)
+    extraction = {"tokens_low": tokens, "tokens_high": tokens,
+                  **_stage_cost(tokens, tokens, ex_history, model, backend, _EXTRACT_OUTPUT_RATIO,
+                                long_share=plan["share"], long_scale=scale)}
+    result["extraction"] = extraction
+
+    # Post-processing: what it will read of the batch, projected from extraction's output.
+    output = tokens * out_ratio
+    measured = [h["post_per_output"] for h in _stage_history(vault, True, max_runs)
+                if h["post_per_output"]]
+    if measured:
+        post_low, post_high = output * min(measured), output * max(measured)
+    else:
+        fixed = _post_fixed_est() * model_client.tokenizer_ratio(post_model, post_backend, vault)
+        post_low = fixed + output * _POST_PER_OUTPUT_TOKEN[0]
+        post_high = fixed + output * _POST_PER_OUTPUT_TOKEN[1]
+    post = {"tokens_low": post_low, "tokens_high": post_high,
+            **post_stage_cost(vault, post_low, post_high, post_model, post_backend, max_runs)}
+    result["post"] = post
+
+    if result["subscription"] or extraction["cost_low"] is None:
+        result["cost_low"] = result["cost_high"] = None
+        result["runs_used"] = 0
+        return result
+    result["cost_low"] = extraction["cost_low"] + (post["cost_low"] or 0.0)
+    result["cost_high"] = extraction["cost_high"] + (post["cost_high"] or 0.0)
+    result["runs_used"] = extraction["runs_used"]
+    result["basis"] = ("history" if extraction["basis"] == "history"
+                       and post["basis"] in ("history", None) else "list-price")
+    return result
+
+
 def housekeeping_estimate(vault: Path, shas: list[str]) -> dict:
     """The housekeeping passes' share of the next post-processing (D330): for each chore, the
     prompts it would send for the staged documents `shas`, at chars/4. Returns ``{"items",
@@ -488,13 +675,15 @@ def housekeeping_estimate(vault: Path, shas: list[str]) -> dict:
 
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
-                           usage_files: list[Path] | None = None) -> dict:
-    """Pre-flight cost estimate for post-processing (`bark`): the staged `result_<sha>.json`/`notes_<sha>.md`
-    priced with the chars/4 heuristic, plus the same-name group calls `reconcile.group_estimate`
-    forecasts from the registry (#755). The $/token ratio comes only from standalone-finalize usage
-    files (every call in `orchestrate.FINALIZE_TASKS`), since a run's own finalize shares its usage
-    file with extraction. No dollar figure without that history, or on subscription auth.
-    `usage_files` replaces this vault's history, as in `cost_estimate`."""
+                           usage_files: list[Path] | None = None,
+                           model: str | None = None) -> dict:
+    """Pre-flight cost estimate for post-processing on its own: the staged
+    `result_<sha>.json`/`notes_<sha>.md` at chars/4, plus the same-name group calls
+    `reconcile.group_estimate` forecasts from the registry (#755) and the housekeeping passes,
+    turned into `model`'s real tokens and priced by `post_stage_cost`, the pricer the Add
+    documents estimate uses (D403): this investigation's own dollars per post-processing input
+    token, from any run's post-processing rows, else `model` at list price (`basis`). No dollar
+    figure on a subscription or a local model. `usage_files` replaces this vault's history."""
     tmp = vault / ".watchdog" / "tmp"
     results = sorted(tmp.glob("result_*.json"))
     docs = len(results)
@@ -523,32 +712,12 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
         chores = {"items": 0, "calls": 0, "est_tokens": 0}
     result = {"docs": docs, "est_tokens": est_tokens, "same_name_groups": groups,
               "housekeeping": chores,
-              "cost_low": None, "cost_high": None, "runs_used": 0}
+              "cost_low": None, "cost_high": None, "runs_used": 0, "basis": None}
     if backend == "claude-agent-sdk" or not docs:
         return result
-
-    from watchdog.pipeline import orchestrate
-    files = orchestrate.usage_files(vault) if usage_files is None else usage_files
-    ratios = []
-    for uf in reversed(files):
-        try:
-            data = _read_json(uf)
-        except (OSError, json.JSONDecodeError):
-            continue
-        calls = data.get("calls") or []
-        if not calls or any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
-            continue   # empty, or shares a usage file with extraction/classification
-        totals = data.get("totals", {})
-        input_tokens, cost_usd = _real_input_tokens(totals), totals.get("cost_usd")
-        if input_tokens > 0 and cost_usd:
-            ratios.append(cost_usd / input_tokens)
-        if len(ratios) >= max_runs:
-            break
-
-    if ratios:
-        result["cost_low"] = est_tokens * min(ratios)
-        result["cost_high"] = est_tokens * max(ratios)
-        result["runs_used"] = len(ratios)
+    from watchdog import model_client
+    real = est_tokens * model_client.tokenizer_ratio(model, backend, vault)
+    result.update(post_stage_cost(vault, real, real, model, backend, max_runs, usage_files))
     return result
 
 

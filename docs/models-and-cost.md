@@ -95,7 +95,7 @@ You can keep several named keys for one provider, to bill different accounts: a 
 
 Everything mechanical runs on your computer and costs nothing: OCR, conversion, search, the lead sweep and the watchlist scan. The model is called only for classifying, extracting and the finishing steps, and each document loads only the one record skill that matches it.
 
-**Get a number first.** **Estimate cost** in the Add documents dialog quotes a batch before anything is sent, and **Compare all models** quotes it across every model. On a metered key with earlier runs in the investigation, it gives a dollar range from your own history; on a subscription, a token count.
+**Get a number first.** **Estimate cost** in the Add documents dialog quotes a batch before anything is sent, and **Compare all models** quotes it across every model. On a metered key it gives a dollar range on two lines, extraction and post-processing, with their total. Once the investigation has finished runs, both lines are priced from what those runs really cost. Before that, they are priced at the models' list prices and the estimate says so; that figure assumes no caching discount, so treat it as a likely ceiling. Post-processing is the less certain line: its size depends on how much the new documents overlap with what the investigation already holds, which cannot be known until they are read. On a subscription the estimate is a token count, with no dollar figure.
 
 The main levers, roughly in order of effect:
 

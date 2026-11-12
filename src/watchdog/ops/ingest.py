@@ -116,19 +116,58 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
+def _fmt_dollars(low: float, high: float) -> str:
+    """A dollar range for an estimate line, with its qualifier: 'about $9.00-12' (whole dollars
+    from $10, cents below), 'up to $0.04' when the low end rounds to nothing, 'under $0.01'."""
+    def one(x: float) -> str:
+        return f"{x:,.0f}" if x >= 10 else f"{x:.2f}"
+    if high < 0.01:
+        return "under $0.01"
+    a, b = one(low), one(high)
+    if a == b:
+        return f"about ${a}"
+    return f"up to ${b}" if low < 0.01 else f"about ${a}-{b}"
+
+
+def _estimate_basis(basis: str | None, runs: int) -> str:
+    """Where an estimate's dollars come from, for the end of its line."""
+    if basis == "list-price":
+        return "at list price, with no finished runs here to measure from; a likely ceiling"
+    return "based on your last run" if runs == 1 else f"based on your last {runs} runs"
+
+
 def _format_cost_estimate(est: dict) -> str:
-    """Render `ingest_setup.cost_estimate`'s result as the pre-flight estimate line (#269),
-    e.g. '18 documents · ~410 pages · est. ~2.1M tokens in (~$9-12 based on your last 3 runs)'."""
+    """Render `ingest_setup.run_cost_estimate`'s result as the pre-flight estimate (#269, D403):
+    the queue, then extraction and post-processing priced apart with their total, e.g.
+    '18 documents · ~410 pages · est. ~2.1M tokens in for extraction' and 'Extraction about
+    $9.00-12 · post-processing about $2.10-4.40 · total about $11-16 (based on your last 3
+    runs)'. When the two lines are priced differently (one from history, one at list price) each
+    says its own basis. A plain `cost_estimate` result (no stage lines) renders as one figure."""
     n, pages = est["documents"], est["pages"]
+    extraction, post = est.get("extraction"), est.get("post")
+    tokens = extraction["tokens_high"] if extraction else est["est_tokens"]
     line = (f"  {n} document{'s' if n != 1 else ''} · "
             f"~{pages} page{'s' if pages != 1 else ''} · "
-            f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
-    if est["cost_low"] is not None:
-        low, high = round(est["cost_low"]), round(est["cost_high"])
-        cost = f"${low}" if low == high else f"${low}-{high}"
-        runs = est["runs_used"]
-        run_label = "last run" if runs == 1 else f"last {runs} runs"
-        line += f" (~{cost} based on your {run_label})"
+            f"est. ~{_fmt_tokens(round(tokens))} tokens in"
+            + (" for extraction" if extraction else ""))
+    if est["cost_low"] is not None and extraction:
+        ex_basis = _estimate_basis(extraction.get("basis"), extraction.get("runs_used") or 0)
+        ex = f"Extraction {_fmt_dollars(extraction['cost_low'], extraction['cost_high'])}"
+        if post and post["cost_low"] is not None:
+            post_basis = _estimate_basis(post.get("basis"), post.get("runs_used") or 0)
+            po = f"post-processing {_fmt_dollars(post['cost_low'], post['cost_high'])}"
+            total = f"total {_fmt_dollars(est['cost_low'], est['cost_high'])}"
+            if ex_basis == post_basis:
+                line += f"\n  {ex} · {po} · {total} ({ex_basis})"
+            else:
+                line += f"\n  {ex} ({ex_basis}) · {po} ({post_basis}) · {total}"
+        else:
+            line += f"\n  {ex} ({ex_basis})"
+            if post:
+                line += "\n  Post-processing is not priced: it runs on a subscription or a local model."
+    elif est["cost_low"] is not None:
+        line += (f" ({_fmt_dollars(est['cost_low'], est['cost_high'])} "
+                 f"{_estimate_basis(None, est['runs_used'])})")
     long_docs = est.get("long_prompt_documents") or 0
     if long_docs and not est.get("subscription"):
         # D366: a call over the model's long-prompt line is billed in full at the higher rate.
@@ -139,20 +178,15 @@ def _format_cost_estimate(est: dict) -> str:
 
 
 def _format_finalize_estimate(est: dict) -> str:
-    """Render `ingest_setup.finalize_cost_estimate`'s result as post-processing's
-    pre-flight line (#417), e.g. '3 documents staged · est. ~45K tokens in (~$0.18-0.24 based on
-    your last 2 standalone finalizes)'. Costs here run far smaller than ingest's own line (a
-    handful of reconciliation/synthesis calls, not a whole document's extraction), so the dollar
-    figure keeps two decimal places instead of `_format_cost_estimate`'s whole dollars."""
+    """Render `ingest_setup.finalize_cost_estimate`'s result as post-processing's pre-flight line
+    (#417, D403), e.g. '3 documents staged · est. ~45K tokens in (about $0.18-0.24 based on your
+    last 2 runs)'."""
     n = est["docs"]
     line = (f"  {n} document{'s' if n != 1 else ''} staged · "
             f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
     if est["cost_low"] is not None:
-        low, high = round(est["cost_low"], 2), round(est["cost_high"], 2)
-        cost = f"${low}" if low == high else f"${low}-{high}"
-        runs = est["runs_used"]
-        run_label = "last standalone finalize" if runs == 1 else f"last {runs} standalone finalizes"
-        line += f" (~{cost} based on your {run_label})"
+        line += (f" ({_fmt_dollars(est['cost_low'], est['cost_high'])} "
+                 f"{_estimate_basis(est.get('basis'), est['runs_used'])})")
     return line
 
 
@@ -1061,9 +1095,11 @@ def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: 
     if q and in_sample:
         say(f"Prepared answers: {q} example document{'s' if q != 1 else ''}, no model, no cost.")
     elif q:
-        from watchdog.pipeline.ingest_setup import cost_estimate
-        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]),
-                            model=extract_model)
+        from watchdog.pipeline.ingest_setup import run_cost_estimate
+        est = run_cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]),
+                                model=extract_model,
+                                post_backend=_effective_extract_backend(post_backend, a["mode"]),
+                                post_model=post_model)
         say(_format_cost_estimate(est))
         say(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                 post_backend, post_model, plan.classify_effort, plan.extract_effort,

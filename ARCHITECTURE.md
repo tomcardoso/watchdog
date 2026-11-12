@@ -153,10 +153,14 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   holder's release and heartbeat leave alone a lock another process now holds. The app's status
   calls clear abandoned locks (`gui/runlocks.py`) and report the holder. The history store's `.lock` and the registry's `.write-lock`
   (`flock`/`msvcrt`) are OS locks, released by the system when their process dies.
-- **Estimates (D72, D135, D143).** `ingest.estimate` (the app's estimate before a run) multiplies
-  the queue's token estimate (chars/4, calibrated against this vault's past runs) by this vault's
-  recent $/token, as a range; for post-processing it prices the staged batch from
-  standalone-finalize history. The all-models view prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
+- **Estimates (D72, D135, D143, D403).** `ingest.estimate` (the app's estimate before a run) prices
+  extraction and post-processing apart (`ingest_setup.run_cost_estimate`): extraction from the
+  whole prompts the run plans (`planned_prompts`), post-processing projected from the output
+  extraction is expected to write. Each line takes this vault's own dollars per input token from
+  that stage's usage rows (by `task`), or the stage's model at list price when it has no priced
+  run. The stand-alone post-processing estimate prices the staged batch through the same pricer
+  (`post_stage_cost`). The all-models view still starts from the document-text estimate (chars/4,
+  calibrated against this vault's past runs) and prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
   gets token counts, never dollars. For a model priced by prompt length, each document's planned
   extraction calls decide what share of the queue is priced at the long-prompt card (D366); they are
   planned by the same function the run sections with (`section.plan_document`, called from
