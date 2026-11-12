@@ -376,7 +376,7 @@ def sizing(model: str | None, backend: str | None = None, vault: Path | None = N
     budget = max(1, _resolve_override("section_token_budget", default_budget))
     default_overlap = max(1, budget * _OVERLAP_NUMERATOR // _OVERLAP_DENOMINATOR)
     return {"threshold": threshold, "budget": budget,
-            "overlap": _config_get("section_overlap_tokens", default_overlap),
+            "overlap": max(0, _resolve_override("section_overlap_tokens", default_overlap)),
             "line": long_prompt_line(model, backend, vault)}
 
 

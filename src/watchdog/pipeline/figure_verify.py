@@ -22,7 +22,7 @@ _SCALE_EXPONENTS = (3, 6)  # thousands, millions
 # A bare four-digit year is a date, not a figure (#623). It was always the noisiest token class
 # here — 9.6% of every flag over the extraction corpus was a fact flagged for a year alone, e.g.
 # "…for the fiscal year ended April 30, 2021" where the page writes that period some other way —
-# and that was tolerable while the finding only reached ingest.log. Now that a flag renders in the
+# and that was tolerable while the finding only reached processing.log. Now that a flag renders in the
 # vault, a false "figure 2,021 not found in the document" costs the reader's trust in every other
 # flag. What skipping them costs: a genuine dollar amount that happens to be exactly $2,021 goes
 # unchecked. Applied to the fact's own tokens only — page text is still indexed in full.

@@ -36,6 +36,19 @@ def test_missing_queue_file_returns_error(tmp_path):
     assert "error" in result
 
 
+def test_damaged_queue_file_returns_error(tmp_path):
+    """A queue descriptor cut off mid-write (a crash, a full disk) is an error for that document,
+    never an exception: `orchestrate.run` pre-flights every queued document before it starts, and
+    a raise there stopped the whole run on every attempt."""
+    vault = _vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / "bad.json").write_text('{"sha256": "bad", "filename": "cut-off.pdf", "pages": [{"pa')
+    (qdir / "list.json").write_text("[1, 2, 3]")
+    assert "could not be read" in preflight.run(vault, "bad")["error"]
+    assert "could not be read" in preflight.run(vault, "list")["error"]
+
+
 def test_pages_and_identity_surfaced_from_queue(tmp_path):
     vault = _vault(tmp_path)
     _write_queue(vault, "doc1", "Some text.")

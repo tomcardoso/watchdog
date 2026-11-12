@@ -30,7 +30,7 @@ def _cite(value: str, slug: str, title: str, page, block: str | None = None) -> 
     """One callout line: ``> - **<value>** — [[documents/<slug>|<title>]], p. <n>``.
 
     The document title is registry-sourced, so it is defanged before interpolation into the
-    wikilink display text (matching ``build_entity_note`` / #305); ``value`` is journalist-typed
+    wikilink display text (as every note renderer does, #305); ``value`` is journalist-typed
     and left as given. The page suffix is omitted when no page was supplied. With `block` (the
     fact's block id, D283) the link goes to that fact's line in the document note."""
     frag = f"#^{block}" if block else ""

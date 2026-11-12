@@ -47,7 +47,6 @@ DISPUTED = "disputed"
 # Appended after a contradiction side whose fact the reporter disputes. `resolutions._callout_text`
 # strips it (and fact fragments), so a callout's id never depends on a mark or a fact link.
 CALLOUT_DISPUTED = " · *disputed*"
-NOT_FOUND = "source not found"
 
 
 def block_id(fid: str) -> str:
@@ -75,12 +74,6 @@ def link(fact: dict) -> str:
 
 def new_stats() -> dict:
     return {"cited": 0, "linked": 0, "unknown": 0, "missing": 0, "disputed": 0}
-
-
-def _merge(into: dict, more: dict) -> dict:
-    for k, v in more.items():
-        into[k] = into.get(k, 0) + v
-    return into
 
 
 def render_short(text: str, refs: dict, lookup, stats: dict | None = None) -> tuple[str, dict]:

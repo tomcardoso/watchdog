@@ -117,7 +117,7 @@ def merge_entity_pairs(rep, vault: Path, *, keep: list[str], merge: list[str]) -
 @op("merge-entity-group", engine="index", exit_code=lambda r: 1 if (r or {}).get("failed") else 0)
 def merge_entity_group(rep, vault: Path, *, keep: str, merge: list[str]) -> dict:
     """Merge every record in `merge` into `keep`, one at a time through `merge-entity-pairs`
-    (Review's "Merge all N records named …", D399): each merge is the reporter's, logged and
+    (Review's "Merge all N records named …", D402): each merge is the reporter's, logged and
     undoable on its own, and a failure does not stop the rest.
 
     A record the reporter marked "Not the same" as `keep`, or as a record merged before it, is left

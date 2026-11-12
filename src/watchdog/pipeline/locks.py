@@ -247,19 +247,6 @@ def _parse_iso_age(ts: str | None) -> float | None:
     return (datetime.now(timezone.utc) - dt).total_seconds()
 
 
-def lock_started_at(lock_file: Path) -> str | None:
-    """Return the ISO timestamp on the lock's ``started_at:`` line, or ``None`` if absent."""
-    try:
-        return _fields(lock_file.read_text(encoding="utf-8")).get("started_at")
-    except OSError:
-        return None
-
-
-def lock_age_seconds(lock_file: Path) -> float | None:
-    """Age of the lock derived from its ``started_at`` line, or ``None`` if absent/unparseable."""
-    return _parse_iso_age(lock_started_at(lock_file))
-
-
 def _holder_pid(f: dict) -> int | None:
     try:
         return int(f.get("pid", ""))

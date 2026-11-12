@@ -276,7 +276,7 @@ def group_rank(entity: dict) -> tuple:
 
 def leave_out_not_same(order: list[str], dismissed) -> tuple[list[str], list[tuple[str, str]]]:
     """Walk `order` (the kept record first) and keep each record unless the reporter marked it
-    "Not the same" as one already kept: merging both into one record would join them (D399).
+    "Not the same" as one already kept: merging both into one record would join them (D402).
     Returns the records kept, and `(left out, the record it is not the same as)` for the rest."""
     from watchdog.pipeline.identity import pair_id
     kept: list[str] = []
@@ -295,7 +295,7 @@ def leave_out_not_same(order: list[str], dismissed) -> tuple[list[str], list[tup
 def same_name_groups(vault: Path, entities: dict | None = None,
                      resolved: frozenset[str] | None = None) -> list[dict]:
     """Open "possible same" pairs that join three or more records of one name and type, as groups
-    Review offers to merge in one go (D399). Records are grouped through the open pairs between
+    Review offers to merge in one go (D402). Records are grouped through the open pairs between
     them; the name is compared as `identity.name_key` folds it. Each group names the record kept
     (`group_rank`), the records merged into it, the ones left out because the reporter marked them
     "Not the same" as a record in the group, and the Review ids of its open pairs. A group is

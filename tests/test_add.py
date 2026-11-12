@@ -232,7 +232,8 @@ def test_overview_reports_briefing_waiting_items_and_work(vault):
     s = overview.summary(vault)
     assert s["briefing"].name == "2026-10-03-16-12.md"
     assert s["headline"] == "Contract went to a new firm [[documents/d#^f-abc|p. 2]]."
-    assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1)
+    # The unprofiled target is a gap in the record, not a lead (D399).
+    assert (s["contradictions"], s["leads"], s["gaps"], s["near_duplicates"], s["alerts"]) == (1, 0, 1, 1, 1)
     assert s["incoming"] == 1
     assert overview.has_work(s)
 

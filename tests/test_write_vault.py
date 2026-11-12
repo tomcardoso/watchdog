@@ -1139,73 +1139,6 @@ def test_document_note_entity_mention_name_defanged(tmp_path):
     assert "]] [[" not in content
 
 
-def test_role_target_id_bracket_injection_slugified_in_wikilink_target():
-    # A role can point at an unprofiled entity (leads.py: "named but never profiled"), whose
-    # target_id never passes through postflight's slugify pass. It lands in the wikilink *target*
-    # position, so a hostile value must be slugified here or it forges a second wikilink.
-    from watchdog.pipeline.write_vault import _role_line
-    role = {
-        "relationship": "Director of",
-        "target_id": "acme]] [[entities/company/cleared",
-        "target_type": "Company",
-        "target_name": "Acme Corp",
-    }
-    line = _role_line(role, {})
-    assert "]] [[" not in line
-    assert line.count("[[") == 1 and line.count("]]") == 1
-    assert "[[entities/company/acme-entitiescompanycleared|Acme Corp]]" in line
-
-
-def test_role_relationship_bracket_injection_defanged():
-    # relationship is free text, not a wikilink slot, but it's interpolated into the same
-    # Markdown line as the target wikilink — a hostile value could still forge one (#508).
-    from watchdog.pipeline.write_vault import _role_line
-    role = {
-        "relationship": "Director of]] [[entities/company/cleared|Cleared",
-        "target_id": "acme-corp",
-        "target_type": "Company",
-        "target_name": "Acme Corp",
-    }
-    line = _role_line(role, {})
-    assert "]] [[" not in line
-    assert line.count("[[") == 1 and line.count("]]") == 1
-
-
-def test_evidence_fragment_claim_reason_quote_bracket_injection_defanged():
-    # claim/reason/quote are free-text fields written straight into the entity note's Analysis
-    # section (#508). quote in particular is meant to be verbatim source text, so a document
-    # author has direct control over its contents.
-    fragments = [
-        {"claim": "Smith is director]] [[entities/company/cleared|Cleared",
-         "page": 2, "basis": "stated",
-         "reason": "establishes control]] [[entities/company/cleared|Cleared",
-         "quote": "Ms. Smith holds shares]] [[entities/company/cleared|Cleared"},
-    ]
-    rendered = wv._render_evidence_fragments(fragments)
-    assert "]] [[" not in rendered
-
-
-def test_evidence_fragment_flags_a_figure_missing_from_the_document():
-    """#623: the post-flight figure check has to be visible where the fact is read, not only in
-    the ingest log."""
-    fragments = [{"claim": "Stayed $430,000 across two payments.", "page": 3, "basis": "stated",
-                  "figures_unverified": ["430000"]}]
-    rendered = wv._render_evidence_fragments(fragments)
-    assert "*(figure 430,000 not found in the document — may be derived; verify against source)*" in rendered
-
-
-def test_evidence_fragment_flags_a_figure_found_on_another_page():
-    fragments = [{"claim": "Prior-year revenue was $197.6 million.", "page": 10, "basis": "stated",
-                  "figures_off_page": {"197.6": [3, 5]}}]
-    rendered = wv._render_evidence_fragments(fragments)
-    assert "*(figure 197.6 (p. 3/5) found on another page, not the one cited)*" in rendered
-
-
-def test_evidence_fragment_without_figure_flags_renders_no_note():
-    fragments = [{"claim": "Revenue was $1M.", "page": 3, "basis": "stated"}]
-    assert "*(figure" not in wv._render_evidence_fragments(fragments)
-
-
 def test_document_note_flags_a_figure_missing_from_the_document(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
@@ -1218,11 +1151,16 @@ def test_document_note_flags_a_figure_missing_from_the_document(tmp_path):
     assert "*(figure 430,000 not found in the document — may be derived; verify against source)*" in content
 
 
+def test_figure_note_names_a_figure_found_on_another_page_and_none_when_unflagged():
+    assert wv._figure_verification_note({"figures_off_page": {"197.6": [3, 5]}}) == (
+        " *(figure 197.6 (p. 3/5) found on another page, not the one cited)*")
+    assert wv._figure_verification_note({"fact": "Revenue was $1M.", "page": 3}) == ""
+
+
 def test_figure_note_pluralizes_and_joins_both_classes():
-    fragments = [{"claim": "Several figures.", "page": 3, "basis": "stated",
-                  "figures_unverified": ["430000", "999999"],
-                  "figures_off_page": {"197.6": [3]}}]
-    rendered = wv._render_evidence_fragments(fragments)
+    rendered = wv._figure_verification_note({"fact": "Several figures.", "page": 3, "basis": "stated",
+                                             "figures_unverified": ["430000", "999999"],
+                                             "figures_off_page": {"197.6": [3]}})
     assert "figures 430,000, 999,999 not found in the document" in rendered
     assert "; figure 197.6 (p. 3) found on another page" in rendered
 

@@ -299,7 +299,7 @@ def build_reconcile_prompt(bundle: dict) -> str:
     Two blocks, both assembled deterministically in Python:
 
     * **CANDIDATE PAIRS** — the duplicate-entity question, already narrowed. `reconcile.
-      candidate_pairs` blocks the field down to pairs that are plausibly the same thing (same
+      _ranked_pairs` blocks the field down to pairs that are plausibly the same thing (same
       canonical type, one name a token-subset of the other, identical in tokens — a word-order or
       stopword variant — or a high token overlap); the model only confirms or rejects each, and
       answers by pair index, so it cannot invent an id. Only medium-confidence pairs reach here

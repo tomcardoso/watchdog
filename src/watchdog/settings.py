@@ -196,6 +196,19 @@ SETTINGS = {
         "default": 300,
         "min": 1,
     },
+    "preprocess_timeout": {
+        "short": "Seconds a PDF repair step may take before it is given up on (default: 120)",
+        "help": (
+            "When a PDF can't be read as it is (it is encrypted, or damaged), Watchdog tries to\n"
+            "  repair a copy with qpdf and Ghostscript, where they are installed, and reads that.\n"
+            "  Each of the two steps is given this many seconds; past it the repair is abandoned\n"
+            "  and the file is set aside as unreadable. Increase it for very large PDFs on a slow\n"
+            "  computer. Default: 120 (2 minutes)."
+        ),
+        "type": "int",
+        "default": 120,
+        "min": 1,
+    },
     # ── Transcription (D273) ──────────────────────────────────────────────────
     "transcription_model": {
         "short": f"Speech-to-text model for audio and video (default: {_transcribe.DEFAULT_MODEL})",
@@ -278,14 +291,17 @@ SETTINGS = {
         "min": 1,
     },
     "section_overlap_tokens": {
-        "short": "Estimated-token overlap between consecutive sections (default: 4000)",
+        "short": "Estimated-token overlap between consecutive sections ('auto' or a fixed number)",
         "help": (
-            "Consecutive sections of a large document share this many estimated tokens of overlap,\n"
-            "  so entities and events spanning a section boundary aren't lost.\n"
-            "  Default: 4000."
+            "Consecutive sections of a large document share this many estimated tokens of overlap\n"
+            "  (whole trailing pages, replayed at the head of the next section), so a table or a\n"
+            "  passage spanning a section boundary is seen whole in one of them.\n"
+            "  'auto' (default): one fifteenth of the section budget, which is 4,000 at a\n"
+            "  60,000-token budget, so it shrinks and grows with the sections. Set a fixed number\n"
+            "  to pin it; 0 turns the overlap off."
         ),
-        "type": "int",
-        "default": 4_000,
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 0,
     },
     "empty_extraction_min_words": {
@@ -617,32 +633,6 @@ SETTINGS = {
         "type": "str",
         "default": "BAAI/bge-reranker-base",
     },
-    # ── Research ──────────────────────────────────────────────────────────────
-    "research_max_rounds": {
-        "short": "Default search rounds for a standard web research session (default: 3)",
-        "help": (
-            "How many search rounds the /watchdog-research skill runs by default before it must\n"
-            "  check in and stop. An advisory budget the interactive skill self-limits to — a wider\n"
-            "  net (the 'deep' effort tier) overrides it per run. Higher = more thorough, more cost.\n"
-            "  Default: 3. Minimum: 1."
-        ),
-        "type": "int",
-        "default": 3,
-        "min": 1,
-    },
-    "research_max_fetches": {
-        "short": "Default sources captured per standard web research session (default: 25)",
-        "help": (
-            "About how many web sources the /watchdog-research skill captures into incoming/ in a\n"
-            "  default (standard-effort) run. An advisory budget the interactive skill self-limits to;\n"
-            "  the 'quick' and 'deep' effort tiers scale it down or up per run. Each captured source\n"
-            "  is later read by the local pipeline, not in the research session, so this bounds scope\n"
-            "  and processing cost rather than session tokens. Default: 25. Minimum: 1."
-        ),
-        "type": "int",
-        "default": 25,
-        "min": 1,
-    },
     # ── Web archiving ─────────────────────────────────────────────────────────
     "wayback_save": {
         "short": "Also save each research source to the Wayback Machine (default: false)",
@@ -744,7 +734,8 @@ SECTIONS = [
     ("OCR", "Text recognition for scanned documents.",
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
     ("Pre-processing", "Local conversion — parallelism and large-PDF handling.",
-     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
+     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "preprocess_timeout",
+      "table_structure"]),
     ("Transcription", "Speech-to-text for audio and video, on this computer.",
      ["transcription_model", "transcription_language"]),
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
@@ -759,8 +750,6 @@ SECTIONS = [
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",
      ["embed_model", "rerank_model"]),
-    ("Research", "Web research mode — default effort budget for Web research.",
-     ["research_max_rounds", "research_max_fetches"]),
     ("Web archiving", "Optionally save research sources to the Wayback Machine.",
      ["wayback_save", "wayback_access_key", "wayback_secret_key"]),
     ("Verification", "How your checks of individual facts are recorded.",

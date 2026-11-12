@@ -1,4 +1,4 @@
-"""Merging every record of one name from Review in one go (D399): which pairs form a group, which
+"""Merging every record of one name from Review in one go (D402): which pairs form a group, which
 record is kept, records marked "Not the same" left out, a merge that fails, and undoing one.
 
 Every name below is invented."""

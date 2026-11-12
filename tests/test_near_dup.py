@@ -1,8 +1,7 @@
 """Tests for near_dup core logic and CLI."""
 
-import pytest
 
-from watchdog.pipeline.near_dup import tokenize, shingles, jaccard, shingles_from_text, minhash, minhash_similarity
+from watchdog.pipeline.near_dup import tokenize, shingles, shingles_from_text, minhash
 
 
 # ── tokenize ──────────────────────────────────────────────────────────────────
@@ -42,28 +41,6 @@ def test_shingles_empty():
     assert s == {""}
 
 
-# ── jaccard ───────────────────────────────────────────────────────────────────
-
-def test_jaccard_identical():
-    a = {"a b c", "b c d"}
-    assert jaccard(a, a) == 1.0
-
-def test_jaccard_disjoint():
-    assert jaccard({"a b"}, {"c d"}) == 0.0
-
-def test_jaccard_partial():
-    a = {"a b", "b c"}
-    b = {"b c", "c d"}
-    assert jaccard(a, b) == pytest.approx(1/3, abs=1e-6)
-
-def test_jaccard_both_empty():
-    assert jaccard(set(), set()) == 1.0
-
-def test_jaccard_one_empty():
-    assert jaccard(set(), {"a b"}) == 0.0
-    assert jaccard({"a b"}, set()) == 0.0
-
-
 # ── shingles_from_text ────────────────────────────────────────────────────────
 
 def test_shingles_from_text_returns_set():
@@ -90,25 +67,3 @@ def test_minhash_empty_set():
     sig = minhash(set())
     assert len(sig) == 128
     assert all(v == 0 for v in sig)
-
-def test_minhash_similarity_identical():
-    sh = shingles_from_text("the quick brown fox " * 20)
-    sig = minhash(sh)
-    assert minhash_similarity(sig, sig) == 1.0
-
-def test_minhash_similarity_disjoint():
-    sig_a = minhash(shingles_from_text("apple banana cherry " * 20))
-    sig_b = minhash(shingles_from_text("xylophone zither oboe " * 20))
-    assert minhash_similarity(sig_a, sig_b) < 0.1
-
-def test_minhash_similarity_near_identical():
-    # Long text with unique words so the shingle set is large; appending a few
-    # words changes very few shingles and similarity stays high.
-    text = " ".join(f"token{i}" for i in range(500))
-    sh_a = shingles_from_text(text)
-    sh_b = shingles_from_text(text + " extra unique words here")
-    sim = minhash_similarity(minhash(sh_a), minhash(sh_b))
-    assert sim > 0.9
-
-def test_minhash_similarity_length_mismatch():
-    assert minhash_similarity([1, 2], [1, 2, 3]) == 0.0

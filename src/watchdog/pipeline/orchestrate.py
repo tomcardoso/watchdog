@@ -1,13 +1,14 @@
-"""Python ingest orchestrator (#118 Workstream 3).
+"""The run orchestrator: extraction (`run`) and post-processing (`finalize`).
 
-Replaces the Claude Code `/watchdog-ingest` skill: Python drives the loop and calls the
-model (`model_client.acomplete_json`) only for reasoning — classification, extraction,
-and (in `_post_ingest`, added in a later phase) synthesis/timeline/briefing. Everything
-mechanical reuses the existing deterministic pieces: `preflight.run`, `postflight.run`
-(validates + writes the vault), and the registry write-lock inside `write_vault`.
+Python drives the loop and calls the model (`model_client.acomplete_json`, through `_call_model`)
+only for judgement: classification, extraction, and the finishing calls (reconciliation,
+housekeeping chores, synthesis, timeline, briefing). Everything mechanical is deterministic code:
+`preflight.run`, `postflight.run` (validates and stages an extraction; it never writes the vault)
+and `write_vault.run` in the commit pass.
 
-Documents are extracted concurrently, bounded by a semaphore; the registry lock already
-serializes the vault writes and `_reconcile_entity_ids` handles the parallel new-id race.
+Documents are extracted concurrently, bounded by a semaphore, and touch no committed state. Every
+vault write happens in `finalize`'s serial commit pass (`_commit_pending`, I7), after the
+exact-name fold (`_batch_exact_fold`) and the pre-commit reconciliation have settled entity ids.
 """
 
 import asyncio
@@ -53,7 +54,7 @@ class _RunState:
     """State for the one run (`run()` or a standalone `finalize()`) this process is executing —
     one run per process, behind the vault's run lock. Reset by `_begin_usage_run`/`_end_usage_run`
     and by `run()` itself."""
-    # The live status region during extraction (#151); None outside it or off a TTY, so `_say`
+    # The run's progress lines during extraction (#151); None outside it, so `_say`
     # falls back to plain printing.
     board: "progress.Lines | None" = None
     # Per-call token/cost records (A2), one per model call; None outside a run, so helpers tested
@@ -153,6 +154,14 @@ def _say(msg: str) -> None:
         _run.board.note(line)
     else:
         print(line, flush=True)
+
+
+def _progress_line(sha: str, line: str) -> None:
+    """Print a document's current step, as one line of the run's output."""
+    if _run.board is not None:
+        _run.board.update(sha, f"  {line}")
+    else:
+        _say(line)
 
 
 def _settle(sha: str, line: str) -> None:
@@ -460,7 +469,7 @@ def _write_usage_file(vault: Path, records: list[dict], ts: str,
     `est_input_tokens` (#417), when given, is added onto `totals` alongside the real
     `input_tokens` `_usage_totals` already computes — the naive chars/4 estimate summed across
     this run's successfully extracted documents (`_compact_result`'s own field), so a later
-    `--estimate` can compare estimate to actual across this vault's own history the same way
+    the estimate can compare estimate to actual across this vault's own history the same way
     `cost_estimate` already does for dollars. Orphaned-partial recovery has no such per-run total
     to hand in (the individual call records don't carry it) and leaves it out."""
     usage_dir = vault / ".watchdog" / "registry" / "usage"
@@ -664,8 +673,7 @@ def _pages_text(pages: list[dict]) -> str:
 
 
 def _candidates_checklist(text: str, *, stored: dict | None = None, vault: Path | None = None,
-                          sha: str | None = None, filename: str | None = None,
-                          flow: str = "") -> str:
+                          sha: str | None = None, filename: str | None = None) -> str:
     """Tier 0 candidate harvest (#361/D123): deterministic spans (money, figure, percent,
     date, docket) plus local-NER names, rendered as the per-page checklist injected into the
     extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
@@ -675,18 +683,12 @@ def _candidates_checklist(text: str, *, stored: dict | None = None, vault: Path 
     D365): the pages `text` covers are read from it, so no local model runs here. A page it lacks,
     or a stored half whose stamp no longer matches this code, is harvested live, as before D365.
 
-    `vault`/`sha`/`filename`/`flow`, when given, log the result to processing.log and, only when
-    GLiNER has to run live (#411: it can run for minutes on a long document), mark the step on
-    the document's live in-flight row first. The rarer batch-repair/submit paths omit them."""
+    `vault`/`sha`/`filename`, when given, log the result to processing.log and, only when
+    GLiNER has to run live (#411: it can run for minutes on a long document), say so in the run's
+    output first. The rarer batch-repair/submit paths omit them."""
     def before_live_names():
-        if sha is None:
-            return
-        tty = f"→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…"
-        plain = f"→  {filename}  harvesting candidates…"
-        if _run.board is not None:
-            _run.board.update(sha, f"  {tty}", f"  {plain}")
-        else:
-            _say(plain)
+        if sha is not None:
+            _progress_line(sha, f"→  {filename}  harvesting candidates…")
     candidates = harvest.candidates(text, stored, before_live_names=before_live_names)
     if sha is not None and vault is not None:
         n = len(candidates)
@@ -697,7 +699,7 @@ def _candidates_checklist(text: str, *, stored: dict | None = None, vault: Path 
 def _sidecar_skill(sidecar_text: str | None, *, filename: str, quiet: bool = False) -> str | None:
     """A per-document record-skill pin from the sidecar's `skill:` field, resolved
     deterministically in Python — never shown to the classifier. Lets one ingest queue mix
-    document types without `--skill` forcing a single pin across the whole run (D120: benchmarking
+    document types without a run-wide skill forcing a single pin across the whole run (D120: benchmarking
     a corpus that spans more than one skill needed this without a second `chew`/`ingest` pass per
     skill). `sidecar_text` is already filtered/allowlisted at chew time (pipeline/sidecar.py,
     D121) — nothing here reads `incoming/` again."""
@@ -867,7 +869,7 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
 def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
     """Returns (ok, errors, warnings). Warnings are collected rather than printed here —
     the caller only knows once the document has actually finished (not discarded for a repair
-    retry) whether they're worth surfacing, and where in the live region's output they belong
+    retry) whether they're worth surfacing, and where in the run's output they belong
     (tucked under this document's own OK line, not wherever a concurrent document happens to
     be at the moment post-flight ran, #333 follow-up).
 
@@ -928,8 +930,7 @@ async def _verify_facts(vault, sha, base, extraction, *, model, backend, filenam
     (a `BaseException`, so `except Exception` never sees it)."""
     doc = extraction.get("document", {})
     if _run.board is not None:
-        _run.board.update(sha, f"  →  {filename}  {detail} · verifying…",
-                      f"  →  {filename}  verifying…")
+        _run.board.update(sha, f"  →  {filename}  verifying…")
     prompt = prompts.build_verify_prompt(
         base, key_facts=doc.get("key_facts") or [], entities=extraction.get("entities") or [])
     try:
@@ -959,16 +960,14 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     est_input_tokens = section.est_tokens_from_pages(pf["pages"])
     page_count = pf.get("page_count") or len(pf["pages"])
     filename = pf["filename"]
-    flow = f"{page_count}p · {skill_label}"
     # Normally read from pre-processing's stored harvest (D365), but a document without one runs
     # GLiNER live, which can take minutes on a long document — so off the event loop either way.
     candidates = await asyncio.to_thread(
         _candidates_checklist, text, stored=pf.get("harvest"), vault=vault, sha=sha,
-        filename=filename, flow=flow)
-    # Restore the row to "extracting…" now that harvesting is done and the model call is next.
+        filename=filename)
+    # Say "extracting…" again now that harvesting is done and the model call is next.
     if _run.board is not None:
-        _run.board.update(sha, f"  →  {filename}  {flow} · extracting…",
-                      f"  →  {filename}  extracting…")
+        _run.board.update(sha, f"  →  {filename}  extracting…")
     base = prompts.build_extract_prompt(
         pages_text=text,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
@@ -1105,11 +1104,10 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     # Off the event loop — see the comment in `_simple_extract`.
     candidates = await asyncio.to_thread(
         _candidates_checklist, sec_text, stored=pf.get("harvest"), vault=vault, sha=sha,
-        filename=pf["filename"], flow=sec["label"])
-    # Restore the row to "extracting…" now that harvesting is done and the model call is next.
+        filename=pf["filename"])
+    # Say "extracting…" again now that harvesting is done and the model call is next.
     if _run.board is not None:
-        _run.board.update(sha, f"  →  {pf['filename']}  {sec['label']} · extracting…",
-                      f"  →  {pf['filename']}  extracting…")
+        _run.board.update(sha, f"  →  {pf['filename']}  extracting…")
     base = prompts.build_section_prompt(
         pages_text=sec_text,
         skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
@@ -1120,7 +1118,7 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     )
     prompt, detail = base, sec["label"]
     # Marks where the section's model call — the thing that can silently run for minutes —
-    # actually begins, so ingest.log doesn't read as though the HARVEST line just above it
+    # actually begins, so processing.log doesn't read as though the HARVEST line just above it
     # (which finishes in seconds) is what the elapsed time belongs to (#556).
     _log(vault, f"SECTION {pf['filename']} [{detail}]: extracting…")
     r = await _call_model(task="extract-section", model=model, backend=backend,
@@ -1158,7 +1156,7 @@ def _section_checkpoint_path(vault: Path, sha: str, index: int) -> Path:
 
 def _load_section_checkpoints(vault: Path, sha: str, sections: list[dict]) -> list[dict]:
     """Replay already-completed sections for this sha from disk (#498), so a retry after a rate
-    limit, Ctrl-C, or a failure doesn't re-pay for calls already made. Trusts only a contiguous
+    limit, a Stop, or a failure doesn't re-pay for calls already made. Trusts only a contiguous
     prefix starting at index 1 whose checkpointed section metadata exactly matches the freshly
     computed plan at the same index — section.run() is deterministic, so an unchanged plan
     reproduces identical section dicts (label, pages_path); any mismatch (a changed budget/model/
@@ -1422,7 +1420,7 @@ async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classi
                          classify_effort: str | None = None, *, filename: str,
                          on_classify=None) -> tuple[str, str]:
     """This document's record skill, as `(skill_text, skill_label)`, following D120's precedence:
-    the document's own sidecar `skill:` pin, then a run-wide `--skill`/`default_skill`, then one
+    the document's own sidecar `skill:` pin, then a run-wide skill (the run's option or `default_skill`), then one
     cheap classify call.
 
     Shared by the synchronous per-document path (`_extract_document`) and the batch submit path
@@ -1482,11 +1480,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
+        # `force` (#424): bypass both "already done" checks and pay for a fresh classify/extract
         # call even though a cached artifact (or a committed vault note) already exists — the
-        # whole point of --force is to regenerate under a different model/effort/skill.
-        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-             f" — note will be replaced")
+        # whole point of `force` is to regenerate under a different model/effort/skill.
+        _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
     elif pf.get("already_extracted"):
         _say(f"–  {pf.get('filename')}  already extracted — skipping")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
@@ -1502,7 +1499,6 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     filename = pf["filename"]
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
-    pg = f"{page_count}p"
     # Log the moment extraction begins (#317 follow-up). Documents extract concurrently, so a
     # START line per document makes the staggered starts visible — the later OK/FAILED line
     # marks completion, and the gap between them is that document's own extraction time (the
@@ -1515,15 +1511,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # per-document number to watch. What it measured — a per-page tax that grew with the vault —
     # is now paid once per ingest by the reconciliation call instead.
 
-    def _step(tty: str, plain: str) -> None:
-        """Mutate this document's single in-flight live row (TTY); append the plain transition
-        line when there's no live region (non-TTY) — keeping logged output unchanged."""
-        if _run.board is not None:
-            _run.board.update(sha, f"  {tty}", f"  {plain}")
-        else:
-            _say(plain)
+    def _step(line: str) -> None:
+        _progress_line(sha, line)
 
-    # A sidecar's own `skill:` pin is more specific than a run-wide `--skill`, so it wins —
+    # A sidecar's own `skill:` pin is more specific than a run-wide skill, so it wins —
     # this is what lets one ingest queue mix skills without a second pass (D120). The precedence
     # itself lives in `_resolve_skill`, shared with the batch path (D144).
     classified = not (_sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill)
@@ -1531,14 +1522,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         vault, pf, pinned_skill, classify_model, classify_pages, classify_backend, classify_effort,
         filename=filename,
         on_classify=lambda: _step(
-            f"→  {filename}  {pg} · classifying…",
             f"→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…"))
     progress.emit("doc", sha=sha, filename=filename, state="classified", detail=skill_label)
     if classified:
-        _step(f"→  {filename}  {pg} · {skill_label}",
-              f"·  {filename}  classified · {skill_label}")
-
-    flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
+        _step(f"·  {filename}  classified · {skill_label}")
 
     # The spending limit is checked again between classifying and extracting (D324): another
     # document's calls may have reached it while this one was being classified.
@@ -1549,14 +1536,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
-        _step(f"→  {filename}  {flow} · extracting · {n_sections} sections…",
-              f"→  {filename}  extracting · {n_sections} sections…")
+        _step(f"→  {filename}  extracting · {n_sections} sections…")
         extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort,
             extract_backend, brief, verify_pass=verify_pass)
     else:
-        _step(f"→  {filename}  {flow} · extracting…",
-              f"→  {filename}  extracting…")
+        _step(f"→  {filename}  extracting…")
         extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort,
             extract_backend, verify_pass=verify_pass)
@@ -1567,11 +1552,11 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # giving up. Covers single-page docs too (force-sectioning splits their text into character
         # windows); the ≥2-section guard skips a doc that can't be split (nothing to re-try).
         if not ok:
-            fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
+            fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS,
+                             model=extract_model, backend=extract_backend)
             if fb.get("sectioned") and len(fb.get("sections", [])) > 1:
                 n_sections = len(fb.get("sections", []))
-                _step(f"↻  {filename}  {flow} · re-extracting in {n_sections} sections…",
-                      f"↻  {filename}  whole-doc extraction rejected — "
+                _step(f"↻  {filename}  whole-doc extraction rejected — "
                       f"re-extracting in {n_sections} sections…")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
@@ -1655,8 +1640,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-             f" — note will be replaced")
+        _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
     elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
         _say(f"–  {filename}  already extracted — skipping")
@@ -1756,7 +1740,7 @@ def _fmt_span(start_iso: str | None, end_iso: str | None) -> str | None:
 
 
 def _batch_log_line(state: dict, st: dict, collected_at: str) -> str:
-    """One-line `ingest.log` summary of a collected batch's full lifecycle: submitted (this
+    """One-line `processing.log` summary of a collected batch's full lifecycle: submitted (this
     run's own clock, persisted in batch state at submit time) -> ended (Anthropic's own record
     of when processing finished) -> collected (right now) — the middle and last of those
     routinely differ by hours under D52's submit-and-exit design, since collection happens in
@@ -1866,8 +1850,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
         if force and (pf.get("already_extracted") or pf.get("already_staged")):
-            _say(f"↻  {pf.get('filename')}  re-extracting{''}"
-                 f" — note will be replaced")
+            _say(f"↻  {pf.get('filename')}  re-extracting — note will be replaced")
         elif pf.get("already_extracted"):
             _say(f"–  {pf.get('filename')}  already extracted — skipping")
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
@@ -2822,7 +2805,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
-        _say(f"→  briefing skipped{''}")
+        _say("→  briefing skipped")
     elif _stage_stop(vault, out):
         pass   # no briefing this run; `error` keeps the batch pending for the next one
     else:
@@ -3587,7 +3570,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
 
     Per-stage `*_model`, `*_effort` and `*_backend` choose each stage's model; a non-Claude backend
     takes the provider's own model id. `pinned_skill` skips classification. `only_shas` limits the
-    run to those queued documents (`dig --limit`).
+    run to those queued documents (a run's limit, or Retry extraction).
 
     - `skip_finalize`: stop after extraction, leaving the batch pending for post-processing.
     - `force`: re-extract even when an extraction is cached.
@@ -3653,7 +3636,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # Admission control (#563): every queued document's pre-flight output is read once, up
         # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
         # per-document token estimate `_admit` gates on (`section.est_tokens_from_pages`, the same
-        # heuristic `--estimate` already uses), and the already-extracted/already-staged skip
+        # heuristic the estimate already uses), and the already-extracted/already-staged skip
         # check, so a resumed run's free "nothing to do" documents are never held up waiting for
         # budget they don't need. `budget` is resolved once for the whole run, not per document —
         # `_current_token_budget` already falls back to whatever `rate_limit` the most recent call
@@ -3731,7 +3714,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             try:
                 try:
                     await _admit(sha, est_by_sha.get(sha, 0), budget, cancelled)
-                except asyncio.CancelledError:       # ctrl+c while waiting for token headroom
+                except asyncio.CancelledError:       # a Stop while waiting for token headroom
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
                 if cancelled.is_set():
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
@@ -3793,14 +3776,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except SpendingLimitReached as e:    # between calls — queue file and checkpoints stay
                         return _spending_stopped(sha, str(e), started=True)
-                    except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
+                    except asyncio.CancelledError:       # a Stop mid-document — queue file stays
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except Exception as e:               # one bad doc must not sink the batch
                         return _fail(vault, sha, "", f"unexpected error: {e}")
             finally:
                 _run.admission_reserved.pop(sha, None)
 
-        # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
+        # On Stop (SIGINT), cancel in-flight work once and shut down cleanly instead of letting
         # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
         # are already written to the vault; unfinished ones keep their queue file for resume.
         tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
@@ -3825,7 +3808,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             handler_set = True
         except (NotImplementedError, RuntimeError):
             # e.g. non-main thread, or Windows' Proactor event loop, which never supports
-            # add_signal_handler. There, every Ctrl+C falls through to the worker's plain
+            # add_signal_handler. There, every Stop falls through to the worker's plain
             # `except KeyboardInterrupt` instead of this module's graceful
             # finish-current-writes path — see that handler's comment for what differs.
             pass
@@ -3834,11 +3817,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         finally:
             if handler_set:
                 loop.remove_signal_handler(signal.SIGINT)
-            # The live region and its pinned "Elapsed" row stay open past this point — torn down
-            # in the shared tail below, once finalize() has also had a chance to run. Post-
-            # processing (reconcile/commit/synthesize/briefing) can take minutes with no
-            # per-document rows of its own; closing the region here made it go silent the moment
-            # extraction's gather finished, which read exactly like a stall.
+            # The progress lines stay open past this point, and are closed in the shared tail
+            # below, once finalize() has also run.
 
         results = [t.result() for t in tasks if t.done() and not t.cancelled()]
         cancelled_flag = cancelled.is_set()
@@ -3871,7 +3851,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     if waiting and not cancelled_flag and skip_finalize:
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
         # post-processing (`bark`) (possibly on a vault copy, possibly with a different
-        # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
+        # finishing model) consumes them. `has_pending_finalization` is already True by
         # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True
     elif waiting and not cancelled_flag:
@@ -3908,7 +3888,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
     # #417: sum of the naive chars/4 estimate over this run's successfully extracted documents,
     # so this run's usage file records both what was estimated and what extraction actually
-    # consumed — the input a later `--estimate` calibrates against. None (not 0) when nothing
+    # consumed — the input a later estimate calibrates against. None (not 0) when nothing
     # extracted, so a skipped/all-cached run doesn't masquerade as a zero-token calibration point.
     est_input_tokens = sum(r.get("est_input_tokens") or 0 for r in results
                            if r.get("status") == "ok") or None

@@ -7,7 +7,7 @@ into a staged-id rewrite instead of post-commit note surgery — a change that f
 This test closes the gap. Two documents are staged (via the real `postflight.run`, so the
 artifacts are exactly what extraction would leave on disk) whose entities form a token-variant
 candidate pair — "Laurentian University" ⊂ "Laurentian University of Sudbury" — which the
-exact-name fold (phase 2) leaves separate and `reconcile.candidate_pairs` surfaces as one pair.
+exact-name fold (phase 2) leaves separate and `reconcile._ranked_pairs` surfaces as one pair.
 `orchestrate.finalize` then commits and reconciles, with the reconcile model mocked to CONFIRM
 the merge. The full observable vault write-surface is hashed into a manifest, exactly as in
 `test_golden_vault.py` (same normalizers, same exemptions).
@@ -46,7 +46,7 @@ from tests.test_write_vault import make_vault
 GOLDEN = Path(__file__).parent / "golden" / "merge-manifest.json"
 
 # The two documents' entities: same canonical type, token-variant names, so the exact-name fold
-# (phase 2) leaves them separate and reconcile.candidate_pairs surfaces them as one pair. Ids sort
+# (phase 2) leaves them separate and reconcile._ranked_pairs surfaces them as one pair. Ids sort
 # with the shorter name first, so it is pair member "a"; the merge keeps it.
 _KEEP_ID, _KEEP_NAME = "laurentian-university", "Laurentian University"
 _MERGE_ID, _MERGE_NAME = "laurentian-university-of-sudbury", "Laurentian University of Sudbury"

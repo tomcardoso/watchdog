@@ -136,7 +136,10 @@ export interface Summary {
   briefing: { path: string; name: string; date: string | null } | null
   headline: string | null
   contradictions: number
+  /** Inferred relationships to verify (D399): the only leads that need judgement. */
   leads: number
+  /** Entities named but never profiled or mentioned often but unconnected: tidy-up (D399). */
+  gaps: number
   near_duplicates: number
   possible_same: number
   alerts: number
@@ -158,9 +161,9 @@ export interface Summary {
   verification: VerificationSummary
   /** Entities removed from the investigation that still have a record (D326). */
   hidden_entities?: number
-  /** Items that need the reporter's judgement: contradictions, leads, alerts, disputed facts (D327). */
+  /** Items that need the reporter's judgement: contradictions, leads (inferred relationships), alerts, disputed facts (D327). */
   judgement: number
-  /** Tidy-up: possible duplicate documents, possible same entities and document requests (D327, D328). */
+  /** Tidy-up: possible duplicate documents, possible same entities, document requests and gaps in the record (D327, D328, D399). */
   tidy_up: number
   /** The short ranked slice to start with (D327). */
   start_here: StartHereItem[]
@@ -836,17 +839,17 @@ export interface EverywhereResult {
 }
 
 // ── review ───────────────────────────────────────────────────────────────────
-export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
-export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
+export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges' | 'gaps'
+export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'gaps']
 export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[]; entity?: string | null; related?: string[]; doc_count?: number; new?: boolean; document?: string }
 
 /** What `merge-entity-pairs` returns (D328): each pair merged, failed (with why) or already one. */
 export interface MergePairRow { keep: string; merge: string; keep_name: string; merge_name: string; error?: string }
 export interface MergePairsResult { merged: MergePairRow[]; failed: MergePairRow[]; skipped: MergePairRow[] }
-/** What `merge-entity-group` returns (D399): `merge-entity-pairs`' result plus the records left out
+/** What `merge-entity-group` returns (D402): `merge-entity-pairs`' result plus the records left out
  * because the reporter marked them Not the same as one in the group. */
 export interface MergeGroupResult extends MergePairsResult { left_out: { id: string; name: string; not_same_as: string; not_same_as_name: string }[] }
-/** Open possible-same pairs joining three or more records of one name (`review.sameNameGroups`, D399). */
+/** Open possible-same pairs joining three or more records of one name (`review.sameNameGroups`, D402). */
 export interface SameNameRecord { id: string; name: string; type: string; doc_count: number }
 export interface SameNameGroup { key: string; name: string; type: string; size: number; keep: SameNameRecord; merge: SameNameRecord[]; left_out: (SameNameRecord & { not_same_as: SameNameRecord })[]; rids: string[] }
 

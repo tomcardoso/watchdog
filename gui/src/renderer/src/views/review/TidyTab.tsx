@@ -5,11 +5,11 @@
 //
 // "Merge ticked" runs merge-entity-pairs, which merges the pairs one at a time through the same
 // merge as Merge… (each logged, each undoable); "Merge all N records named …" runs
-// merge-entity-group, which does the same for every record of one name (D399). "Not the same",
+// merge-entity-group, which does the same for every record of one name (D402). "Not the same",
 // "These are copies", "Different documents" and "Mark handled" write the resolutions store, as
 // every other queue does.
 
-import { ArrowUpRight, Check, CheckCircle2, Copy, Files, GitCompare, GitMerge, ListTree, Undo2, X } from 'lucide-react'
+import { ArrowUpRight, Check, CheckCircle2, CircleDashed, Copy, Files, GitCompare, GitMerge, ListTree, MessageCircle, RefreshCw, Undo2, X } from 'lucide-react'
 import { Fragment, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentRow, MergeGroupResult, MergePairsResult, RequestGroup, SameNameGroup, SamePair } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Kbd, Segmented, Skeleton, cx } from '@renderer/components/ui'
@@ -24,7 +24,7 @@ import { MergeLogSection, SamePairView, TierBadge } from './MergesTab'
 import MergeModal from '../entities/MergeModal'
 import type { QItem, Triage } from './ReviewView'
 
-export type TidyKind = 'merges' | 'duplicates' | 'requests'
+export type TidyKind = 'merges' | 'duplicates' | 'requests' | 'gaps'
 type Verdict = 'copies' | 'different'
 
 const stripMd = (p: string) => p.replace(/\.md$/, '')
@@ -113,6 +113,47 @@ function PairDoc({ label, doc, fallback }: { label: string; doc?: DocumentRow; f
   )
 }
 
+// ── gaps in the record (D399) ────────────────────────────────────────────────────────────────
+
+/** The question Ask Claude opens with for a lead or a gap: who or what the entity is, with the
+ * documents that name it when there are any. */
+export function leadPrompt(item: QItem): string {
+  const name = item.title.split(' — ')[0].replace(/`/g, '')
+  const cited = item.request?.cited_in ?? item.cited ?? []
+  return cited.length
+    ? `${item.detail[0] ?? item.title}, according to ${cited.map((c) => c.filename).join(', ')}. Who or what is ${name} in ${cited.length === 1 ? 'that document' : 'those documents'}, and what should I verify first?`
+    : `What do the documents say about ${name}, and what should I verify first?`
+}
+
+/** Starts the whole-investigation lead sweep, which refreshes both leads and gaps. */
+export async function startLeadSweep(): Promise<void> {
+  try {
+    await startJob('lead-sweep', {}, 'Full lead sweep')
+    toast({ kind: 'info', title: 'Lead sweep started', body: 'It reads every entity note again. Follow it in Activity.' })
+  } catch (e) {
+    toast({ kind: 'error', title: 'Could not start the sweep', body: errorMessage(e) })
+  }
+}
+
+/** Leads or gaps as a table: HTML for an email or a spreadsheet, tab-separated text for anything
+ * else (the same clipboard pair as Copy requests). */
+export async function copyLeads(items: QItem[], noun = 'lead') {
+  const rows = items.map((it) => {
+    const [name, ...what] = it.title.split(' — ')
+    return [name.replace(/`/g, ''), what.join(' — '), it.detail.join('; '), (it.cited ?? []).map((c) => c.filename).join('; ')]
+  })
+  const head = [noun === 'gap' ? 'Gap' : 'Lead', 'Why', 'Detail', 'Documents']
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const html = `<table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`
+  const text = [head, ...rows].map((r) => r.map((c) => c.replace(/[\t\n]/g, ' ')).join('\t')).join('\n')
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
+    toast({ kind: 'success', title: `Copied ${plural(items.length, noun)}`, body: 'Paste into an email or a spreadsheet.' })
+  } catch (e) {
+    toast({ kind: 'error', title: 'Could not copy', body: errorMessage(e) })
+  }
+}
+
 // ── requests ─────────────────────────────────────────────────────────────────────────────────
 
 function readGrouped(): boolean {
@@ -147,7 +188,8 @@ async function copyRequests(items: QItem[], groups: Map<string, RequestGroup>) {
 const PRIMARY: Record<TidyKind, { label: string; done: (n: number) => string }> = {
   merges: { label: 'Not the same', done: (n) => (n === 1 ? 'Marked not the same' : `${plural(n, 'pair')} marked not the same`) },
   duplicates: { label: 'These are copies', done: (n) => (n === 1 ? 'Marked as copies' : `${plural(n, 'pair')} marked as copies`) },
-  requests: { label: 'Mark handled', done: (n) => (n === 1 ? 'Marked handled' : `${plural(n, 'request')} marked handled`) }
+  requests: { label: 'Mark handled', done: (n) => (n === 1 ? 'Marked handled' : `${plural(n, 'request')} marked handled`) },
+  gaps: { label: 'Mark handled', done: (n) => (n === 1 ? 'Marked handled' : `${plural(n, 'gap')} marked handled`) }
 }
 
 export function TidyTab({ kind, items, triage, loading, error, retry, focusRequest, groups, blurb, empty, onEmpty }: {
@@ -188,13 +230,22 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
   const [merging, setMerging] = useState<Set<string>>(new Set())
   const [mergeReport, setMergeReport] = useState<(MergePairsResult & { noun?: 'pair' | 'record' }) | null>(null)
   const [mergeFor, setMergeFor] = useState<{ keep: string; merge: string } | null>(null)
+  const [sweeping, setSweeping] = useState(false)
+  const sweep = async () => {
+    setSweeping(true)
+    try {
+      await startLeadSweep()
+    } finally {
+      setSweeping(false)
+    }
+  }
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const live = visible.filter((i) => !merging.has(i.rid))
   const focusId = focus && live.some((i) => i.rid === focus) ? focus : live[0]?.rid ?? null
   const focusIdx = live.findIndex((i) => i.rid === focusId)
   const tickedLive = live.filter((i) => ticked.has(i.rid))
-  // Records of one name joined by open pairs, three or more, offered as one merge (D399). A group
+  // Records of one name joined by open pairs, three or more, offered as one merge (D402). A group
   // with a pair handled or being merged here waits for the server's next answer (Review's
   // resolve and undo refetch every review.* query).
   const sameName = useRpc('review.sameNameGroups', kind === 'merges' && vault ? { vault } : null, { staleTime: 5_000 })
@@ -339,6 +390,7 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
     }
     if (kind === 'merges' && it.pair) return navigate({ view: 'entity', id: survivor(it.pair).keep.id })
     if (it.note) void openLink(stripMd(it.note))
+    else if (kind === 'gaps') toast({ kind: 'info', title: 'No note to open', body: 'This entity has no page yet. Ask Claude about it, or add more documents to profile it.' })
   }
 
   useEffect(() => {
@@ -387,7 +439,7 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
   }, [focusId])
 
   const allTicked = live.length > 0 && tickedLive.length === live.length
-  const cols = kind === 'merges' ? 5 : kind === 'duplicates' ? 4 : 4
+  const cols = kind === 'merges' ? 5 : 4
   // A grouping of likely sources an AI model made (D334), shown apart again for good.
   const splitGroup = async (g: RequestGroup) => {
     if (!vault) return
@@ -434,6 +486,13 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
           <th>Request</th>
           <th className="num" data-tip="How many documents cite it">Documents</th>
           <th>Likely source</th>
+        </>
+      )}
+      {kind === 'gaps' && (
+        <>
+          <th>Entity</th>
+          <th className="num" data-tip="How many documents name it">Documents</th>
+          <th>What is missing</th>
         </>
       )}
     </tr>
@@ -487,6 +546,19 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
           </td>
           <td className="num tnum">{fmtNum(r.cite_count)}</td>
           <td className="rv-tt-ev">{r.likely_source ?? <span className="faint">Not given</span>}</td>
+        </>
+      )
+    }
+    else if (kind === 'gaps') {
+      const [name, ...what] = it.title.split(' — ')
+      cells = (
+        <>
+          <td className="rv-tt-main">
+            <b>{name}</b>
+            {it.new && <span className="rv-new">New</span>}
+          </td>
+          <td className="num tnum">{fmtNum(it.doc_count ?? 0)}</td>
+          <td className="rv-tt-ev">{what.join(' — ')}</td>
         </>
       )
     }
@@ -554,7 +626,7 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
   return (
     <div className="rv-queue">
       <div className="rv-blurb">
-        {kind === 'merges' ? <GitMerge /> : kind === 'duplicates' ? <GitCompare /> : <Files />}
+        {kind === 'merges' ? <GitMerge /> : kind === 'duplicates' ? <GitCompare /> : kind === 'gaps' ? <CircleDashed /> : <Files />}
         <p>{blurb}</p>
       </div>
 
@@ -578,6 +650,18 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
           <span className="spacer" />
           <Button size="sm" icon={Copy} disabled={!live.length} tip="Copy as a table to paste into an email or a spreadsheet" onClick={() => void copyRequests(tickedLive.length ? tickedLive : live, groupMap)}>
             {tickedLive.length ? `Copy ${tickedLive.length} ticked` : 'Copy requests'}
+          </Button>
+        </div>
+      )}
+      {kind === 'gaps' && (
+        <div className="rv-toolbar">
+          <span className="faint">These lists are read when you open this tab. A full sweep rereads every entity note.</span>
+          <span className="spacer" />
+          <Button size="sm" icon={Copy} disabled={!live.length} tip="Copy as a table to paste into an email or a spreadsheet" onClick={() => void copyLeads(tickedLive.length ? tickedLive : live, 'gap')}>
+            {tickedLive.length ? `Copy ${tickedLive.length} ticked` : 'Copy gaps'}
+          </Button>
+          <Button size="sm" icon={RefreshCw} loading={sweeping} onClick={() => void sweep()}>
+            Run full lead sweep
           </Button>
         </div>
       )}
@@ -713,6 +797,28 @@ function Detail({ item, kind, docs, onMerge, onPrimary, onDifferent, onKeep }: {
         </>
       )}
       {kind === 'duplicates' && <DuplicatePair item={item} docs={docs} />}
+      {kind === 'gaps' && (
+        <>
+          {item.detail.length > 0 && (
+            <ul className="rv-tt-gap">
+              {item.detail.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+          )}
+          {(item.cited ?? []).length > 0 && (
+            <div className="rv-cited">
+              <span className="faint">Named in</span>
+              {(item.cited ?? []).slice(0, 12).map((c, i) => (
+                <button key={i} className="rv-cite" onClick={() => (c.sha ? navigate({ view: 'document', sha: c.sha }) : c.note && void openLink(stripMd(c.note)))}>
+                  {c.filename ?? c.note}
+                </button>
+              ))}
+              {(item.cited ?? []).length > 12 && <span className="faint">+{(item.cited ?? []).length - 12}</span>}
+            </div>
+          )}
+        </>
+      )}
       {kind === 'requests' && r && (
         <>
           {r.why && <div className="rv-tt-why">{r.why}</div>}
@@ -747,6 +853,16 @@ function Detail({ item, kind, docs, onMerge, onPrimary, onDifferent, onKeep }: {
         <Button size="sm" onClick={onKeep}>
           Keep open
         </Button>
+        {kind === 'gaps' && item.note && (
+          <Button size="sm" iconRight={ArrowUpRight} onClick={() => void openLink(stripMd(item.note!))}>
+            Open <Kbd>O</Kbd>
+          </Button>
+        )}
+        {kind === 'gaps' && (
+          <Button size="sm" variant="ghost" icon={MessageCircle} onClick={() => navigate({ view: 'ask', prompt: leadPrompt(item) })}>
+            Ask Claude
+          </Button>
+        )}
         {kind === 'duplicates' && item.note && (
           <Button size="sm" variant="ghost" iconRight={ArrowUpRight} onClick={() => void openLink(stripMd(item.note!))}>
             Open document

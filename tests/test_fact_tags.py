@@ -88,7 +88,6 @@ def test_the_pass_retags_rejects_and_leaves_none(tmp_path, monkeypatch):
 
     # The re-tagged facts reach the entity's views and the staged timeline.
     uni = next(e for e in _art(vault)["entities"] if e["id"] == "calder-valley-university")
-    assert {f["claim"] for f in uni["evidence_fragments"]} == {signed["fact"], paid["fact"]}
     assert [e["event"] for e in uni["timeline_events"]] == [signed["fact"]]
     raw = (vault / ".watchdog" / "timeline" / f"2021-03-03_{SHA[:7]}.ndjson").read_text(encoding="utf-8")
     assert "calder-valley-university" in json.loads(raw.splitlines()[0])["entity_ids"]

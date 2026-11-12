@@ -17,12 +17,9 @@ The output is shape-identical to a single-document extraction JSON, so it feeds
 straight into postflight (`pipeline/postflight.py`) unchanged.
 """
 
-import json
-from pathlib import Path
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
-from watchdog.pipeline.json_io import _read_json
 
 
 def _role_key(role: dict) -> tuple:
@@ -259,41 +256,3 @@ def _fold_log(folds: list[dict], by_id: dict, facts: list[dict], sha: str | None
             undo={"version": 2, "available": False,
                   "reason": "Merged inside one document while it was read in sections."}))
     return out
-
-
-def run(vault: Path, sha256: str) -> dict:
-    tmp = vault / ".watchdog" / "tmp"
-    section_files = sorted(tmp.glob(f"section_ex_{sha256}_*.json"))
-    if not section_files:
-        return {"error": f"no section extraction files found for sha256 {sha256}"}
-
-    sections = []
-    for f in section_files:
-        try:
-            sections.append(_read_json(f))
-        except json.JSONDecodeError as e:
-            return {"error": f"invalid section JSON {f.name}: {e}"}
-
-    merged = merge_extractions(sections, sha=sha256)
-    out = tmp / f"wdg_ex_{sha256}.json"
-    out.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # New-vs-updated split, computed against the registry *before* post-flight writes.
-    registry: dict = {}
-    reg_path = vault / ".watchdog" / "registry" / "entities.json"
-    if reg_path.exists():
-        try:
-            registry = json.loads(reg_path.read_text(encoding="utf-8"))
-        except Exception:
-            registry = {}
-    new_entities = {e["id"]: e["name"] for e in merged["entities"] if e["id"] not in registry}
-    updated_entities = {e["id"]: e["name"] for e in merged["entities"] if e["id"] in registry}
-
-    return {
-        "ok": True,
-        "extraction_path": str(out.relative_to(vault)),
-        "entity_count": len(merged["entities"]),
-        "new_entities": new_entities,
-        "updated_entities": updated_entities,
-        "sections_merged": len(sections),
-    }

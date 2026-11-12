@@ -67,7 +67,10 @@ def summary(vault: Path) -> dict:
         "briefing": latest,
         "headline": briefing_status(vault, latest) if latest is not None else None,
         "contradictions": sum(c["count"] for c in found["contradictions"]),
-        "leads": len(found["unprofiled"]) + len(found["isolated"]) + len(found["inferred"]),
+        # Inferred relationships need judgement; the other two lead signals are gaps in the record,
+        # counted with the tidy-up (D399).
+        "leads": len(found["inferred"]),
+        "gaps": len(found["unprofiled"]) + len(found["isolated"]),
         "near_duplicates": count_open_duplicates(vault),
         "possible_same": count_open_same_entities(vault, resolved),
         "alerts": _open_alerts(vault, resolved),

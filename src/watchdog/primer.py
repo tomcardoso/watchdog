@@ -2,7 +2,8 @@
 every Ask Claude session.
 
 counts and the reporter's verification progress, the most-mentioned entities, what is waiting on
-the reporter (contradictions, leads, document requests, possible same entities, disputed facts),
+the reporter (contradictions, leads, gaps in the record, document requests, possible same
+entities, disputed facts),
 and the last few briefings. The app adds it to every session's system prompt when the session
 connects (D299), so it is never stale and never a file a session can edit.
 
@@ -132,7 +133,7 @@ def gather(vault: Path) -> dict:
                      "note": e.get("note_path"), "docs": len(e.get("appears_in") or [])}
                     for eid, e in top[:_ENTITIES_MAX] if e.get("appears_in")]
 
-    items = open_items(vault, kinds=("contradictions", "leads", "merges")) if ents else []
+    items = open_items(vault, kinds=("contradictions", "leads", "gaps", "merges")) if ents else []
     by_kind: dict[str, list[dict]] = {}
     for it in items:
         by_kind.setdefault(it["kind"], []).append(it)
@@ -157,6 +158,7 @@ def gather(vault: Path) -> dict:
         "top_entities": top_entities,
         "contradictions": by_kind.get("contradictions", []),
         "leads": by_kind.get("leads", []),
+        "gaps": by_kind.get("gaps", []),
         "merges": by_kind.get("merges", []),
         "requests": requests.open_requests(vault),
         "disputed": disputed,
@@ -244,6 +246,8 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
     waiting += _list("Open contradictions", [_safe(i["title"]) for i in data["contradictions"]],
                      per_list, "app: Review")
     waiting += _list("Open leads", [_safe(i["title"]) for i in data["leads"]], per_list,
+                     "the `mcp__watchdog__leads` tool")
+    waiting += _list("Gaps in the record", [_safe(i["title"]) for i in data["gaps"]], per_list,
                      "the `mcp__watchdog__leads` tool")
     waiting += _list("Documents to request", [_safe(r.get("what") or "") for r in data["requests"]],
                      per_list, "`requests.md`")

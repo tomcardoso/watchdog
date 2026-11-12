@@ -161,3 +161,22 @@ def test_a_saved_settings_file_is_tightened_to_owner_only(tmp_path, monkeypatch)
     config.save({"projects_dir": "/x"})
     if sys.platform != "win32":
         assert stat.S_IMODE(os.stat(config.path()).st_mode) == 0o600
+
+
+def test_removed_research_settings_are_dropped_from_a_saved_file(tmp_path, monkeypatch):
+    """`research_max_rounds` and `research_max_fetches` were shown in Settings but read by
+    nothing (D398). A file that still holds them reads without them, and they are not settings."""
+    import json
+    from watchdog import config
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    (tmp_path / "config.json").write_text(json.dumps(
+        {"research_max_rounds": 5, "research_max_fetches": 40, "classify_pages": 3}))
+    assert config.read() == {"classify_pages": 3}
+    assert "research_max_rounds" not in settings.SETTINGS
+    assert "research_max_fetches" not in settings.SETTINGS
+
+
+def test_pdf_repair_timeout_is_a_setting():
+    """`preprocess_timeout` was read by pre-processing but could not be set."""
+    assert settings.SETTINGS["preprocess_timeout"]["default"] == 120
+    assert any("preprocess_timeout" in keys for _t, _b, keys in settings.SECTIONS)

@@ -228,7 +228,7 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    each fact's figures against the page text and annotates figures found nowhere or only on
    another page (D112, D200); stamps a source passage on every fact (`pipeline/passages.py`, D270:
    the resolved quote, else the best-matching sentence on the cited page found by code, else
-   `unlocated`; no model call); explodes `key_facts` into per-entity fragments and timeline events
+   `unlocated`; no model call); fans the dated `key_facts` out into per-entity timeline events
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
    OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
    `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
@@ -398,11 +398,6 @@ figures (D394):
   shared address. The fold (`_batch_exact_fold`, D127) folds only high matches, finding them
   through `write_vault.NameIndex` (normalized name, plus a place's street key), and gives a
   same-slug match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
-  canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
-  names, at least one side touched this run (or carried from the last run), then routes each by
-  tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
-  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
-  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0, a spelled-out legal form folded to
   its abbreviation), the shared tokens weighing at least one distinctive token's worth once tokens
   common across the type are discounted (IDF-style; identical token sets exempt), for places a
@@ -516,7 +511,7 @@ any other. A fact tag naming no entity of its own document, after post-flight's 
 three facts carrying it and the document's entities (at most 60, most similar first);
 `fact_tags.validate` accepts only an id the document defines. `apply` re-tags every fact of the
 document carrying that tag (original tags in `extracted_entities`), records the id in
-`entities_inferred`, rebuilds the document's `evidence_fragments`/`timeline_events`
+`entities_inferred`, rebuilds the document's `timeline_events`
 (`explode_key_facts`) and restages its raw timeline files; an unmatched tag is recorded in
 `tags_unmatched` and still dropped by the fan-out. `FactIndex` resolves `entities_inferred` through
 the merge log like any tag, and the entity note and app mark such a fact "link inferred". Every run
@@ -580,7 +575,11 @@ registry, keyed for idempotent replay (D67).
   (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
   function of the items and registry-derived inputs (watchlist terms, relationship-graph degree,
   `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
-  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watchlist
+  into judgement and tidy-up (duplicates, possible same, document requests, gaps; D328, D399). The
+  **gaps** kind holds the two extraction leftovers among the lead signals, `unprofiled` and
+  `isolated`; `leads` holds only `inferred` relationships. Their ids stay `lead:<signal>:<entity>`
+  (`resolutions.is_gap_id`), so earlier marks hold, and a sidecar written before D399 is regrouped
+  at read time (`triage.regroup`). A watchlist
   term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
   possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
   possible duplicate is resolved with the label `copies` or `different`, and `different` hides the
@@ -842,7 +841,7 @@ and nothing the session can start runs a command, so nothing else sees it.
 raising) to a session's system prompt when it connects, at the start and on every resume (D299);
 the system prompt survives compaction. It holds the questions
 in `context.md`, counts and verification progress, the most-mentioned entities with note links,
-open contradictions, leads, document requests, possible same entities and disputed facts (with
+open contradictions, leads, gaps in the record, document requests, possible same entities and disputed facts (with
 citation links), the last three briefings with their status lines, and how to cite. It is read from
 the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
 every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to
@@ -887,7 +886,7 @@ reports each outcome; a pair whose record an earlier pair merged away is followe
 joins open pairs whose records share a type and `identity.name_key`, offers a group of three or
 more, keeps the record in most documents (then the longer name), and leaves out any record marked
 "Not the same" as one already in it; the operation reads those marks again and merges the rest
-through `merge-entity-pairs` (D399).
+through `merge-entity-pairs` (D402).
 
 **The merge log (D279).** `registry/merges.json` (`schema_version` 1) records every merge — keep
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the
@@ -965,7 +964,9 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 - **Backends.** `claude-agent-sdk` (the only subscription path; tools disabled, D145),
   `claude-api` (streaming Messages with structured output), and the OpenAI-compatible `openai`,
   `deepseek`, `gemini`, `local` and `openrouter`, registered in one `_BACKEND_META` table. Gemini
-  and OpenAI get wire-enforced JSON schemas (OpenAI's derived to strict form, D151); the others get
+  and OpenAI get wire-enforced JSON schemas (OpenAI's derived to strict form, D151), and a Claude
+  request sends the same every-property-required form (D400), its nulls dropped from the answer
+  before validation; the others get
   JSON mode plus the schema in the prompt (D98). `local`/`openrouter` take a configured base URL;
   `local` takes an optional `local_context_window` (D139). A failed call retries on the same model
   and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).
@@ -1060,8 +1061,8 @@ the journalist's step (I5).
   `credentials.json`'s `secrets`, encrypted like an API key, and handed only to the `research-fetch`
   and `fetch-links` jobs, which make no model call and so get no provider's key.
 - **`fetch-links`** downloads a given list of links through the same path, without a session.
-- Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
-  advisory; only the egress checks are enforced. Web tools are granted by the skill's own
+- Round summaries go to `briefings/research-<date>.md`, never `context.md`. The skill's effort
+  tiers are advisory (they are not settings, D398); only the egress checks are enforced. Web tools are granted by the skill's own
   `allowed-tools`, not the vault-wide permissions.
 
 See D45–D48.
