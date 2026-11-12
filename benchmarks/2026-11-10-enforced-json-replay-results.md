@@ -298,3 +298,119 @@ Locators per answer, sorted:
 
 Not explained: why enforced output so rarely produces a locator-heavy answer once `page` is
 required. One document, and counts only.
+
+## Addendum 5: the locator gap, tested again in four arms (2026-11-12, #867, $1.10)
+
+Addendum 4 left a gap unexplained: 18% of facts carried a `quote_locator` in the prompted
+answers, against 4 to 6% in the enforced ones. The two modes differed in two ways, not one. The
+prompted request dropped enforcement, and it also had the schema written at the end of the user
+message. Anthropic's documentation says an enforced request gets "an additional system prompt
+explaining the expected output format", so the model is told the format in both modes, in
+different places. This run separates the two.
+
+**Setup.** The request was captured again at commit `b63d773`, so it carries the schema D400
+ships (every property required). The page text was made the same way as before and is the same
+length (34,141 characters). Same model and effort (`claude-haiku-5-5`, `high`). Four arms, 20
+runs each, interleaved (E, P, C, L, E, P, …), eight at a time:
+
+- **E, enforced as shipped.** The captured request.
+- **P, prompted.** Enforcement removed, the authored schema and the "only a JSON object" sentence
+  appended to the user message: the main run's mode B.
+- **C, enforced with the same text.** The captured request, with P's appended text as well. E
+  and C differ only in that text; P and C differ only in enforcement.
+- **L, enforced, locator first.** The captured request with `quote_locator` declared straight
+  after `fact` instead of last.
+
+One E run failed with an overloaded error and was not repeated, so E has 19 answers. A first
+attempt at one run per arm was lost to a fault in the scratch script and is not counted
+(about $0.06).
+
+| | E: enforced, as shipped | P: prompted | C: enforced + schema text | L: enforced, locator first |
+|---|---|---|---|---|
+| Answers | 19 | 20 | 20 | 20 |
+| Collapsed, or ran to the token limit | 0 | 0 | 0 | 0 |
+| Facts, min / median / max | 23 / 27 / 32 | 27 / 32 / 36 | 23 / 27 / 37 | 22 / 27 / 39 |
+| Facts with a page | 520 of 520 | 643 of 643 | 540 of 540 | 553 of 553 |
+| Facts with a `quote_locator` | 39 of 520 (7.5%) | 53 of 643 (8.2%) | 63 of 540 (11.7%) | 11 of 553 (2.0%) |
+| Answers with no locator | 8 | 11 | 8 | 16 |
+| Answers with 8 or more | 0 | 3 | 3 | 0 |
+| Locators found on the cited page or the one beside it (`quote_verify.resolve_quote`) | 39 of 39 | 51 of 53 | 63 of 63 | 11 of 11 |
+| Output tokens, median | 28,455 | 21,194 | 23,930 | 26,175 |
+
+Locators per answer, sorted:
+
+| Arm | Locators per answer |
+|---|---|
+| E | eight 0s, 1, 1, 2, 3, 3, 3, 4, 5, 5, 6, 6 |
+| P | eleven 0s, 1, 2, 2, 3, 4, 5, 10, 11, 15 |
+| C | eight 0s, 1, 1, 2, 2, 2, 4, 4, 4, 7, 9, 9, 18 |
+| L | sixteen 0s, 1, 2, 3, 5 |
+
+Tests are on locators per answer, since facts within one answer are not independent: a
+permutation test on the difference of means (200,000 shuffles, two-sided), and Fisher's exact
+test for counts of answers.
+
+- **The 18% did not repeat.** The prompted arm gave 8.2% this time, beside 7.5% for the enforced
+  arm (means of 2.65 and 2.05 locators an answer, p = 0.63). The rate is set by a few answers
+  that mark many facts: seven of 20 prompted answers carried 8 or more on 2026-11-10, three of 20
+  now. The two prompted sets do not differ reliably from each other (5.40 against 2.65 an answer,
+  p = 0.14), so one set of 20 answers cannot fix this rate to within a factor of two.
+- **Enforcement does not stop a locator-heavy answer.** With the schema text added, enforced
+  answers carried 18, 9 and 9 locators, and the arm's rate (11.7%) was the highest of the four.
+  C against P, which differ only in enforcement: p = 0.76.
+- **The answers that mark many facts came only from requests with the schema text in the
+  prompt.** This run: three of 20 in P and three of 20 in C, none of 19 in E, none of 20 in L.
+  Pooled with the earlier sets that sent every fact a page: 13 of 60 answers with the text (both
+  prompted sets and C) against 2 of 59 without it (`page` required, every property required,
+  and E), Fisher p = 0.004; means of 3.73 against 1.54 locators an answer, p = 0.004. The pooled
+  figure joins two days and sets that were not all interleaved, and within this run alone E
+  against C is not significant (2.05 against 3.15, p = 0.39; three of 20 against none of 19,
+  p = 0.23). So: the gap Addendum 4 put down to enforcement is better explained by the schema
+  text, and that is a lead, not a finding.
+- **Declaring `quote_locator` earlier lowered the rate.** 2.0% against 7.5% as shipped; 16 of 20
+  answers carried none, against 8 of 19 (Fisher p = 0.02; means p = 0.015). The opposite of what
+  was hoped for.
+- **The locators are accurate.** Every locator in an enforced answer (113 of 113) was found on
+  its cited page or the one beside it; two of 53 prompted ones were not.
+- **Which passages are marked stays consistent.** Of E's 39 locators, 26 fall on the twelve
+  passages P marks most often; 34 of C's 63; 7 of L's 11.
+- **No enforced answer collapsed or ran to the limit**: 0 of 59 across E, C and L, all with every
+  property required.
+- Prompted answers again held more facts (median 32 against 27; 30.5 against 27 in the main
+  run). Not scored, so it is not known whether the extra facts are material.
+
+Not tested: why the schema text would matter (the wording of Anthropic's own format prompt is
+not visible), any other document, model or effort, and whether a marked fact is the right one
+to mark. Nothing here says what share of facts should carry a locator.
+
+Request ids, E: req_011CgyahBighBDkbgfYKJszC, req_011CgyarRp1VvMnWuviYqFiJ,
+req_011CgyarRxSuWoCgDPRqYgLj, req_011Cgyaz4t9iMhLdektH6RTr, req_011Cgyb1arUkQXUdrrxgQGux,
+req_011Cgyb7w83s3TspuTk6PZLR, req_011Cgyb9xTE2xUw6nggnqeB2, req_011CgybDU4msPKWBreC7vHN9,
+req_011CgybHKyDvRPCqYFVLjFd1, req_011CgybLkPk7TuagZ2yhKGzo, req_011CgybQAb7nJz34FzKStbvD,
+req_011CgybTy1DHWE7qULPaSLqf, req_011CgybY5Pog2eLqQdjCvHG7, req_011Cgybbg2UYzs3Sack3pS1H,
+req_011Cgybfsad5ngYiDmj5ZUR6, req_011CgybiUkWW7ssJ7BM6UmTw, req_011CgybnnXDCSucEZhhzBF8v,
+req_011CgybrBn2XRAMFvjMenun6, req_011Cgybug1jphPR3KNRa3MKw (failed: req_011CgyawkyaAScHEhPJktnFZ).
+
+P: req_011CgyahBihFXF4EznJXFuzG, req_011CgyarRp1iavFgkHQyqzuJ, req_011CgyarRzRbEkwtFaYHuHwg,
+req_011CgyayaAFxE5Ki99JTSNPC, req_011Cgyaz5vf1HFtwR91CZtEV, req_011Cgyb5Gpdnh4snJNQsqX93,
+req_011Cgyb8ZmgWNwL9Yr6NyE23, req_011CgybBHcvRoNyysPNzbkaE, req_011CgybDVb4i3Lb64VtNdbJ3,
+req_011CgybJ5niQjYxzQXbpoUKo, req_011CgybLnfAn2jY1mRb4h7Ja, req_011CgybSdFJPEGN1LCbZXh73,
+req_011CgybUmH42n3inuGns3zWC, req_011CgybYBoGTn9uZJFDB1q7h, req_011Cgybc36WBZ49C3eznGr6X,
+req_011CgybgHiBiieagCHrkGCj3, req_011CgybjHz8kENkHw3pmLADP, req_011CgybnvQyAuXRdniAK1GMp,
+req_011CgybtCL5FPoDvYYUGHZhD, req_011CgybvTQym7UWZXxs8DtX8.
+
+C: req_011CgyahBjBXbisshewCkuAq, req_011CgyarRqzb4enVwKdUFRRG, req_011CgyarRygvCHGA13SJzSrE,
+req_011CgyaygBuAZQpJqzfdRXcp, req_011CgyazeQ2WBd38MTaXCLbG, req_011Cgyb5qtieEevbnLJE2a4e,
+req_011Cgyb93jwr2SqHvBMwBxAo, req_011CgybD8WYgg46kurRqP3Yo, req_011CgybFowveGmmnwKwTF7bb,
+req_011CgybKeJ77Vca6WrJY2tBs, req_011CgybP2Pxt7fdTE8FE9wMa, req_011CgybT4pvhPGmTRdnkFqAh,
+req_011CgybVKmAdQXZaKGzwqiUP, req_011CgybaX5Bta4Ed5gXgoPH2, req_011CgybcpiPTARxjRYCejHGN,
+req_011Cgybh7MdFqB11qaxcZYWj, req_011CgybmVQ3KXBFcppWvq4sH, req_011Cgybp8fhZoPvNVZ4W6UrA,
+req_011CgybtHCmCGo9R46UfGMzU, req_011CgybwdUjhjwj5JzXhBtBh.
+
+L: req_011CgyahBiSnHAeHWbkEqUJj, req_011CgyarRnXYb1eX8jcvv8Cb, req_011CgyarS1RN3NTZiByjAiP9,
+req_011CgyaywWPcHXLSsKkGM2PY, req_011Cgyb1SKmed9ERETbHoUnr, req_011Cgyb5uVGF5zrSrxSCHeSa,
+req_011Cgyb978LsUwccyombEcZe, req_011CgybDBytpH5uJaxdCMF5N, req_011CgybGD2yjRdDNmYu71eZx,
+req_011CgybKgx67n3svcQm8Gh1i, req_011CgybPgKG9HAvLstWrAG65, req_011CgybTLtp4ktMQ9W5pGvpt,
+req_011CgybVZQCUjwfbD9GZKvSi, req_011Cgyban4bDRkbBUnoT2Yz6, req_011Cgybe7pKr1cRiGcWf9FVq,
+req_011CgybhWwwhyVx1xG7wKu8q, req_011Cgybnmu1DX9xKhLEPCUFD, req_011CgybpZRxnhb2GiJghZHDa,
+req_011CgybtsUXfhaoW1ZAEvj6f, req_011CgybxQLzbvCQ3rccWb8dm.
