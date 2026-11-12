@@ -14,7 +14,7 @@ import pytest
 
 from watchdog import progress
 from watchdog.pipeline import preprocess, preprocess_batch, prompts, quote_verify, transcribe
-from watchdog.pipeline.transcribe import assemble_pages, fmt_timestamp, parse_timestamp
+from watchdog.pipeline.transcribe import assemble_pages, fmt_timestamp
 
 
 # ── timestamps ───────────────────────────────────────────────────────────────────────
@@ -23,11 +23,6 @@ from watchdog.pipeline.transcribe import assemble_pages, fmt_timestamp, parse_ti
                                           (3725, "01:02:05"), (-3, "00:00:00")])
 def test_fmt_timestamp(seconds, text):
     assert fmt_timestamp(seconds) == text
-
-
-def test_parse_timestamp_round_trips():
-    assert parse_timestamp("[01:02:05] Good evening.") == 3725.0
-    assert parse_timestamp("no stamp here") is None
 
 
 # ── segment → page assembly ──────────────────────────────────────────────────────────

@@ -5628,3 +5628,24 @@ def test_two_runs_ending_in_the_same_second_keep_both_usage_records(tmp_path, mo
     assert a.endswith("usage-20261013T175140Z.json") and b.endswith("usage-20261013T175141Z.json")
     runs = orchestrate.usage_files(vault)
     assert [json.loads(p.read_text())["calls"][0]["task"] for p in runs] == ["extract", "briefing"]
+
+
+def test_a_damaged_queue_file_fails_alone_and_the_run_goes_on(tmp_path, monkeypatch):
+    """One queue descriptor that can't be parsed used to raise out of `run()` while it sized the
+    queue, before any document started, so nothing in the investigation could be processed until
+    the file was removed by hand. It now fails like any other document: set aside in
+    `queue/_failed/`, with the rest of the queue extracted."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    bad_sha = "f" * 64
+    (vault / ".watchdog" / "queue" / f"{bad_sha}.json").write_text(
+        '{"sha256": "' + bad_sha + '", "filename": "cut-off.pdf", "pages": [{"page": 1, "markd')
+    _mock(monkeypatch, extraction=_extraction())
+
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert summary["extracted"] == 1 and summary["failed"] == 1
+    assert (vault / ".watchdog" / "queue" / "_failed" / f"{bad_sha}.json").exists()
+    assert not (vault / ".watchdog" / "queue" / f"{bad_sha}.json").exists()
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
+    assert "could not be read" in log

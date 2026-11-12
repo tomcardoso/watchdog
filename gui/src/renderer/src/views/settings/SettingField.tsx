@@ -26,6 +26,7 @@ const LABELS: Record<string, string> = {
   embed_model: 'Embedding model',
   rerank_model: 'Reranker model',
   chew_workers: 'Pre-processing workers',
+  preprocess_timeout: 'PDF repair timeout',
   wayback_save: 'Save to the Wayback Machine',
   reporter_name: 'Your name'
 }

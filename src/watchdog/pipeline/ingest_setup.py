@@ -60,7 +60,7 @@ def _queue_entry(vault: Path, qf: Path) -> dict | None:
 def scan_queue(vault: Path) -> list[dict]:
     """Read every queued file's metadata (filename, type, page count, est_tokens) without
     touching the lock — shared by `run` (which then acquires the lock) and `cost_estimate`'s
-    `--estimate` path (#269), which must stay lock-free and read-only."""
+    estimate (#269), which must stay lock-free and read-only."""
     queue_dir = vault / ".watchdog" / "queue"
     queue_files: list[dict] = []
     if queue_dir.exists():
@@ -142,7 +142,7 @@ def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,
 
     Queue files outlive extraction — they stay until finalize commits them — so the queue mixes
     documents still to read with documents already staged (`.watchdog/extracted/<sha>.json`) or
-    committed. Counting those against the limit would make a second `dig --limit 100` re-select
+    committed. Counting those against the limit would make a second processing run limited to 100 re-select
     the first hundred and extract nothing; skipping them makes each call take the *next* N.
     `force` re-extracts staged/committed documents anyway, so nothing is skipped then. `limit`
     None returns `queue_files` unchanged."""

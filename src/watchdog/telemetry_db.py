@@ -182,7 +182,7 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
 
     Raises on failure (a locked db, disk full, a corrupt file) rather than swallowing — the
     caller (`orchestrate._record_usage`) is responsible for catching this and logging a WARN via
-    the vault's own `ingest.log` instead of letting it propagate, since a telemetry write must
+    the vault's own `processing.log` instead of letting it propagate, since a telemetry write must
     never fail or slow down the actual ingest it's observing. Left raising here, not swallowed
     in this module, so a test can assert the failure path without needing a vault/log to check."""
     import watchdog

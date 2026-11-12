@@ -102,7 +102,8 @@ async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort
     collection runs in a later process."""
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("anthropic", model_id, effort)
-    output_config = {"format": {"type": "json_schema", "schema": schemas.EXTRACTION}}
+    output_config = {"format": {"type": "json_schema",
+                                "schema": model_client._claude_wire_schema(schemas.EXTRACTION)}}
     if effort_arg:
         output_config["effort"] = effort_arg
     # The per-model wire envelope (#598) — not `_wire_max_tokens`'s streaming-guard rationale:
@@ -209,6 +210,9 @@ async def _anthropic_collect(batch_id: str, api_key: str, model_id: str) -> dict
             continue
         message = item.result.message
         text = next((b.text for b in message.content if getattr(b, "type", None) == "text"), "")
+        # Every property was asked for, null where there is no value (D400). Harmless on the
+        # answers of a batch submitted before that.
+        text = model_client._denormalize_strict_json(text, schemas.EXTRACTION)
         parsed = model_client._extract_json(text)
         usage_dict = model_client._fold_in_anthropic_thinking(_model_dump(message.usage))
         stop_reason = getattr(message, "stop_reason", None)
@@ -420,7 +424,7 @@ async def _openai_collect(batch_id: str, api_key: str, model_id: str) -> dict[st
                 resp_body = response.get("body") or {}
                 choices = resp_body.get("choices") or []
                 text = (choices[0].get("message", {}).get("content") or "") if choices else ""
-                text = model_client._denormalize_strict_json(text)
+                text = model_client._denormalize_strict_json(text, schemas.EXTRACTION)
                 parsed = model_client._extract_json(text)
                 usage_dict = dict(resp_body.get("usage") or {})
                 finish_reason = choices[0].get("finish_reason") if choices else None

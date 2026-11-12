@@ -23,9 +23,8 @@ sha), and the `reindex` operation rebuilds the indexes from the registry — so 
 leaves them in place rather than half-deleting a note a journalist may have annotated.
 The source file stays wherever pre-processing (`chew`) already put it, in `.watchdog/staging/<sha256>/` — this command never touches it.
 
-Re-ingest later: move the queue file back —
-  mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/
-then run processing (`dig`) again.
+To process it again later, the `requeue` operation (Requeue failed documents) moves the queue
+file back; the next processing run then extracts it.
 """
 
 from datetime import datetime, timezone

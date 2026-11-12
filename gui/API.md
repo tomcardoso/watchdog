@@ -98,7 +98,7 @@ Summary = {               // overview.summary(), made JSON-safe
   name, path,
   briefing: {path, name, date}|null,
   headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
-  contradictions, leads, near_duplicates, possible_same, alerts, requests, // waiting on you
+  contradictions, leads, gaps, near_duplicates, possible_same, alerts, requests, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // overview.has_work()
@@ -107,7 +107,7 @@ Summary = {               // overview.summary(), made JSON-safe
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
   top_entities: EntityRow[],         // 8 with the most documents, none removed (D326)
-  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same + requests (D327, D328)
+  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same + requests + gaps (D327, D328, D399)
   start_here: StartHereItem[],       // triage.rank: up to 7 judgement items, best first, none of a removed entity
   batch: {briefing, at, added: {[kind]: n}}|null,      // what the latest briefing's batch added to Review
   since_review: {since, added: {[kind]: n}}|null,      // open items batches added since Review was last opened
@@ -165,12 +165,15 @@ EntityRow = {
 | `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
 | `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` (not `hot.md`, retired in D285) |
 | `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
-| `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
+| `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads, Review → Gaps), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents, grouped_by: "model"\|null, wordings: string[]}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last; a group the model joined across wordings (`request_sources.mapping`, D334) has a `src:` key, the model's label, `grouped_by: "model"` and the wordings it joined |
 | `vault.requestSourceSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping of request sources apart again (`request_sources.split`, D334): recorded in `registry/request_sources.json` and the vault's history; later runs never regroup those sources. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
+| `vault.addContextFiles` | `{vault, paths: string[]}` | `{added: string[], skipped: string[]}` — copies the chosen files into `context/` (D342); the originals stay where they are, a name already taken gets a number, and folders and hidden files are skipped. `bad_params` unless `paths` is a list of strings |
 | `vault.reasoningRuns` | `{vault}` | `{enabled, folder, runs: [{run_id, calls, with_reasoning, bytes, started\|null, documents: string[]}]}` — the runs whose model reasoning was saved in `.watchdog/reasoning/` (D368), newest first; `enabled` is the `save_reasoning` setting. Read-only |
+| `vault.troubleshootingSize` | `{vault}` | `{files, bytes, originals_files, originals_bytes}` — what a copy for troubleshooting would hold, without and with the originals, before compression (D323); reads file sizes only |
+| `vault.diagnosticsReport` | `{vault}` | `{text}` — the content-free diagnostics report as Markdown, to show in full before the `diagnostics-report` operation saves it (D331) |
 
 ```
 DocumentDetail = DocumentRow & {
@@ -455,7 +458,7 @@ MigrationEstimate = {
 ## review
 
 ```
-ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates"|"merges", rid, title, detail: string[], note|null,
+ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates"|"merges"|"gaps", rid, title, detail: string[], note|null,
               pair?: SamePair}                     // pair only on "merges" items
 SamePair   = {tier: "high"|"medium"|"low", rule, model_declined: bool,
               evidence: {surface, identifier: {scheme, value}|null, shared: [{relationship, target_id, target_name}]},
@@ -508,6 +511,8 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `secrets.provide` | `{store: "encrypted"\|"plaintext", keys: {[blob data]: key}, backend?, reason?, unreadable?}` | `{ok, keys}` — **main process only** (the bridge refuses it from the window): the keys it decrypted, sent once each time the backend starts, before the window can call anything (D295). Kept in memory only |
 | `auth.renameKey` | `{provider, id, label}` | `auth.status` result — same name rules |
 | `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
+| `auth.setKeyLimit` | `{provider, id, usd?: number\|null}` | `auth.status` result — sets a stored key's spending limit in US dollars, counted from now in every investigation on this computer (D347); no `usd` removes it. `not_found` for a key this computer doesn't hold |
+| `auth.resetKeyLimit` | `{provider, id}` | `auth.status` result — counts the key's spending from now; what it spent before stays in Usage |
 | `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
 | `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
 | `spend.limit` | `{vault}` | `SpendingLimitInfo` — `{limit_usd\|null, reset_at\|null, spent_usd, remaining_usd\|null, reached, claude_mode, sample}`: the investigation's spending limit and the processing spend recorded since its last reset (D324); Claude subscription calls, Ask Claude and Research are not counted |
@@ -540,6 +545,7 @@ SettingKey = {key, short, help, is_set: bool, default, current (null for secrets
 | Method | Params | Result |
 |---|---|---|
 | `research.status` | `{vault}` | `{queued: [{url, title\|null, source_type\|null, relevance\|null}], wayback_configured: bool}` |
+| `research.dismiss` | `{vault, urls: string[]}` | `{removed}` — takes sources off the download queue; `bad_params` unless `urls` is a list of strings |
 
 Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-links` (`{targets}`) for links.
 

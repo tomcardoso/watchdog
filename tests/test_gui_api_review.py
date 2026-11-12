@@ -23,7 +23,8 @@ def test_items_match_the_terminal_review(rich_vault):
     # Without `since`, nothing is new (D327); otherwise the items are the library's.
     assert [i.pop("new") for i in r["items"]] == [False] * len(r["items"])
     assert r["items"] == open_items(rich_vault)
-    assert r["counts"] == {"contradictions": 1, "leads": 2, "alerts": 1, "duplicates": 1, "merges": 0}
+    assert r["counts"] == {"contradictions": 1, "leads": 1, "alerts": 1, "duplicates": 1, "merges": 0,
+                           "gaps": 1}
     first = r["items"][0]
     assert set(first) == {"kind", "rid", "title", "detail", "note", "entity", "doc_count"}
     assert first["title"] == "Jane Doe — Start date of Jane Doe's directorship"
@@ -40,7 +41,8 @@ def test_items_can_be_filtered_by_kind(rich_vault):
 
 def test_items_on_an_empty_vault(tmp_path):
     r = call("review.items", vault=V(make_vault(tmp_path)))
-    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0},
+    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0,
+                                          "gaps": 0},
                  "start_here": []}
 
 
@@ -60,7 +62,7 @@ def test_resolve_several_kinds_at_once(rich_vault):
     assert sorted(call("review.resolve", vault=V(rich_vault), rids=rids)["resolved"]) == sorted(rids)
     assert call("review.items", vault=V(rich_vault))["items"] == []
     assert call("review.items", vault=V(rich_vault))["counts"] == {
-        "contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}
+        "contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0, "gaps": 0}
 
 
 def test_unresolve_reopens(rich_vault):
@@ -80,7 +82,16 @@ def test_resolved_lists_what_was_handled_newest_first(rich_vault):
     items = call("review.resolved", vault=V(rich_vault))["items"]
     assert items[0] == {"rid": "alert:abc:def", "label": "checkbox", "resolved_at": "2030-01-01T00:00:00",
                         "kind": "alerts"}
-    assert {i["kind"] for i in items} == {"alerts", "leads", "requests"}
+    assert {i["kind"] for i in items} == {"alerts", "gaps", "requests"}
+
+
+def test_a_handled_lead_id_is_filed_by_its_signal(rich_vault):
+    """The two extraction-leftover signals are gaps and `inferred` stays a lead (D399); the ids
+    are the `lead:` ids they always had."""
+    resolutions.resolve(rich_vault, ["lead:unprofiled:a", "lead:isolated:b", "lead:inferred:c"])
+    kinds = {i["rid"]: i["kind"] for i in call("review.resolved", vault=V(rich_vault))["items"]
+             if i["rid"] in {"lead:unprofiled:a", "lead:isolated:b", "lead:inferred:c"}}
+    assert kinds == {"lead:unprofiled:a": "gaps", "lead:isolated:b": "gaps", "lead:inferred:c": "leads"}
 
 
 def test_the_app_has_no_checkbox_import(rich_vault):

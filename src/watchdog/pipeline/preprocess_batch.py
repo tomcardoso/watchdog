@@ -17,7 +17,7 @@ from pathlib import Path
 from watchdog import progress
 from watchdog.pipeline import harvest, sidecar, text_positions, transcribe
 from watchdog.pipeline.language import name as language_name
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json_or, write_json_atomic
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
 from watchdog.vault_paths import (INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir,
@@ -37,7 +37,7 @@ class NearDupIndex:
     against it, so near-duplicates landing in the same drop — common with court records, where one
     filing turns up in several productions — were never flagged, and each comparison was a Python
     loop over every prior signature. One vectorized comparison per document now covers all three
-    populations; the similarity is the same fraction of matching hash slots as `minhash_similarity`.
+    populations; the similarity is the fraction of hash slots on which two signatures agree.
     """
 
     def __init__(self):
@@ -75,7 +75,7 @@ class NearDupIndex:
         if self._n == 0 and self._sigs.shape[1] != len(sig):
             self._sigs = np.zeros((64, len(sig)), dtype=np.uint64)
         if len(sig) != self._sigs.shape[1]:
-            return   # a signature from a different NUM_HASHES; minhash_similarity scores it 0.0
+            return   # a signature from a different NUM_HASHES is never a match
         if self._n == len(self._sigs):
             grown = np.zeros((2 * len(self._sigs), self._sigs.shape[1]), dtype=np.uint64)
             grown[: self._n] = self._sigs
@@ -513,7 +513,7 @@ def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
                 info.setdefault("notes", []).append(
                     "Its original file was no longer there to read again, so its pages keep their first reading.")
                 info.pop("ask", None)
-                qf.write_text(json.dumps(result, ensure_ascii=False))
+                write_json_atomic(qf, result)
                 continue
             stored = text_positions.path_for(vault, q["sha"])
             try:
@@ -536,7 +536,7 @@ def reread_queued(vault: Path, shas: list[str]) -> list[dict]:
             add_harvest(result)
             result["near_dup"] = _compute_near_dup(result, vault)
             text_positions.write(vault, q["sha"], result.pop("text_positions", None))
-            qf.write_text(json.dumps(result, ensure_ascii=False))
+            write_json_atomic(qf, result)
             done.append({"sha": q["sha"], "filename": result.get("filename"),
                          "reread": outcome["reread"]})
     finally:
@@ -698,7 +698,7 @@ def _run_ingest_inner(
             ocr_note  = _ocr_note(result, is_garbled)
             garb_str  = f"  ·  {ocr_note}" if ocr_note else ""
 
-            # Settle this file's row: print its result above the live region, clearing the in-flight row.
+            # This file's outcome, as one line of the run's output.
             live.finish(str(path), f"  {status}  {rel}{label_str}{garb_str}")
             for note in ((result.get("metadata") or {}).get("language") or {}).get("notes") or []:
                 live.note(f"       ⚠  {note}")
@@ -764,9 +764,9 @@ def _run_ingest_inner(
                     # OCR'd lines' positions go to their own file, kept past the commit, never
                     # into the queue descriptor the model's input is read from (D289).
                     text_positions.write(vault, sha256, result.pop("text_positions", None))
-                    (queue / f"{sha256}.json").write_text(
-                        json.dumps(result, ensure_ascii=False)
-                    )
+                    # Written whole or not at all: a descriptor cut off mid-write would be
+                    # unreadable to every later step.
+                    write_json_atomic(queue / f"{sha256}.json", result)
 
 
     except KeyboardInterrupt:

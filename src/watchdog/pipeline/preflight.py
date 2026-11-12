@@ -35,7 +35,16 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
     if not queue_file.exists():
         return {"error": f"queue file not found for sha256 {sha256}"}
 
-    queue = json.loads(queue_file.read_text(encoding="utf-8"))
+    # A descriptor that can't be parsed (cut off by a crash or a full disk) fails this document
+    # alone: raising here would stop the whole run on every attempt, with nothing in the app to
+    # clear it.
+    try:
+        queue = json.loads(queue_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return {"error": f"its pre-processed text could not be read ({e}); add the file again"}
+    if not isinstance(queue, dict):
+        return {"error": "its pre-processed text could not be read (not a queue record); "
+                         "add the file again"}
 
     # Check if already committed to the vault; collect the document types already used in this
     # vault so the extractor can reuse one rather than coining a near-duplicate (keeps the type

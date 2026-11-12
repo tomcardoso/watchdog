@@ -23,16 +23,6 @@ def user_skills_dir() -> Path:
     from watchdog import config
     return USER_SKILLS_DIR if USER_SKILLS_DIR is not None else config.home() / "skills" / "records"
 
-# Where the canonical skills are browsable. Pinned to a ref by the skills list.
-GITHUB_REPO = "tomcardoso/watchdog"
-_GITHUB_SKILLS_PATH = "src/watchdog/skills/records"
-
-
-def github_skills_url(ref: str = "main", name: str | None = None) -> str:
-    base = f"https://github.com/{GITHUB_REPO}/tree/{ref}/{_GITHUB_SKILLS_PATH}"
-    return f"{base}/{name}.md".replace("/tree/", "/blob/") if name else base
-
-
 def _split_frontmatter(text: str) -> tuple[dict, str]:
     """Parse a leading ``---`` YAML-ish frontmatter block into a flat {key: value} dict
     plus the remaining body. Only simple ``key: value`` lines are read (no nesting)."""

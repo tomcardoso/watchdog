@@ -232,14 +232,6 @@ def _prefix_len(n_tokens: int) -> int:
     return n_tokens - math.ceil(_JACCARD_MIN * n_tokens - 1e-9) + 1
 
 
-def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
-    """`_ranked_pairs`, capped at `_MAX_PAIRS` and numbered by rank."""
-    pairs = _ranked_pairs(entities_reg, touched)[:_MAX_PAIRS]
-    for index, pair in enumerate(pairs):
-        pair["index"] = index
-    return pairs
-
-
 def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     """Block the duplicate-entity field down to pairs worth a model call.
 
@@ -369,15 +361,6 @@ def _person_pairs(entities_reg: dict, touched: set[str], known: set[tuple[str, s
                       "aliases": b.get("aliases", [])},
             })
     return out
-
-
-def _orienting_line(text: str, limit: int = 240) -> str:
-    """One line of orienting prose per pair member — enough for the model to tell a parent company
-    from its subsidiary, without carrying two full summaries per pair into the prompt."""
-    text = " ".join((text or "").split())
-    if len(text) <= limit:
-        return text
-    return text[:limit].rsplit(" ", 1)[0] + "…"
 
 
 def _roles_digest(roles: list[dict]) -> list[dict]:
@@ -537,10 +520,6 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
         })
     entities.sort(key=lambda e: e["name"].lower())
 
-    # Block first, then read summaries only for the entities that actually survive the cap — a
-    # pair member is usually not a contradiction candidate too (it may appear in one document, or
-    # not have been touched this run), so its summary is not already in hand, and reading every
-    # note in the registry to enrich a handful of pairs would be the expensive way round.
     if only is not None:
         # A contradiction-only follow-up (`ledger_for`): no pairs to judge.
         return {"entities": entities, "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
@@ -601,11 +580,6 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
             verdicts.append(verdict)
     for index, pair in enumerate(pairs):
         pair["index"] = index
-    for pair in pairs:
-        for side in ("a", "b"):
-            synthesis = working[pair[side]["id"]].get("synthesis") or {}
-            pair[side]["summary"] = _orienting_line(synthesis.get("summary") or "")
-
     groups = _name_groups(same_key, working, _profile, evidence.dismissed(), rule_merges, candidates)
     name_groups = NameGroups(groups, working, profiles)
     return {"entities": entities, "pairs": pairs, "pairs_dropped": len(over),
@@ -789,9 +763,7 @@ class NameGroups:
         for p in profs:
             roles += [r for r in p.roles_digest() if r not in roles]
             names += [s for s in p.surfaces if s not in names]
-        synthesis = (self.working.get(keep) or {}).get("synthesis") or {}
         out = {"member": n, "id": keep, "names": names[:8], "documents": self._docs(records),
-               "summary": _orienting_line(synthesis.get("summary") or ""),
                "facts": facts[:identity.FACT_CAP], "roles": roles[:8]}
         if len(records) > 1:
             out["records"] = len(records)
@@ -946,7 +918,8 @@ class NameGroups:
 
 
 # What one group member costs in a reconcile prompt, in characters, for the cost estimate: the mean
-# of a member's facts, roles and summary line on a 2,000-entity investigation was about 1,100.
+# of a member's facts, roles and summary line on a 2,000-entity investigation was about 1,100
+# (measured before the summary left the input, D399; not refitted, so it now errs high).
 _GROUP_MEMBER_EST_CHARS = 1100
 
 

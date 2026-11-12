@@ -155,7 +155,8 @@ def _format(leads: dict, now: datetime.datetime) -> str:
     lines = [f"# Investigative leads — {now:%Y-%m-%d}\n",
              "*Deterministic whole-vault sweep of the entity registry — no model, "
              "regenerated on each ingest.*\n",
-             "*Handled in Watchdog: Review → Leads. This file is a read-only summary.*\n"]
+             "*Handled in Watchdog under Review: the first two sections in Gaps, the others in "
+             "Contradictions and Leads. This file is a read-only summary.*\n"]
 
     if leads["unprofiled"]:
         lines.append("\n## Named but never profiled\n")

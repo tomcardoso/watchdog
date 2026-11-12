@@ -10,7 +10,7 @@ The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Tim
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each Investigation screen, from Overview to Network (⌘1 to ⌘5, or Ctrl+1 to Ctrl+5), and **Ctrl+Tab** and **Ctrl+Shift+Tab** move to the next or previous item in the sidebar, in order, on every computer. **⌘[** and **⌘]** (Ctrl+[ and Ctrl+] on Windows and Linux) go back and forward through the screens you have visited; on Windows and Linux, Alt+← and Alt+→ do too, except while you are typing. **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
-The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and one line on what is new. Until you first open Review, it says what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." After that, it says what has come in since you last opened Review and is still open; when nothing has, there is no line. Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watchlist alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents, possible same entities and document requests, which you can work through in bulk; click it to see all three. **In progress** lists what is still being added. Each item links to the screen that deals with it.
+The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and one line on what is new. Until you first open Review, it says what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads, plus 12 tidy-up items." After that, it says what has come in since you last opened Review and is still open; when nothing has, there is no line. Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads (relationships the AI model inferred), watchlist alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents, possible same entities, document requests and gaps in the record, which you can work through in bulk; click it to see all four. **In progress** lists what is still being added. Each item links to the screen that deals with it.
 
 Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**.
 
@@ -151,7 +151,7 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 **Review** is where everything Watchdog flagged waits for you, one tab each. The number beside Review in the sidebar counts the items that need your judgement, as on the Overview; the page's own line also counts the tidy-up. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
 
-**Duplicates**, **Merges** and **Requests** are tidy-up, so they are tables rather than cards: one row each, with a tick box. Tick rows with the mouse or X, or tick every row from the box in the heading, then choose what to do with all of them from the bar at the bottom. The row you are on opens underneath with the full detail. On these tabs, H gives the row's everyday answer (not the same, these are copies, or handled) to the ticked rows, or to the row you are on when none is ticked.
+**Duplicates**, **Merges**, **Requests** and **Gaps** are tidy-up, so they are tables rather than cards: one row each, with a tick box. Tick rows with the mouse or X, or tick every row from the box in the heading, then choose what to do with all of them from the bar at the bottom. The row you are on opens underneath with the full detail. On these tabs, H gives the row's everyday answer (not the same, these are copies, or handled) to the ticked rows, or to the row you are on when none is ticked.
 
 ![The Review screen on its Contradictions tab, each contradiction with both claims and the documents they come from.](images/app-review.png)
 
@@ -162,7 +162,7 @@ Above the tabs, **Start here** lists up to seven items to look at first, each wi
 1. An item tied to a term on your [watchlist](#watchlist): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
 2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
 3. A contradiction between two documents, ahead of one between two passages of the same document.
-4. A lead named in several documents, ahead of one named in only one.
+4. A lead (a relationship the model inferred) named in several documents, ahead of one named in only one.
 
 Ties go to the item involving the better-connected entity, then the one in more documents. No kind of item fills more than half the list while others are waiting. The counts elsewhere still count each document a term was found in, since each is a document to read. Tidy-up items never appear here, and nor does anything about an entity you [removed](#removing-an-entity). Click an item to go to it on its tab. In Review, click **Start here** to fold the list away; Watchdog remembers the choice.
 
@@ -174,18 +174,22 @@ When a document disagrees with something already in the investigation, the item 
 
 ### Leads
 
-At the end of every run, ordinary code (no AI) sweeps the entities and lists four kinds of lead:
+A lead is a relationship the AI model inferred rather than read in a document: a link between two entities that it reasoned to. Ordinary code (no AI) lists them at the end of every run, with the relationship and the entity it belongs to. Treat each as a suggestion for reporting, not a finding: open the entity, read the documents it cites and decide whether the link holds.
 
-- an entity named as a relationship target that has no documents of its own: a company someone directs, say, that you have no records on;
-- an entity that turns up in several documents but has no relationships;
-- an unresolved contradiction;
-- a relationship the model inferred rather than read.
-
-Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here.
-
-A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name. Before anything is saved, Watchdog tries to match that label to an entity it already has (see [matching relationship targets](how-it-works.md#relationship-targets)); a label it cannot match stays a lead that says so, and the document is the only way to tell who or what it means. A relationship whose target the AI model matched says **inferred** beside the target on the entity's page and **target inferred** on the Network; hover over it to see the label the document gave.
+Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here. The two other kinds of lead the sweep finds, entities named but never profiled and entities that recur with no relationships, are under [Gaps](#gaps).
 
 **Copy leads** copies the open leads, or the ones you have selected, as a table to paste into an email or a spreadsheet. **Run full lead sweep** refreshes the list.
+
+### Gaps
+
+Gaps are places the extraction left the record unfinished. They are tidy-up rather than judgement: most are minor, and a large investigation can have hundreds, so they are a table of one row each, worked through in bulk. Ordinary code (no AI) lists them at the end of every run, in two kinds:
+
+- an entity named as a relationship target that has no record of its own: a company someone directs, say, that you have no records on;
+- an entity that turns up in several documents but has no relationships.
+
+The row you are on opens underneath. For an entity named but never profiled it shows who names it, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name. Before anything is saved, Watchdog tries to match that label to an entity it already has (see [matching relationship targets](how-it-works.md#relationship-targets)); a label it cannot match stays a gap that says so, and the document is the only way to tell who or what it means. A relationship whose target the AI model matched says **inferred** beside the target on the entity's page and **target inferred** on the Network; hover over it to see the label the document gave.
+
+From the open row you can open the entity's page, ask Claude about it, or mark it handled. Tick rows and choose **Mark ticked handled** to clear several at once; **Handled** lists them, and **Bring back** returns one. **Copy gaps** copies the open gaps, or the ticked ones, as a table to paste into an email or a spreadsheet, and **Run full lead sweep** refreshes the list. Gaps never appear in Start here and do not count towards the number beside Review in the sidebar.
 
 ### Duplicates
 
@@ -302,7 +306,7 @@ Web research never writes to the investigation. It queues the sources it keeps, 
 
 ## Reports
 
-**Reports** gathers everything Watchdog and Claude write for you to read. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. Below them, **Saved answers and threads** holds the pages Claude has saved from Ask Claude: answers, records requests and thread pages. Then come the briefing from each run and the research memos, grouped by month. A briefing is listed by what its run added, such as "4 documents added · 8 new entities", with the date and time below; a research memo is listed by the subject it researched. Leads and watchlist alerts are not listed here: you work through them in [Review](#review). The number beside each heading counts its items. The investigation's brief has its own screen, [Context](#context).
+**Reports** gathers everything Watchdog and Claude write for you to read. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. Below them, **Saved answers and threads** holds the pages Claude has saved from Ask Claude: answers, records requests and thread pages. Then come the briefing from each run and the research memos, grouped by month. A briefing is listed by what its run added, such as "4 documents added · 8 new entities", with the date and time below; a research memo is listed by the subject it researched. Leads, gaps and watchlist alerts are not listed here: you work through them in [Review](#review). The number beside each heading counts its items. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 
@@ -326,7 +330,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |
 | **Requeue failed documents** | Puts failed documents back in the queue. |
-| **Lead sweep** | Refreshes the leads, with no model call. |
+| **Lead sweep** | Refreshes the leads and gaps, with no model call. |
 | **Check citations** | Lists citations whose fact can no longer be found. |
 | **Re-check contradictions** | [Re-checks](#re-checking-contradictions) every entity with two or more facts. |
 | **Bring this investigation up to date** | Applies [improvements made since its documents were processed](#bringing-an-investigation-up-to-date). |

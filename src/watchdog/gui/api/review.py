@@ -1,5 +1,5 @@
-"""`review.*` — what is waiting on the journalist: contradictions, leads, watchlist hits and
-possible duplicates, plus marking them handled.
+"""`review.*` — what is waiting on the journalist: contradictions, leads, watchlist hits,
+possible duplicates and gaps in the record, plus marking them handled.
 
 The items come from `review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
 app and Review always list the same things. Resolving writes the same
@@ -15,6 +15,15 @@ from watchdog.gui.vaultio import require_vault
 
 _RID_KINDS = {"lead": "leads", "contradiction": "contradictions", "alert": "alerts",
               "duplicate": "duplicates", "request": "requests", "same": "merges"}
+
+
+def _rid_kind(rid: str) -> str:
+    """The queue a handled id belongs to. A `lead:` id is a gap when its signal is one of the two
+    extraction leftovers (D399), and a lead otherwise."""
+    from watchdog.pipeline import resolutions
+    if resolutions.is_gap_id(rid):
+        return "gaps"
+    return _RID_KINDS.get(rid.split(":", 1)[0], "other")
 
 
 def _rids(rids) -> list[str]:
@@ -110,7 +119,7 @@ def resolved(vault: str) -> dict:
     for rid, meta in resolutions.load(v).get("resolved", {}).items():
         meta = meta if isinstance(meta, dict) else {}
         out.append({"rid": rid, "label": meta.get("label") or "", "resolved_at": meta.get("at") or None,
-                    "kind": _RID_KINDS.get(rid.split(":", 1)[0], "other")})
+                    "kind": _rid_kind(rid)})
     out.sort(key=lambda r: r["rid"])
     out.sort(key=lambda r: r["resolved_at"] or "", reverse=True)
     return {"items": out}

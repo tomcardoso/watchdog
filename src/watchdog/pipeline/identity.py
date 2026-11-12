@@ -34,8 +34,6 @@ from typing import NamedTuple
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 
-TIERS = ("high", "medium", "low")
-
 # ── names ─────────────────────────────────────────────────────────────────────────────────────
 
 # Titles and offices dropped from either end of a person's name before comparing: "Mayor Robert

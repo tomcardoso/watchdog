@@ -25,6 +25,15 @@ def _read_json_or(path: Path, default, catch=(OSError, json.JSONDecodeError)):
         return default
 
 
+def write_json_atomic(path: Path, data) -> None:
+    """Write `data` as compact JSON to `path` through a temporary file beside it, which then
+    replaces it: a crash, a Stop or a full disk mid-write leaves the old file, or none, never half
+    of one. For files another step parses whole, like a queue descriptor."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def write_private_json(path: Path, data) -> None:
     """Write `data` as JSON to a file only its owner can read (0600), for the config and
     credentials files (#304). The file is created with that mode rather than chmod-ed after

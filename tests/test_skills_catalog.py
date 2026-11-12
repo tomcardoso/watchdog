@@ -53,7 +53,3 @@ def test_read_skill_unknown_returns_empty(monkeypatch, tmp_path):
     assert sc.read_skill("nonexistent") == ""
 
 
-def test_github_skills_url():
-    assert sc.github_skills_url().endswith("/src/watchdog/skills/records")
-    one = sc.github_skills_url(name="court-documents")
-    assert one.endswith("court-documents.md") and "/blob/" in one

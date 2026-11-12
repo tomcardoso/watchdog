@@ -258,7 +258,7 @@ def test_lead_sweep_counts_each_kind(tmp_path):
     vault = _vault(tmp_path, _registry())
     rep = CollectingReporter()
     assert lead_sweep(rep, vault) == {"unprofiled": 1, "isolated": 1, "contradictions": 1, "inferred": 1}
-    assert "1 entity named but never profiled" in rep.text and "Review → Leads" in rep.text
+    assert "1 entity named but never profiled" in rep.text and "Review → Leads and Review → Gaps" in rep.text
 
 
 def test_lead_sweep_with_nothing_to_report(tmp_path):
@@ -313,7 +313,7 @@ def test_format_renders_plain_items_with_wid_markers_and_no_commands():
     import datetime
     body = leads._format(leads.find_leads(_registry()), datetime.datetime(2025, 1, 1))
     assert "- **John Roe**" in body and "[ ]" not in body
-    assert "Handled in Watchdog: Review → Leads" in body
+    assert "Handled in Watchdog under Review: the first two sections in Gaps" in body
     assert "watchdog" not in body.lower().replace("handled in watchdog", "")
     assert "<!--wid:lead:isolated:john-->" in body
     assert "<!--wid:lead:unprofiled:shell-co-->" in body
