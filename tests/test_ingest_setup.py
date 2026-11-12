@@ -1025,3 +1025,102 @@ def test_finalize_cost_estimate_all_models_uses_standalone_finalize_history(tmp_
 
     assert {r["id"] for r in rows} == {m["id"] for m in all_models()}
     assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)
+
+
+# ── the estimate a run keeps (D404) ─────────────────────────────────────────────
+
+def _held(vault, documents=3, entities=5):
+    reg = vault / ".watchdog" / "registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    (reg / "documents.json").write_text(json.dumps({f"d{i}": {} for i in range(documents)}))
+    (reg / "entities.json").write_text(json.dumps({f"e{i}": {} for i in range(entities)}))
+
+
+def test_run_cost_estimate_warns_when_the_registry_is_not_in_the_forecast(tmp_path, monkeypatch):
+    """An investigation that already holds documents, with no earlier run that did both stages,
+    is told its post-processing line may be low; a first batch and a measured ratio are not."""
+    from watchdog.ops.ingest import _format_cost_estimate
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000_000.0]])
+    args = dict(model="haiku", post_backend="claude-api", post_model="haiku")
+
+    first = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert first["post_may_be_low"] is False
+    assert "may cost more" not in _format_cost_estimate(first)
+
+    _held(vault)
+    held = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert held["post_may_be_low"] is True
+    assert "Post-processing may cost more than shown" in _format_cost_estimate(held)
+
+    _write_usage_file(vault, "20260101T000000Z", 0, None, calls=[
+        _row("extract", 1000, 1.0, output_tokens=200), _row("reconcile", 800, 0.4)])
+    measured = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", **args)
+    assert measured["post_may_be_low"] is False
+
+
+def test_estimate_record_keeps_both_lines_and_the_registry_size(tmp_path, monkeypatch):
+    from watchdog.pipeline import ingest_setup
+    vault = _make_vault(tmp_path)
+    _queue_doc(vault)
+    _held(vault, documents=3, entities=5)
+    monkeypatch.setattr(ingest_setup, "planned_prompts", lambda *a, **k: [[10_000.0]])
+    est = ingest_setup.run_cost_estimate(vault, scan_queue(vault), "claude-api", model="haiku",
+                                         post_backend="claude-api", post_model="haiku")
+
+    rec = ingest_setup.estimate_record(vault, est)
+
+    assert rec["registry"] == {"entities": 5, "documents": 3} and rec["documents"] == 1
+    assert rec["extraction"]["tokens_high"] == 10_000.0 and rec["extraction"]["basis"] == "list-price"
+    assert rec["post"]["cost_high"] == est["post"]["cost_high"] and rec["post_may_be_low"] is True
+    json.dumps(rec)   # it is stored as JSON
+    assert ingest_setup.estimate_record(vault, {"extraction": None}) is None
+
+
+def test_a_run_keeps_its_estimate_with_its_usage_and_in_telemetry(tmp_path, monkeypatch):
+    """The estimate lands in the run's usage file and in the telemetry store under the run's id,
+    and leaves the store with the investigation when it is moved, then purged."""
+    import sqlite3
+    from watchdog import telemetry_db
+    from watchdog.pipeline import orchestrate
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(telemetry_db, "db_path", lambda: tmp_path / "telemetry.db")
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: True)
+    monkeypatch.setattr("watchdog.auth.use_investigation", lambda v: None)
+    estimate = {"version": 1, "extraction": {"cost_high": 2.0}, "registry": {"entities": 5, "documents": 3}}
+    try:
+        orchestrate._begin_usage_run(vault, estimate=estimate)
+        run_id = orchestrate._run.run_id
+        orchestrate._run.usage.append(_row("extract", 1000, 1.0))
+        path, _ = orchestrate._end_usage_run(vault)
+
+        assert json.loads((vault / path).read_text())["estimate"] == estimate
+        assert orchestrate._run.estimate is None
+        rows = sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT run_id, vault_name, estimate_json FROM run_estimates").fetchall()
+        assert [(r[0], r[1], json.loads(r[2])) for r in rows] == [(run_id, vault.name, estimate)]
+
+        moved = tmp_path / "moved"
+        assert telemetry_db.relocate_vault(vault.resolve(), moved) == 0   # no call rows to move
+        assert sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT vault_name FROM run_estimates").fetchall() == [("moved",)]
+        telemetry_db.purge_vault(moved)
+        telemetry_db.close()
+        assert sqlite3.connect(tmp_path / "telemetry.db").execute(
+            "SELECT count(*) FROM run_estimates").fetchone()[0] == 0
+    finally:
+        telemetry_db.close()
+
+
+def test_a_run_without_an_estimate_writes_none(tmp_path, monkeypatch):
+    from watchdog import telemetry_db
+    from watchdog.pipeline import orchestrate
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: False)
+    monkeypatch.setattr("watchdog.auth.use_investigation", lambda v: None)
+    orchestrate._begin_usage_run(vault)
+    orchestrate._run.usage.append(_row("reconcile", 1000, 1.0))
+    path, _ = orchestrate._end_usage_run(vault)
+    assert "estimate" not in json.loads((vault / path).read_text())

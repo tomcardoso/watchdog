@@ -63,6 +63,17 @@ CREATE TABLE IF NOT EXISTS calls (
     batch_collected_at TEXT,
     key_label TEXT
 );
+CREATE TABLE IF NOT EXISTS run_estimates (
+    id INTEGER PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    vault_path TEXT NOT NULL,
+    vault_name TEXT NOT NULL,
+    benchmark_arm_id TEXT,
+    recorded_ts REAL,
+    codebase_version TEXT NOT NULL,
+    estimate_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_run_estimates_run ON run_estimates(run_id, vault_path);
 CREATE INDEX IF NOT EXISTS idx_calls_run ON calls(run_id);
 CREATE INDEX IF NOT EXISTS idx_calls_task_model ON calls(task, model, effort);
 CREATE INDEX IF NOT EXISTS idx_calls_vault ON calls(vault_path);
@@ -135,6 +146,7 @@ def purge_vault(vault: Path) -> int:
     if not db_path().exists():
         return 0
     n = _write("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
+    _write("DELETE FROM run_estimates WHERE vault_path = ?", (str(vault.resolve()),))
     # secure_delete doesn't reach frames already in the -wal file; a truncating checkpoint copies
     # them into the main file (where they are overwritten) and empties the log. Best-effort: a
     # reader elsewhere can block it, and the next checkpoint then does the same.
@@ -169,8 +181,29 @@ def relocate_vault(old: Path, new: Path) -> int:
     no-op when the store doesn't exist."""
     if not db_path().exists():
         return 0
+    _write("UPDATE run_estimates SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
+           (str(new.resolve()), new.name, str(old)))
     return _write("UPDATE calls SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
                   (str(new.resolve()), new.name, str(old)))
+
+
+def record_estimate(estimate: dict, *, vault: Path, run_id: str,
+                    benchmark_arm_id: str | None = None) -> None:
+    """Keep the estimate a run was started on (D404): one `run_estimates` row whose `run_id` and
+    `vault_path` are those of the run's `calls` rows, so what was forecast for each stage can be
+    set against what its calls cost. `estimate` is `ingest_setup.estimate_record`'s dict, stored
+    as JSON. Raises on failure, like `record_call`; the caller logs and carries on."""
+    import time
+    import watchdog
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            """INSERT INTO run_estimates (run_id, vault_path, vault_name, benchmark_arm_id,
+                                          recorded_ts, codebase_version, estimate_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, str(vault.resolve()), vault.name, benchmark_arm_id, time.time(),
+             getattr(watchdog, "__version__", "unknown"), json.dumps(estimate, ensure_ascii=False)))
+        conn.commit()
 
 
 def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str | None,

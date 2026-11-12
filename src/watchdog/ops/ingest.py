@@ -161,6 +161,9 @@ def _format_cost_estimate(est: dict) -> str:
                 line += f"\n  {ex} · {po} · {total} ({ex_basis})"
             else:
                 line += f"\n  {ex} ({ex_basis}) · {po} ({post_basis}) · {total}"
+            if est.get("post_may_be_low"):
+                line += ("\n  Post-processing may cost more than shown: it also reads what this "
+                         "investigation already holds, and no earlier run here shows how much.")
         else:
             line += f"\n  {ex} ({ex_basis})"
             if post:
@@ -1085,6 +1088,7 @@ def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: 
     # already staged or committed are counted out unless `force` re-extracts them.
     to_send = result["queue_files"] if opts.force else needs_extraction(vault, result["queue_files"])
     q = len(to_send)
+    run_estimate = None   # kept with the run's usage (D404); the sample has none
     if in_sample:
         from watchdog.ops import sample
         if sample.unprepared(vault, to_send):
@@ -1095,11 +1099,12 @@ def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: 
     if q and in_sample:
         say(f"Prepared answers: {q} example document{'s' if q != 1 else ''}, no model, no cost.")
     elif q:
-        from watchdog.pipeline.ingest_setup import run_cost_estimate
+        from watchdog.pipeline.ingest_setup import estimate_record, run_cost_estimate
         est = run_cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]),
                                 model=extract_model,
                                 post_backend=_effective_extract_backend(post_backend, a["mode"]),
                                 post_model=post_model)
+        run_estimate = estimate_record(vault, est)
         say(_format_cost_estimate(est))
         say(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                 post_backend, post_model, plan.classify_effort, plan.extract_effort,
@@ -1193,7 +1198,8 @@ def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: 
                     skip_finalize=not finalize, force=opts.force, skip_briefing=opts.skip_briefing,
                     finalizer_overrides=overrides, verify=verify, extract_token_budget=token_budget,
                     benchmark_arm_id=opts.benchmark_arm_id, only_shas=only_shas,
-                    withhold_brief=opts.withhold_brief))
+                    withhold_brief=opts.withhold_brief, estimate=run_estimate))
+                run_estimate = None   # it covers the whole queue: only the first pass carries it
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break

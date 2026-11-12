@@ -610,7 +610,7 @@ def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     from watchdog import model_client
     base = cost_estimate(vault, queue_files, "claude-agent-sdk", max_runs, model=model)
     result = {**base, "subscription": backend == "claude-agent-sdk", "basis": None,
-              "extraction": None, "post": None}
+              "extraction": None, "post": None, "post_may_be_low": False}
     if not queue_files:
         return result
     planned = planned_prompts(queue_files, model, backend, vault)
@@ -636,6 +636,9 @@ def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     if measured:
         post_low, post_high = output * min(measured), output * max(measured)
     else:
+        # No earlier run here did both stages, so nothing says what this registry adds: the
+        # projection below is a first batch's. Say so when documents are already held.
+        result["post_may_be_low"] = bool(_registry_counts(vault)["documents"])
         fixed = _post_fixed_est() * model_client.tokenizer_ratio(post_model, post_backend, vault)
         post_low = fixed + output * _POST_PER_OUTPUT_TOKEN[0]
         post_high = fixed + output * _POST_PER_OUTPUT_TOKEN[1]
@@ -653,6 +656,33 @@ def run_cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     result["basis"] = ("history" if extraction["basis"] == "history"
                        and post["basis"] in ("history", None) else "list-price")
     return result
+
+
+def _registry_counts(vault: Path) -> dict:
+    """How much the investigation holds: registered entities and committed documents."""
+    registry = vault / ".watchdog" / "registry"
+    return {"entities": len(_read_json_or(registry / "entities.json", {})),
+            "documents": len(_read_json_or(registry / "documents.json", {}))}
+
+
+def estimate_record(vault: Path, est: dict) -> dict | None:
+    """What a run keeps of the estimate it was started on (D404), for its usage file and the
+    telemetry store: each stage's forecast tokens and dollars and where the price came from, the
+    queue's size, and the registry's size at that moment, so a later analysis can set forecast
+    against billed cost and see how the gap moves as an investigation grows. None for an estimate
+    with no stage lines (an empty queue)."""
+    if not est.get("extraction"):
+        return None
+    def stage(d: dict | None) -> dict | None:
+        return d and {k: d.get(k) for k in ("tokens_low", "tokens_high", "cost_low", "cost_high",
+                                            "basis", "runs_used")}
+    return {"version": 1, "documents": est["documents"], "pages": est["pages"],
+            "est_tokens": est["est_tokens"], "subscription": bool(est.get("subscription")),
+            "extraction": stage(est["extraction"]), "post": stage(est.get("post")),
+            "cost_low": est["cost_low"], "cost_high": est["cost_high"],
+            "post_may_be_low": bool(est.get("post_may_be_low")),
+            "long_prompt_calls": est.get("long_prompt_calls") or 0,
+            "registry": _registry_counts(vault)}
 
 
 def housekeeping_estimate(vault: Path, shas: list[str]) -> dict:

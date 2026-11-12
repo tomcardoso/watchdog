@@ -3517,3 +3517,13 @@ Rejected: forecasting reconcile, synthesis and briefing each from their own inpu
 
 Tradeoff: the first-run constants (`_EXTRACT_OUTPUT_RATIO`, `_POST_OUTPUT_RATIO`, `_POST_PER_OUTPUT_TOKEN`, `_SMALL_PASSES_EST`) are judgement bracketing three runs of the sample investigation, whose answers are prepared, not a model's. A small batch added to a large registry with no earlier run doing both stages is priced as if the registry were empty, so it is low; the sample's two-document run into a 14-document registry read 22 times its extraction output, against 3 to 5 for fresh batches. With history, one unusual earlier run widens the range rather than being averaged away. The all-models comparison still scales the document-text estimate, so its figures and the main line's are not on the same base. The new estimate has not been backtested against real bills: the recorded runs are on one Mac.
 
+### D404 — A run keeps the estimate it was started on
+
+D403's estimate has no term for how post-processing grows with the investigation, and its first-run constants were set by judgement, because no recorded run says what a forecast was and what the registry held when it was made. A processing run now keeps its estimate (`ingest_setup.estimate_record`: each stage's forecast tokens and dollars and where its price came from, the queue's size, and the registry's entity and document counts) as the `estimate` key of its usage file and as a `run_estimates` row in the telemetry store, under the run id its `calls` rows carry. Every real run becomes a point to fit the estimate against, with nothing to run. The row is deleted and moved with the investigation's other rows (D261). When a rate limit splits a run into several passes, only the first carries the estimate, since it covers the whole queue.
+
+In the same change the estimate says "post-processing may cost more than shown" when the investigation already holds documents and no earlier run did both stages, the case D403 prices as if the registry were empty.
+
+No migration (I19): an older usage file has no `estimate` key and nothing reads one as required; the telemetry table is created when the store is next opened.
+
+Tradeoff: the estimate recorded is the one printed as the run starts, so a run on a subscription records tokens with no dollars, and stand-alone post-processing, retries of a rate-limited run and benchmark arms record none. The registry's size is two counts, not its facts, which is what entity synthesis and reconcile actually read; counting facts means reading every stored extraction on each estimate.
+

@@ -806,7 +806,7 @@ only. Every usage record carries the call's own `stop_reason` whatever the setti
 into a folder the reporter chose; `reasoning-clear` deletes the folder. The troubleshooting copy
 leaves it out.
 
-Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
+A processing run started with an estimate keeps it (D404): as the `estimate` key of its usage file, and as a `run_estimates` row in the telemetry store under the run's id, with the registry's entity and document counts at the time, so forecast and billed cost can be compared per stage. Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with the `telemetry` setting; deleting an investigation with its folder removes its rows
 (D247).
 
