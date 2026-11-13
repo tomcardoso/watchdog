@@ -125,7 +125,8 @@ def _session_file(vault: Path, session_id: str) -> Path:
 
 
 def call_record(share: dict, result, *, task: str, session_id: str, model: str | None,
-                auth_mode: str | None, key_label: str | None, key_source: str | None = None) -> dict:
+                auth_mode: str | None, key_label: str | None, key_source: str | None = None,
+                overage: bool = False) -> dict:
     """One turn as a usage call record, in the shape `orchestrate._record_usage` writes."""
     tokens = {k: sum(int(m.get(k) or 0) for m in share["models"].values())
               for _, k in _TOKEN_KEYS}
@@ -157,6 +158,9 @@ def call_record(share: dict, result, *, task: str, session_id: str, model: str |
         record["key_label"] = key_label    # the label of the key that paid (D290), never the key
     if key_source:
         record["key_source"] = key_source  # where Claude Code said its credential came from (#872)
+    if overage:
+        record["overage"] = True           # extra usage was paying when the turn was stopped (#872)
+        record["failed"] = True
     return record
 
 

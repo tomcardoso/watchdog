@@ -58,7 +58,7 @@ def _kind(path: Path) -> dict:
 @method("usage.runs")
 def runs(vault: str) -> dict:
     from watchdog.usage import (STAGE, run_backends, run_totals, subscription_note, cost_by_key,
-                                subscription_confirmed)
+                                subscription_confirmed, extra_usage_calls)
     from watchdog.pipeline.orchestrate import usage_files
 
     from watchdog.pipeline import session_usage
@@ -79,6 +79,7 @@ def runs(vault: str) -> dict:
             "cost_usd": t["cost_usd"], "latency_s": t["latency_s"],
             "backends": run_backends(calls), "subscription": subscription_note(calls) is not None,
             "subscription_confirmed": subscription_confirmed(calls),
+            "extra_usage_calls": extra_usage_calls(calls),
             "stages": stages, "by_key": cost_by_key(calls), **_kind(f),
         })
     rows.sort(key=lambda r: r["ts"], reverse=True)
@@ -118,7 +119,8 @@ def run(vault: str, ts: str | None = None) -> dict:
     """One run's breakdown by stage (latest when `ts` is omitted), as Usage prints it."""
     from watchdog.usage import (
         STAGE, STAGE_ORDER, batch_lifecycle_note, peak_concurrency, stage_backends,
-        stage_models, subscription_note, subscription_confirmed, wall_span, cost_by_key,
+        stage_models, subscription_note, subscription_confirmed, extra_usage_calls, wall_span,
+        cost_by_key, extra_usage_list,
     )
     from watchdog.pipeline.orchestrate import usage_files
 
@@ -175,6 +177,8 @@ def run(vault: str, ts: str | None = None) -> dict:
         "totals": totals,
         "subscription_note": subscription_note(calls),
         "subscription_confirmed": subscription_confirmed(calls),
+        "extra_usage_calls": extra_usage_calls(calls),
+        "extra_usage": extra_usage_list(calls),
         "by_key": cost_by_key(calls),
         "corpus": corpus,
         "cost_per_page": (totals["cost_usd"] / pages) if pages else None,

@@ -964,6 +964,7 @@ export interface UsageRunRow {
   backends: string
   subscription: boolean
   subscription_confirmed?: boolean | null
+  extra_usage_calls?: number
   stages: Record<string, number> // stage → cost
   by_key?: KeyCost[]
   cache_read_tokens?: number
@@ -985,6 +986,10 @@ export interface UsageRun {
   subscription_note: string | null
   /** Whether Claude Code confirmed every subscription call ran on the login (#872); null with none. */
   subscription_confirmed?: boolean | null
+  /** Subscription calls stopped after extra usage began paying for them; each may have been charged. */
+  extra_usage_calls?: number
+  /** Those calls (up to 20, oldest first): stage, document, when the call ended (UTC ISO). */
+  extra_usage?: { stage: string; filename: string | null; at: string | null }[]
   by_key?: KeyCost[]
   peak_concurrency?: number | null
   batch_note?: string | null

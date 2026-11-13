@@ -2613,8 +2613,37 @@ def test_subscription_call_stops_when_extra_usage_is_paying(monkeypatch, raw):
     _patch_agent_stream(monkeypatch, [_init_message("none"), _rate_limit_event(**raw), _RESULT], seen)
     with pytest.raises(mc.MeteredBillingError) as e:
         asyncio.run(mc._agent_query("p", "model", None, subscription=True))
-    assert "extra usage" in str(e.value)
+    assert "extra usage" in str(e.value) and e.value.overage
+    assert e.value.usage == {"key_source": "none"}
     assert "ResultMessage" not in seen and mc._metered_stop
+
+
+def test_a_call_stopped_on_extra_usage_is_recorded_in_usage(tmp_path, monkeypatch):
+    """The one stopped call that may have been charged reaches Usage, marked (#872); a call
+    stopped for a key, which never ran, does not."""
+    from watchdog import auth
+    from watchdog.pipeline import orchestrate
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    auth.save_state({"mode": "subscription"})
+    seen = {}
+    for name, stream in (("overage", [_init_message("none"), _rate_limit_event(isUsingOverage=True), _RESULT]),
+                         ("key", [_init_message("apiKeyHelper"), _RESULT])):
+        vault = tmp_path / name
+        vault.mkdir()
+        _patch_agent_stream(monkeypatch, stream)
+        orchestrate._begin_usage_run(vault)
+        try:
+            with pytest.raises(mc.MeteredBillingError):
+                asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema={},
+                                                    filename="a.pdf"))
+            seen[name] = list(orchestrate._run.usage)
+        finally:
+            orchestrate._end_usage_run(vault)
+    [call] = seen["overage"]
+    assert (call["overage"], call["failed"], call["key_source"], call["auth_mode"],
+            call["backend"], call["filename"]) == (True, True, "none", "subscription",
+                                                   "claude-agent-sdk", "a.pdf")
+    assert seen["key"] == []
 
 
 def test_a_refused_overage_limit_is_still_a_rate_limit(monkeypatch):

@@ -363,7 +363,18 @@ class MeteredBillingError(ProviderAuthError):
     """A call meant for the Claude subscription would be, or was being, billed per token (#872,
     D406): Claude Code reported an API key as its credential, the environment names one, or the
     subscription's limit was reached and Claude Code reported that extra usage was paying. A
-    :class:`ProviderAuthError`, so every stage halts on it as on a refused key."""
+    :class:`ProviderAuthError`, so every stage halts on it as on a refused key.
+
+    `overage` marks the one case where the call had already started on extra usage and may have
+    been charged: the orchestrator records it in Usage, with `model`, `backend`, `auth_mode` and
+    `usage` (the credential source) filled in by `_acomplete_json`. Its tokens are unknown, since
+    the call ended before Claude Code reported them."""
+
+    def __init__(self, message: str, *, overage: bool = False, usage: dict | None = None):
+        super().__init__(message)
+        self.overage = overage
+        self.usage = usage
+        self.model = self.backend = self.auth_mode = self.key_label = None
 
 
 # Where the bundled Claude Code says its credential came from (`apiKeySource` in its init
@@ -377,10 +388,10 @@ METERED_KEY_SOURCES = frozenset({"ANTHROPIC_API_KEY", "apiKeyHelper", "/login ma
 _metered_stop: str | None = None
 
 
-def _stop_metered(message: str) -> MeteredBillingError:
+def _stop_metered(message: str, **kw) -> MeteredBillingError:
     global _metered_stop
     _metered_stop = message
-    return MeteredBillingError(message)
+    return MeteredBillingError(message, **kw)
 
 
 def _overage_in_use(info) -> bool:
@@ -862,7 +873,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
             elif name in ("RateLimitEvent", "RateLimitInfo"):
                 info = getattr(message, "rate_limit_info", message)
                 if subscription and _overage_in_use(info):
-                    raise _stop_metered(_OVERAGE_NOTE)
+                    raise _stop_metered(_OVERAGE_NOTE, overage=True,
+                                        usage={"key_source": key_source} if key_source else None)
                 if getattr(info, "status", None) == "rejected":
                     rejected = True
                     resets_at = getattr(info, "resets_at", None)
@@ -1760,6 +1772,10 @@ async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, 
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
                                                   api_key, max_tokens, effort_arg, task)
+        except MeteredBillingError as e:
+            # Say which call it was, so a call stopped on extra usage can be recorded (#872).
+            e.model, e.backend, e.auth_mode, e.key_label = model_id, chosen, auth_mode, key_label
+            raise _scrubbed(e, api_key)
         except (RateLimitError, ModelError, ProviderAuthError) as e:
             raise _scrubbed(e, api_key)
         except Exception as e:                  # any backend/transport failure → typed error

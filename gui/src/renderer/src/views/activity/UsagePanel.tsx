@@ -92,7 +92,24 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
           Costs shown are what the work would cost at published per-token rates, not money that was charged. Claude Code confirmed that every Claude call used your subscription, which has no per-token charge.
         </Callout>
       )}
-      {r.subscription_note && r.subscription_confirmed === false && (
+      {!!r.extra_usage_calls && (
+        <Callout tone="warning" title="Extra usage may have been charged">
+          Your Claude subscription&apos;s limit was reached, and Claude Code reported that paid extra usage was covering {r.extra_usage_calls === 1 ? 'a call' : `${fmtNum(r.extra_usage_calls)} calls`}. Watchdog stopped {r.extra_usage_calls === 1 ? 'it' : 'them'}, but {r.extra_usage_calls === 1 ? 'it' : 'they'} may already have been charged; Claude Code did not report the amount. Your Claude account&apos;s usage settings show what extra usage cost.
+          {!!r.extra_usage?.length && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              {r.extra_usage.map((c, i) => (
+                <li key={i}>
+                  {stageLabel(c.stage)}
+                  {c.filename ? ` · ${c.filename}` : ''}
+                  {c.at ? ` · ${fmtDateTime(c.at)}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(r.extra_usage_calls ?? 0) > (r.extra_usage?.length ?? 0) && <div className="faint">and {fmtNum((r.extra_usage_calls ?? 0) - (r.extra_usage?.length ?? 0))} more</div>}
+        </Callout>
+      )}
+      {r.subscription_note && r.subscription_confirmed === false && !r.extra_usage_calls && (
         <Callout tone="warning" title="Billing not confirmed">
           This work was set to use your Claude subscription, but Watchdog did not confirm how Claude Code paid for some of its calls. Work done with a version of Watchdog that did not yet check cannot be confirmed. Costs shown are what it would cost at published per-token rates. To see whether anything was charged, compare these dates with your Anthropic account&apos;s usage and billing pages.
         </Callout>

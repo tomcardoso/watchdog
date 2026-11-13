@@ -1332,6 +1332,9 @@ noted as such.
   Agent SDK call on the subscription, an environment variable that sends Claude Code past the login
   stops it; a key Claude Code reports as its credential stops it before the request; extra usage
   reported as paying stops it mid-call. Each raises `MeteredBillingError` (a halting
-  `ProviderAuthError`), and the worker refuses every later subscription call. "Not billed" is shown
-  only for calls that recorded `key_source: none`. *History: D406.* Guarded by
-  `tests/test_invariants.py::test_I20_…` and `tests/test_model_client.py`.
+  `ProviderAuthError`), and the worker refuses every later subscription call. A call stopped on
+  extra usage is recorded (`overage: true`), since it may have been charged. Ask Claude and Web
+  research stop the turn on the same signals, record it, and refuse the conversation's later turns.
+  "Not billed" is shown only when every subscription call recorded `key_source: none` and none was
+  stopped on extra usage. *History: D406.* Guarded by `tests/test_invariants.py::test_I20_…`,
+  `tests/test_model_client.py` and `tests/test_gui_chat.py`.
