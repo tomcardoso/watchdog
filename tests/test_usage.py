@@ -77,7 +77,10 @@ def test_backends_name_auth_only_for_claude():
 def test_not_billed_only_when_claude_code_confirmed_every_subscription_call():
     """`auth_mode` alone is the setting that was chosen (#872): only a recorded `key_source` of
     `none` confirms the login, so an older run's note says its billing was not confirmed."""
-    checked = {**_call(backend="claude-agent-sdk", auth_mode="subscription"), "key_source": "none"}
+    checked = {**_call(backend="claude-agent-sdk", auth_mode="subscription"), "key_source": "none",
+               "auth_method": "claude.ai"}
+    console = {**checked, "auth_method": "oauth_token"}   # reports no key, bills the Console (D407)
+    assert usage.subscription_confirmed([console]) is False
     old = _call(backend="claude-agent-sdk", auth_mode="subscription")
     assert usage.subscription_confirmed([checked]) is True
     assert "not amounts billed" in usage.subscription_note([checked])

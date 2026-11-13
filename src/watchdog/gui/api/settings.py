@@ -212,21 +212,15 @@ def models() -> dict:
 
 # ── auth ─────────────────────────────────────────────────────────────────────────
 
-def _env_message(name: str, what: str) -> str:
-    from watchdog import auth as auth_cmd
-    return auth_cmd.subscription_env_message(name, what)
-
-
 def _claude_reason(claude: dict) -> str | None:
     mode = claude["mode"]
     if mode is None:
         return "Claude access isn't set up yet."
     if mode == "subscription":
-        if not claude["logged_in"]:
+        if not claude.get("login_present", claude["logged_in"]):
             return "Claude is not signed in. Use Sign in under Settings → Models & keys."
-        if claude.get("env_conflict"):
-            return _env_message(claude["env_conflict"], "runs")
-        return None
+        from watchdog import auth as auth_cmd
+        return auth_cmd.subscription_check("runs")[0]
     return None if claude["key_masked"] else "API-key mode is set but no key is stored."
 
 
@@ -236,11 +230,10 @@ def _session_reason(claude: dict) -> str | None:
     if not claude["session_mode_own"] or claude["session_mode"] == claude["mode"]:
         return None
     if claude["session_mode"] == "subscription":
-        if not claude["logged_in"]:
+        if not claude.get("login_present", claude["logged_in"]):
             return "Ask Claude is set to use your subscription, but Claude is not signed in."
-        if claude.get("env_conflict"):
-            return _env_message(claude["env_conflict"], "questions")
-        return None
+        from watchdog import auth as auth_cmd
+        return auth_cmd.subscription_check("questions")[0]
     return None if claude["key_masked"] else "Ask Claude is set to use an API key, but no key is stored."
 
 
@@ -252,6 +245,14 @@ def _auth_status() -> dict:
     state = auth_cmd.load_state()
     claude = d["claude"]
     mode = claude["mode"]
+    claude["login_present"] = bool(claude["logged_in"])   # any login, for the reason below
+    if claude["logged_in"]:
+        # Signed in means signed in with a Claude account (#872, D407): a Console account's sign-in
+        # or a token also leaves a login on the computer, but bills elsewhere, so the sign-in
+        # button stays offered for it.
+        st = auth_cmd.claude_code_auth_status()
+        claude["logged_in"] = bool(st and st.get("loggedIn") is True
+                                   and st.get("authMethod") == auth_cmd.SUBSCRIPTION_AUTH_METHOD)
     if mode == "subscription":
         logged_in = bool(claude["logged_in"])
     else:

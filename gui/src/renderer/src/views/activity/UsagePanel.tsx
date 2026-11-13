@@ -89,7 +89,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
       </div>
       {r.subscription_note && r.subscription_confirmed !== false && (
         <Callout tone="info" title="Not billed">
-          Costs shown are what the work would cost at published per-token rates, not money that was charged. Claude Code confirmed that every Claude call used your subscription, which has no per-token charge.
+          Costs shown are what the work would cost at published per-token rates, not money that was charged. For every Claude call, Claude Code reported that it was signed in with your Claude account and using no API key, so your subscription paid, with no per-token charge.
         </Callout>
       )}
       {!!r.extra_usage_calls && (

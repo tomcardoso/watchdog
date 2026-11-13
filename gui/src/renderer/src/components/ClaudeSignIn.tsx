@@ -9,7 +9,8 @@ import './claudesignin.css'
 
 type ClaudeLogin = Awaited<ReturnType<typeof window.watchdog.claude.status>>
 /** A login that runs on a subscription. An API key signed in to Claude Code is not one. */
-export const onSubscription = (s: ClaudeLogin) => s.loggedIn && (s.method === 'subscription' || s.method === 'token')
+// Only a claude.ai sign-in is the subscription; a token can be a Console account's (D407).
+export const onSubscription = (s: ClaudeLogin) => s.loggedIn && s.method === 'subscription'
 const planName = (s: ClaudeLogin) => (s.plan ? `${s.plan.charAt(0).toUpperCase()}${s.plan.slice(1)} plan` : null)
 
 export function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { onSignedIn: () => void; label?: string }) {
@@ -48,7 +49,7 @@ export function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { on
     <div className="col gap-12">
       {login?.loggedIn && !onSubscription(login) && (
         <div className="signin-note">
-          Claude on this computer is signed in with an API key, not a subscription. Sign in with your Claude account to use a subscription.
+          Claude on this computer is signed in with {login.method === 'api_key' ? 'an API key' : login.method === 'token' ? 'an Anthropic Console account or a sign-in token' : 'another service'}, not a Claude subscription, so its calls would be billed there. Sign in with your Claude account to use a subscription.
         </div>
       )}
       <div className="row">

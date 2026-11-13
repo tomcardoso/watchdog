@@ -2614,7 +2614,7 @@ def test_subscription_call_stops_when_extra_usage_is_paying(monkeypatch, raw):
     with pytest.raises(mc.MeteredBillingError) as e:
         asyncio.run(mc._agent_query("p", "model", None, subscription=True))
     assert "extra usage" in str(e.value) and e.value.overage
-    assert e.value.usage == {"key_source": "none"}
+    assert e.value.usage == {"key_source": "none"}       # `auth_method` is added a level up
     assert "ResultMessage" not in seen and mc._metered_stop
 
 
@@ -2640,6 +2640,7 @@ def test_a_call_stopped_on_extra_usage_is_recorded_in_usage(tmp_path, monkeypatc
         finally:
             orchestrate._end_usage_run(vault)
     [call] = seen["overage"]
+    assert call["auth_method"] == "claude.ai"
     assert (call["overage"], call["failed"], call["key_source"], call["auth_mode"],
             call["backend"], call["filename"]) == (True, True, "none", "subscription",
                                                    "claude-agent-sdk", "a.pdf")
@@ -2654,6 +2655,32 @@ def test_a_refused_overage_limit_is_still_a_rate_limit(monkeypatch):
     with pytest.raises(mc.RateLimitError):
         asyncio.run(mc._agent_query("p", "model", None, subscription=True))
     assert mc._metered_stop is None
+
+
+def test_a_console_account_sign_in_is_refused_though_it_reports_no_key(monkeypatch):
+    """`apiKeySource` is `none` for every OAuth sign-in; only `authMethod: claude.ai` is the
+    subscription (#872, D407). The refusal comes before the call, and stops later ones."""
+    from watchdog import auth
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT], seen)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "oauth_token"})
+    with pytest.raises(mc.MeteredBillingError) as e:
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert "Console account" in str(e.value) and seen == [] and mc._metered_stop
+
+
+def test_a_subscription_call_records_the_sign_in_it_was_checked_against(monkeypatch):
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT])
+    out = asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert out["usage"] == {"input_tokens": 10, "key_source": "none", "auth_method": "claude.ai"}
+
+
+def test_an_unreadable_sign_in_status_refuses_the_subscription(monkeypatch):
+    from watchdog import auth
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT])
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: None)
+    with pytest.raises(mc.MeteredBillingError, match="could not check"):
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
 
 
 def test_subscription_call_refused_before_running_when_the_environment_bypasses_the_login(monkeypatch):

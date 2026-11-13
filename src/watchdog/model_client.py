@@ -412,8 +412,9 @@ _KEY_SOURCE_NOTE = ("Watchdog is set to use your Claude subscription, but Claude
                     "Claude account under Settings → Models & keys.")
 _OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code reports "
                  "that extra usage, which is billed, is now paying for calls. Watchdog stopped the "
-                 "run; unfinished documents stay queued. Resume after the limit resets, or turn "
-                 "off extra usage in your Claude account's settings.")
+                 "run; unfinished documents stay queued. Turn off extra usage in your Claude "
+                 "account's settings, or wait until the limit has reset before adding documents "
+                 "again: until then, the next run stops again at its first paid call.")
 
 
 # Every failure a single model call can end in. Post-ingest stages catch all three and degrade
@@ -938,12 +939,23 @@ async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema:
         # refused, and a credential in the environment is used by Claude Code ahead of the login.
         if _metered_stop:
             raise MeteredBillingError(_metered_stop)
-        conflict = auth.subscription_env_conflict()
-        if conflict:
-            raise _stop_metered(auth.subscription_env_message(conflict))
+        # Claude Code must report a claude.ai sign-in (D407): its `apiKeySource` says `none` for a
+        # Console account's sign-in too, which bills the Console account. Kept a minute, so a run's
+        # calls share one check; a subprocess, so it runs off the event loop.
+        problem, method = await asyncio.to_thread(auth.subscription_check)
+        if problem:
+            raise _stop_metered(problem)
     full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
-    return await _agent_query(full, model_id, env, effort, subscription=subscription)
+    try:
+        out = await _agent_query(full, model_id, env, effort, subscription=subscription)
+    except MeteredBillingError as e:
+        if subscription and e.usage is not None:
+            e.usage["auth_method"] = method
+        raise
+    if subscription:
+        out["usage"] = {**(out.get("usage") or {}), "auth_method": method}
+    return out
 
 
 # Response headers, per provider, that report a rate-limit window's ceiling/remaining/reset

@@ -728,7 +728,9 @@ def session_mode(state: dict | None = None) -> str | None:
 # cloud provider. Claude Code reports a key it uses (`apiKeySource`), but reports a token, an
 # endpoint or a cloud provider the same way as the login (`none`), so those are checked here.
 SUBSCRIPTION_ENV_CONFLICTS = (
-    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_API_KEY", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR", "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "ANTHROPIC_PROFILE",
+    "ANTHROPIC_BASE_URL", "ANTHROPIC_UNIX_SOCKET",
     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
     "CLAUDE_CODE_USE_ANTHROPIC_AWS", "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
     "CLAUDE_CODE_USE_MANTLE", "CLAUDE_CODE_USE_GATEWAY",
@@ -754,6 +756,78 @@ def subscription_env_message(name: str, what: str = "processing") -> str:
     return (f"{name} is set in your environment, and Claude Code uses it before your subscription "
             f"login, so {what} would not run on your subscription and could be billed. Remove it, "
             "or switch to an API key under Settings → Models & keys.")
+
+
+# How Claude Code is signed in, from the bundled program's `claude auth status --json` (#872,
+# D407). Its `apiKeySource` says `none` for every OAuth sign-in, including an Anthropic Console
+# account's, which bills the Console account; only `authMethod: claude.ai` is the subscription.
+SUBSCRIPTION_AUTH_METHOD = "claude.ai"
+_AUTH_STATUS_TTL = 60.0
+_auth_status_cache: tuple[float, dict | None] | None = None
+
+
+def _claude_cli() -> str | None:
+    """The Claude Code program the Agent SDK runs: the copy bundled in `claude-agent-sdk`."""
+    try:
+        import claude_agent_sdk
+    except ImportError:
+        return None
+    name = "claude.exe" if sys.platform == "win32" else "claude"
+    path = Path(claude_agent_sdk.__file__).parent / "_bundled" / name
+    return str(path) if path.is_file() else None
+
+
+def _run_auth_status() -> dict | None:
+    """`claude auth status --json`, run with this process's environment as the Agent SDK passes it
+    to each call, or None when it cannot be run or read. It makes no model call."""
+    cli = _claude_cli()
+    if cli is None:
+        return None
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    try:
+        out = subprocess.run([cli, "auth", "status", "--json"], capture_output=True, text=True,
+                             timeout=30, env=env)
+        data = json.loads(out.stdout or "")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def claude_code_auth_status() -> dict | None:
+    """`_run_auth_status`, kept for a minute so Settings and a run's concurrent calls share one."""
+    global _auth_status_cache
+    import time
+    now = time.monotonic()
+    if _auth_status_cache is None or now - _auth_status_cache[0] > _AUTH_STATUS_TTL:
+        _auth_status_cache = (now, _run_auth_status())
+    return _auth_status_cache[1]
+
+
+def subscription_check(what: str = "processing") -> tuple[str | None, str | None]:
+    """Whether work meant for the Claude subscription would run on it (#872, D406, D407):
+    `(problem, auth_method)`, `problem` None when it would. A variable in the environment that
+    sends Claude Code past its sign-in is named first; then Claude Code must report a claude.ai
+    sign-in. A Console account's sign-in or any token (`oauth_token`), a key (`api_key`,
+    `api_key_helper`) and a cloud provider (`third_party`) are each billed elsewhere."""
+    conflict = subscription_env_conflict()
+    if conflict:
+        return subscription_env_message(conflict, what), None
+    status = claude_code_auth_status()
+    if status is None:
+        return ("Watchdog could not check how Claude Code on this computer is signed in, so it "
+                f"did not start {what} on your subscription. Try again, or sign in again under "
+                "Settings → Models & keys."), None
+    method = status.get("authMethod") if status.get("loggedIn") is True else None
+    if method == SUBSCRIPTION_AUTH_METHOD:
+        return None, method
+    if method is None:
+        return "Claude is not signed in. Use Sign in under Settings → Models & keys.", None
+    how = {"oauth_token": "an Anthropic Console account or a sign-in token",
+           "api_key": "an API key", "api_key_helper": "an API key",
+           "third_party": "a cloud provider"}.get(method, "something other than your Claude account")
+    return (f"Claude Code on this computer is signed in with {how}, not your Claude subscription, "
+            f"so {what} would be billed to that account. Sign in again with your Claude account "
+            "under Settings → Models & keys."), method
 
 
 def resolve_auth(provider: str = "anthropic", vault: Path | None = None, *, session: bool = False) -> dict:

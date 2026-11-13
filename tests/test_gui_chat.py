@@ -371,13 +371,14 @@ def test_each_turn_is_recorded_once_in_the_vaults_usage_and_telemetry(env, monke
 def test_a_subscription_session_records_tokens_with_the_cost_marked_not_billed(env, monkeypatch):
     from watchdog.gui.api import usage
     vault, events = env
-    monkeypatch.setattr(chat, "session_auth_env", lambda s: setattr(s, "key_label", None) or {})
+    monkeypatch.setattr(chat, "session_auth_env",
+                        lambda s: setattr(s, "key_label", None) or setattr(s, "subscription", True) or {})
     FakeClient.scripts = [[_init("none"), _assistant(TextBlock("found it")), _usage_result(0.40, 5000, 900)]]
     api.start(str(vault), "research", prompt="shell companies")
     _wait_state(events)
     call = _session_calls(vault)["calls"][0]
     assert (call["task"], call["auth_mode"], call["input_tokens"]) == ("research", "subscription", 5000)
-    assert "key_label" not in call and call["key_source"] == "none"
+    assert "key_label" not in call and (call["key_source"], call["auth_method"]) == ("none", "claude.ai")
     run = usage.run(str(vault))
     assert run["subscription_note"] and run["stages"][0]["stage"] == "research"
     assert run["subscription_confirmed"] is True
@@ -451,6 +452,17 @@ def test_a_subscription_session_refuses_a_variable_that_bypasses_the_login(env, 
     api.start(str(vault), "ask", prompt="x")
     err = _wait_state(events, states=("error",))[0]["data"]
     assert "ANTHROPIC_AUTH_TOKEN" in err["detail"] and FakeClient.instances[0].prompts == []
+
+
+def test_a_subscription_session_refuses_a_console_account_sign_in(env, monkeypatch):
+    """A Console account's sign-in reports no API key, but bills the Console account (D407)."""
+    from watchdog import auth
+    vault, events = env
+    _on_subscription(monkeypatch)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "oauth_token"})
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "Console account" in err["detail"] and FakeClient.instances[0].prompts == []
 
 
 def test_a_resumed_session_continues_from_its_saved_totals(env, monkeypatch):

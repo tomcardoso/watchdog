@@ -368,6 +368,7 @@ class Session:
         # stopped and refuses every later turn; `turn_overage` marks a turn extra usage paid for,
         # recorded even if its result never arrives; `stop_pending` interrupts the turn.
         self.subscription = False
+        self.claude_auth_method: str | None = None   # `authMethod` from the check before each turn (D407)
         self.billing_stop: str | None = None
         self.turn_overage = False
         self.stop_pending = False
@@ -621,10 +622,13 @@ class ChatManager:
             try:
                 await self._connect(s)
                 if s.subscription:
+                    # The same check as processing's (D406, D407): nothing in the environment that
+                    # bypasses the login, and Claude Code signed in with a Claude account.
                     from watchdog import auth
-                    conflict = auth.subscription_env_conflict()
-                    if conflict:
-                        s.billing_stop = auth.subscription_env_message(conflict, "questions")
+                    problem, s.claude_auth_method = await asyncio.to_thread(
+                        auth.subscription_check, "this conversation")
+                    if problem:
+                        s.billing_stop = problem
                         self.status(s, "error", s.billing_stop, s.cost)
                         return
                 await s.client.query(prompt)
@@ -722,7 +726,7 @@ class ChatManager:
             call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
                                              session_id=s.id, model=s.model, auth_mode=auth_mode,
                                              key_label=s.key_label, key_source=s.key_source,
-                                             overage=overage)
+                                             overage=overage, auth_method=s.claude_auth_method)
             session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
         except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
             pass

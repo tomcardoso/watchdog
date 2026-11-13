@@ -620,5 +620,16 @@ def test_I20_a_subscription_call_never_falls_through_to_metered_billing(monkeypa
         with pytest.raises(mc.MeteredBillingError):
             call()
         monkeypatch.delenv(name)
+    for method in ("oauth_token", "api_key", "api_key_helper", "third_party", None):
+        # A Console account's sign-in reports `apiKeySource: none` like the login (D407).
+        monkeypatch.setattr(mc, "_metered_stop", None)
+        monkeypatch.setattr(auth, "_auth_status_cache", None)
+        monkeypatch.setattr(auth, "_run_auth_status",
+                            lambda m=method: {"loggedIn": m is not None, "authMethod": m or "none"})
+        stream[:] = [init("none"), result]
+        with pytest.raises(mc.MeteredBillingError):
+            call()
     monkeypatch.setattr(mc, "_metered_stop", None)
-    assert call()["usage"] == {"key_source": "none"}
+    monkeypatch.setattr(auth, "_auth_status_cache", None)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "claude.ai"})
+    assert call()["usage"] == {"key_source": "none", "auth_method": "claude.ai"}

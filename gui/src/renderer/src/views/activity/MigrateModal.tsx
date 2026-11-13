@@ -14,7 +14,7 @@ import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 
 function costText(e: MigrationEstimate): string {
   if (!e.calls) return 'Nothing: no step needs an AI model.'
-  if (e.subscription) return 'Uses your Claude subscription, so there is no separate charge.'
+  if (e.subscription) return 'Uses your Claude subscription. Nothing is charged unless your Claude account has extra usage turned on, and Watchdog stops if it sees extra usage begin.'
   if (e.cost_low === null || e.cost_high === null) return 'Watchdog has no price for one of the models, so it cannot estimate the whole cost.'
   if (e.cost_high < 0.01) return 'Less than one cent, at list price.'
   const low = fmtCost(e.cost_low)

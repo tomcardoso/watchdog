@@ -18,8 +18,8 @@ test('an API key login is not a subscription', () => {
   assert.equal(usesSubscription(s), false)
 })
 
-test('an environment OAuth token counts as a subscription', () => {
-  assert.equal(usesSubscription(parseAuthStatus(JSON.stringify({ loggedIn: true, authMethod: 'oauth_token' }))), true)
+test('a token sign-in is not the subscription: a Console account reports one too (#872)', () => {
+  assert.equal(usesSubscription(parseAuthStatus(JSON.stringify({ loggedIn: true, authMethod: 'oauth_token' }))), false)
 })
 
 test('anything else signed in is "other"; not signed in or unreadable output is not signed in', () => {

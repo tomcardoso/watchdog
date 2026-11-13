@@ -217,15 +217,22 @@ def extra_usage_list(calls: list[dict], limit: int = 20) -> list[dict]:
 
 def subscription_confirmed(calls: list[dict]) -> bool | None:
     """Whether Claude Code itself confirmed that every subscription call in `calls` ran on the
-    login (#872, D406): each recorded `key_source` `none`, which a call records only after its key
-    and environment checks passed, and none was stopped on extra usage. None when no call was a
+    login (#872, D406, D407): each recorded a claude.ai sign-in (`auth_method`) and `key_source`
+    `none`, which a call records only after its checks passed, and none was stopped on extra usage. None when no call was a
     subscription call. A record from before the check has no `key_source`, so a run recorded then
     is never confirmed: the information was not kept, and `auth_mode` alone is only the setting
     that was chosen."""
     sub = _subscription_calls(calls)
     if not sub:
         return None
-    return all(c.get("key_source") == "none" and not c.get("overage") for c in sub)
+    return all(_checked(c) and not c.get("overage") for c in sub)
+
+
+def _checked(call: dict) -> bool:
+    """A subscription call Claude Code reported running on a claude.ai sign-in with no API key
+    (D406, D407). `key_source: none` alone is not enough: a Console account's sign-in says the
+    same."""
+    return call.get("key_source") == "none" and call.get("auth_method") == "claude.ai"
 
 
 def subscription_note(calls: list[dict]) -> str | None:
@@ -238,7 +245,7 @@ def subscription_note(calls: list[dict]) -> str | None:
     if not sub:
         return None
     extra = extra_usage_calls(calls)
-    unchecked = sum(1 for c in sub if c.get("key_source") != "none" and not c.get("overage"))
+    unchecked = sum(1 for c in sub if not _checked(c) and not c.get("overage"))
     if not extra and not unchecked:
         return ("subscription auth — Claude costs below are list-price equivalents, "
                 "not amounts billed")
