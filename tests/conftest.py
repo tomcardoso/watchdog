@@ -62,6 +62,11 @@ def no_ambient_provider_keys(monkeypatch):
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
                 "LOCAL_API_KEY", "OPENROUTER_API_KEY", "LOCAL_BASE_URL", "OPENROUTER_BASE_URL"):
         monkeypatch.delenv(var, raising=False)
+    # And the ones that keep a subscription call off the Claude login (#872): a hosted shell
+    # can set ANTHROPIC_BASE_URL, which would refuse every subscription call a test makes.
+    from watchdog import auth
+    for var in auth.SUBSCRIPTION_ENV_CONFLICTS:
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(autouse=True)

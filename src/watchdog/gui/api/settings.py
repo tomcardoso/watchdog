@@ -212,6 +212,11 @@ def models() -> dict:
 
 # ── auth ─────────────────────────────────────────────────────────────────────────
 
+def _env_message(name: str, what: str) -> str:
+    from watchdog import auth as auth_cmd
+    return auth_cmd.subscription_env_message(name, what)
+
+
 def _claude_reason(claude: dict) -> str | None:
     mode = claude["mode"]
     if mode is None:
@@ -219,9 +224,8 @@ def _claude_reason(claude: dict) -> str | None:
     if mode == "subscription":
         if not claude["logged_in"]:
             return "Claude is not signed in. Use Sign in under Settings → Models & keys."
-        if claude["env_key_set"]:
-            return ("ANTHROPIC_API_KEY is set in your environment, and the Agent SDK uses it before "
-                    "the subscription login, so runs would be metered.")
+        if claude.get("env_conflict"):
+            return _env_message(claude["env_conflict"], "runs")
         return None
     return None if claude["key_masked"] else "API-key mode is set but no key is stored."
 
@@ -234,9 +238,8 @@ def _session_reason(claude: dict) -> str | None:
     if claude["session_mode"] == "subscription":
         if not claude["logged_in"]:
             return "Ask Claude is set to use your subscription, but Claude is not signed in."
-        if claude["env_key_set"]:
-            return ("ANTHROPIC_API_KEY is set in your environment, and Ask Claude uses it before "
-                    "the subscription login, so questions would be metered.")
+        if claude.get("env_conflict"):
+            return _env_message(claude["env_conflict"], "questions")
         return None
     return None if claude["key_masked"] else "Ask Claude is set to use an API key, but no key is stored."
 

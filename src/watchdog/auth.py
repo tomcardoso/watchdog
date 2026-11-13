@@ -723,6 +723,39 @@ def session_mode(state: dict | None = None) -> str | None:
     return state.get("session_mode") or state.get("mode")
 
 
+# Environment variables that make the bundled Claude Code bill someone other than the Claude
+# subscription, ahead of its login (#872, D406): an API key, a bearer token, another endpoint, or a
+# cloud provider. Claude Code reports a key it uses (`apiKeySource`), but reports a token, an
+# endpoint or a cloud provider the same way as the login (`none`), so those are checked here.
+SUBSCRIPTION_ENV_CONFLICTS = (
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS", "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+    "CLAUDE_CODE_USE_MANTLE", "CLAUDE_CODE_USE_GATEWAY",
+)
+_OFF = ("", "0", "false", "no", "off")
+
+
+def subscription_env_conflict() -> str | None:
+    """The first variable in this process's environment that would keep a subscription call off
+    the Claude login (`SUBSCRIPTION_ENV_CONFLICTS`), or None. A `CLAUDE_CODE_USE_*` switch set to
+    0, false, no or off is off."""
+    for name in SUBSCRIPTION_ENV_CONFLICTS:
+        value = (os.environ.get(name) or "").strip()
+        if name.startswith("CLAUDE_CODE_USE_") and value.lower() in _OFF:
+            continue
+        if value:
+            return name
+    return None
+
+
+def subscription_env_message(name: str, what: str = "processing") -> str:
+    """Why `name` stops subscription calls, for Settings and for a refused call."""
+    return (f"{name} is set in your environment, and Claude Code uses it before your subscription "
+            f"login, so {what} would not run on your subscription and could be billed. Remove it, "
+            "or switch to an API key under Settings → Models & keys.")
+
+
 def resolve_auth(provider: str = "anthropic", vault: Path | None = None, *, session: bool = False) -> dict:
     """How a model backend should authenticate for this run — the resolver #118 calls. With
     `session`, for an app session rather than a processing step (D318).
@@ -844,7 +877,8 @@ def status_data() -> dict:
     env_set = bool(os.environ.get(meta["env"]))
 
     claude = {"mode": mode, "session_mode": sessions, "session_mode_own": bool(state.get("session_mode")),
-              "logged_in": None, "env_key_set": env_set, "key_masked": None, "key_source": None}
+              "logged_in": None, "env_key_set": env_set, "env_conflict": subscription_env_conflict(),
+              "key_masked": None, "key_source": None}
     if "subscription" in (mode, sessions):
         claude["logged_in"] = claude_code_logged_in()
     masked = default_masked("anthropic", state)

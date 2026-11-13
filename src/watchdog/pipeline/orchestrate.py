@@ -227,6 +227,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    if u.get("key_source") is not None:
+        # The credential Claude Code reported using (#872, D406): `none` on a checked
+        # subscription call, what shows a run's "Not billed" was confirmed rather than assumed.
+        record["key_source"] = u["key_source"]
     reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
     if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
         record["reasoning_tokens"] = reasoning_tokens

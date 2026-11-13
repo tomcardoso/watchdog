@@ -190,15 +190,38 @@ def run_backends(calls: list[dict]) -> str:
     return ", ".join(seen) or "—"
 
 
+def _subscription_calls(calls: list[dict]) -> list[dict]:
+    return [c for c in calls
+            if c.get("backend") in CLAUDE_BACKENDS and c.get("auth_mode") == "subscription"]
+
+
+def subscription_confirmed(calls: list[dict]) -> bool | None:
+    """Whether Claude Code itself confirmed that every subscription call in `calls` ran on the
+    login (#872, D406): each recorded `key_source` `none`, which a call records only after its key
+    and environment checks passed. None when no call was a subscription call. A record from before
+    the check has no `key_source`, so a run recorded then is never confirmed: the information was
+    not kept, and `auth_mode` alone is only the setting that was chosen."""
+    sub = _subscription_calls(calls)
+    if not sub:
+        return None
+    return all(c.get("key_source") == "none" for c in sub)
+
+
 def subscription_note(calls: list[dict]) -> str | None:
     """Warning text when any Claude call in `calls` ran on subscription auth: `cost_usd` is then
     a list-price projection, not money that was billed. Presenting it as a plain dollar figure
-    alongside metered runs is how a subscription arm gets mistaken for a priced one (#475)."""
-    if any(c.get("backend") in CLAUDE_BACKENDS and c.get("auth_mode") == "subscription"
-           for c in calls):
+    alongside metered runs is how a subscription arm gets mistaken for a priced one (#475). When
+    Claude Code did not confirm the login for every call (`subscription_confirmed`), the note says
+    so rather than stating that nothing was billed (#872)."""
+    sub = _subscription_calls(calls)
+    if not sub:
+        return None
+    unchecked = sum(1 for c in sub if c.get("key_source") != "none")
+    if not unchecked:
         return ("subscription auth — Claude costs below are list-price equivalents, "
                 "not amounts billed")
-    return None
+    return (f"subscription selected — Claude costs below are list-price equivalents, but how "
+            f"{unchecked:,} of {len(sub):,} Claude calls were billed was not confirmed")
 
 
 def cost_by_key(calls: list[dict]) -> list[dict]:

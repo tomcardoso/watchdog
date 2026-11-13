@@ -351,6 +351,7 @@ class Session:
         self.cost = 0.0
         self.key_label: str | None = None    # the labelled Anthropic key the session bills (#690)
         self.auth_mode: str | None = None    # "api-key" or "subscription", from Claude Code's init message
+        self.key_source: str | None = None   # that message's own `apiKeySource`, recorded with each turn (#872)
         self.usage_totals: dict | None = None  # the SDK's running totals at the last result (D296)
         self.closed = False
 
@@ -615,6 +616,8 @@ class ChatManager:
             if message.subtype == "init" and isinstance(message.data, dict):
                 from watchdog.pipeline import session_usage
                 s.auth_mode = session_usage.auth_mode_from_source(message.data.get("apiKeySource")) or s.auth_mode
+                source = message.data.get("apiKeySource")
+                s.key_source = source if isinstance(source, str) else s.key_source
         elif isinstance(message, StreamEvent):
             event = message.event or {}
             delta = event.get("delta") or {}
@@ -665,7 +668,7 @@ class ChatManager:
         try:
             call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
                                              session_id=s.id, model=s.model, auth_mode=auth_mode,
-                                             key_label=s.key_label)
+                                             key_label=s.key_label, key_source=s.key_source)
             session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
         except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
             pass

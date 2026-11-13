@@ -20,7 +20,9 @@ Watchdog is built around Claude and uses it by default. It can reach Claude in t
 
 **Add a key…** in any menu takes you to **Keys**, with the form for that provider open. An investigation can bill a different key from its Overview. Until you choose, adding your first Anthropic key sets Claude to use it, and Ask Claude follows the steps' choice until you set it on its own.
 
-You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
+You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit.
+
+A run set to use your subscription runs on it or not at all. Before each call, Watchdog checks that Claude Code (the program Watchdog uses to reach Claude on a subscription) is using your Claude sign-in. If Claude Code reports that it is using an API key instead, or a setting on this computer would send calls somewhere else, the call stops before it runs. If your subscription's limit is reached and Claude Code reports that [extra usage](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) (paid for at API rates) is now covering calls, the run stops as well. In both cases the documents it has not finished stay queued. A call that was already running when extra usage began may still be charged for. To be sure nothing is charged, also turn off extra usage in your Claude account's settings; Watchdog cannot turn it off for you.
 
 **Ask Claude** and **Web research** always run on Claude, so they need a Claude sign-in or key whatever the other steps use.
 
@@ -104,7 +106,7 @@ The main levers, roughly in order of effect:
 - **The second-read check** (Verify extraction) adds roughly 15 per cent per run on a Claude API key, more on OpenAI. It is off by default.
 - **Documents at once** does not change total cost, but lowering it is the fix when a run keeps hitting a rate limit. On a subscription it defaults to 3, since every extraction shares one usage limit.
 
-On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates, marked as not billed.
+On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates. It is marked **Not billed** when Claude Code confirmed that every Claude call used your subscription. Runs from versions of Watchdog that did not check this are marked **Billing not confirmed** instead: for those, compare the dates with the usage and billing pages of your Anthropic account.
 
 <a id="long-prompts"></a>
 ### Long prompts cost more on some models

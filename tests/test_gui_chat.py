@@ -377,9 +377,10 @@ def test_a_subscription_session_records_tokens_with_the_cost_marked_not_billed(e
     _wait_state(events)
     call = _session_calls(vault)["calls"][0]
     assert (call["task"], call["auth_mode"], call["input_tokens"]) == ("research", "subscription", 5000)
-    assert "key_label" not in call
+    assert "key_label" not in call and call["key_source"] == "none"
     run = usage.run(str(vault))
     assert run["subscription_note"] and run["stages"][0]["stage"] == "research"
+    assert run["subscription_confirmed"] is True
     assert usage.runs(str(vault))["runs"][0]["subscription"] is True
 
 

@@ -563,3 +563,62 @@ def test_I19_migrations_are_registered_stamped_and_kept_out_of_model_inputs(tmp_
     rel = migrations.stamp_path(vault).relative_to(vault).as_posix()
     assert not rel.startswith(".watchdog/registry/") and not history.tracked(rel)
     assert ops.get("migrate").secrets
+
+
+# ── I20: a call set to use the Claude subscription runs on the login or not at all (D406) ────
+
+def test_I20_a_subscription_call_never_falls_through_to_metered_billing(monkeypatch):
+    """A key Claude Code reports, a variable that bypasses the login, or extra usage paying each
+    stops the call with a halting error, and the process refuses every later subscription call;
+    a call that passed every check records the source Claude Code reported."""
+    import asyncio
+    import sys
+    import types
+    import pytest
+    from watchdog import model_client as mc
+
+    def init(source):
+        return type("SystemMessage", (), {"subtype": "init", "data": {"apiKeySource": source},
+                                          "content": None})()
+    overage = type("RateLimitEvent", (), {"content": None, "rate_limit_info": type(
+        "RateLimitInfo", (), {"status": "allowed", "rate_limit_type": None, "resets_at": None,
+                              "raw": {"isUsingOverage": True}})()})()
+    result = type("ResultMessage", (), {"result": "{}", "total_cost_usd": None, "usage": None,
+                                        "is_error": False, "api_error_status": None,
+                                        "duration_api_ms": None, "num_turns": None,
+                                        "content": None})()
+    stream: list = []
+
+    async def fake_query(prompt, options):
+        for m in stream:
+            yield m
+    sdk = types.ModuleType("claude_agent_sdk")
+    sdk.query, sdk.ClaudeAgentOptions = fake_query, (lambda **kw: kw)
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
+    mc._agent_supports_tools.cache_clear()
+
+    def call():
+        return asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+
+    for source in sorted(mc.METERED_KEY_SOURCES):
+        monkeypatch.setattr(mc, "_metered_stop", None)
+        stream[:] = [init(source), result]
+        with pytest.raises(mc.MeteredBillingError):
+            call()
+        stream[:] = [init("none"), result]
+        with pytest.raises(mc.MeteredBillingError):    # refused for the rest of the process
+            call()
+    monkeypatch.setattr(mc, "_metered_stop", None)
+    stream[:] = [init("none"), overage, result]
+    with pytest.raises(mc.ProviderAuthError):
+        call()
+    from watchdog import auth
+    for name in auth.SUBSCRIPTION_ENV_CONFLICTS:
+        monkeypatch.setattr(mc, "_metered_stop", None)
+        monkeypatch.setenv(name, "1")
+        stream[:] = [init("none"), result]
+        with pytest.raises(mc.MeteredBillingError):
+            call()
+        monkeypatch.delenv(name)
+    monkeypatch.setattr(mc, "_metered_stop", None)
+    assert call()["usage"] == {"key_source": "none"}

@@ -320,7 +320,7 @@ If an earlier version holds something that should not be kept, such as a source'
 
 ## Activity and Maintenance
 
-**Activity** lists everything the app has run, with its full output; **Stop** ends a run cleanly so it can be resumed. While something runs, a card in the corner of the window shows its progress. **Usage** shows tokens, cost and timing for each run and each Ask Claude conversation; on a subscription, the figures are what the work would cost at published rates, marked as not billed.
+**Activity** lists everything the app has run, with its full output; **Stop** ends a run cleanly so it can be resumed. While something runs, a card in the corner of the window shows its progress. **Usage** shows tokens, cost and timing for each run and each Ask Claude conversation; on a subscription, the figures are what the work would cost at published rates, marked as not billed once Claude Code has confirmed the subscription paid (see [Models and cost](models-and-cost.md#controlling-cost)).
 
 ![The Usage tab under Activity: tokens, cost and time for each run.](images/app-usage.png)
 
