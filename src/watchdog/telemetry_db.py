@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS calls (
     batch_submitted_at TEXT,
     batch_ended_at TEXT,
     batch_collected_at TEXT,
-    key_label TEXT
+    key_label TEXT,
+    key_source TEXT,
+    auth_method TEXT,
+    overage INTEGER
 );
 CREATE TABLE IF NOT EXISTS run_estimates (
     id INTEGER PRIMARY KEY,
@@ -80,7 +83,11 @@ CREATE INDEX IF NOT EXISTS idx_calls_vault ON calls(vault_path);
 """
 
 
-_ADDED_COLUMNS = (("key_label", "TEXT"),)
+# Columns added after the table first shipped, added to an existing store on open. The last three
+# say how a Claude call was billed (D406, D407, D408): the credential source and sign-in Claude
+# Code reported, and whether extra usage was paying when the call was stopped.
+_ADDED_COLUMNS = (("key_label", "TEXT"), ("key_source", "TEXT"), ("auth_method", "TEXT"),
+                  ("overage", "INTEGER"))
 
 
 # One connection per process, reused across calls and closed at the end of a run (`close`). It is
@@ -262,7 +269,8 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
         json.dumps(record["rate_limit"], ensure_ascii=False) if record.get("rate_limit") else None,
         record.get("batch_id"), record.get("batch_submitted_at"),
         record.get("batch_ended_at"), record.get("batch_collected_at"),
-        record.get("key_label"),
+        record.get("key_label"), record.get("key_source"), record.get("auth_method"),
+        1 if record.get("overage") else None,
     )
     with _lock:
         conn = _connect()
@@ -274,9 +282,10 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
                 cost_usd, latency_s, attempts, failed, end_ts,
                 reasoning_tokens, api_ms, num_turns, stop_reason, est_input_tokens,
                 prompt_hash, codebase_version, config_json, pruned_json, rate_limit_json,
-                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at, key_label
+                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at, key_label,
+                key_source, auth_method, overage
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             row,
         )
         conn.commit()

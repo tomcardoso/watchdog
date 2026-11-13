@@ -120,6 +120,57 @@ def reset(vault: Path, now: datetime.datetime | None = None) -> str:
     return stamp
 
 
+# ── a call stopped on extra usage (D408) ─────────────────────────────────────────────────
+
+# `.watchdog/settings.json`'s `extra_usage` key: `{"since": iso, "calls": n}` once a Claude call in
+# this investigation was stopped after extra usage began paying for it (D406). Until the reporter
+# acknowledges it in Activity → Usage, no work here runs on the subscription again: each new run
+# would be charged for up to its first few calls before it, too, was stopped.
+_EXTRA_USAGE_KEY = "extra_usage"
+
+
+def extra_usage_flag(vault: Path) -> dict | None:
+    """The unacknowledged extra-usage stop, `{"since", "calls"}`, or None."""
+    from watchdog.auth import read_investigation_settings
+    raw = read_investigation_settings(vault).get(_EXTRA_USAGE_KEY)
+    if not isinstance(raw, dict) or not isinstance(raw.get("since"), str):
+        return None
+    calls = raw.get("calls")
+    return {"since": raw["since"], "calls": calls if isinstance(calls, int) and calls > 0 else 1}
+
+
+def flag_extra_usage(vault: Path, now: datetime.datetime | None = None) -> None:
+    """Note one more call stopped on extra usage. Never raises: a failed write must not fail the
+    run, which is already stopping."""
+    try:
+        from watchdog.auth import read_investigation_settings, write_investigation_settings
+        data = read_investigation_settings(vault)
+        cur = extra_usage_flag(vault)
+        when = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(datetime.timezone.utc)
+        data[_EXTRA_USAGE_KEY] = {"since": cur["since"] if cur else when.strftime(_TS_FMT),
+                                  "calls": (cur["calls"] + 1) if cur else 1}
+        write_investigation_settings(vault, data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def acknowledge_extra_usage(vault: Path) -> None:
+    """The reporter has seen the stopped calls: subscription work may run here again."""
+    from watchdog.auth import read_investigation_settings, write_investigation_settings
+    data = read_investigation_settings(vault)
+    if data.pop(_EXTRA_USAGE_KEY, None) is not None:
+        write_investigation_settings(vault, data)
+
+
+def extra_usage_message(flag: dict) -> str:
+    n = flag.get("calls") or 1
+    return (f"{'A Claude call' if n == 1 else f'{n} Claude calls'} in this investigation "
+            f"{'was' if n == 1 else 'were'} stopped after extra usage began paying, and may have "
+            "been charged. Watchdog won't use your subscription here again until you've looked: "
+            "open Activity → Usage and confirm you've checked it. Turning off extra usage in your "
+            "Claude account's settings stops it happening again.")
+
+
 # ── recorded spend ───────────────────────────────────────────────────────────────────────
 
 def _parse_ts(text: str | None, fmt: str = _TS_FMT) -> float | None:

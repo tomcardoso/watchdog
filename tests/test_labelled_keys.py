@@ -211,15 +211,20 @@ def test_anthropic_choice_is_not_needed_on_a_subscription(home, vault):
         auth.check_run_keys(vault, [None])
 
 
-def test_environment_variable_overrides_every_choice(home, vault, monkeypatch):
+def test_an_investigations_chosen_key_beats_the_environment_variable(home, vault, monkeypatch):
+    """A key exported in a shell never pays for an investigation that named another (D408); it
+    still pays where no key was chosen, and never stands in for a chosen key that is missing."""
     work = two_openai_keys()
-    auth.choose_key(vault, "openai", work)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env-0000")
     r = auth.resolve_key("openai", vault)
     assert r["key"] == "sk-from-env-0000" and r["source"] == "env"
     assert r["label"] == "OPENAI_API_KEY (environment)"
+    auth.choose_key(vault, "openai", work)
+    r = auth.resolve_key("openai", vault)
+    assert r["source"] == "chosen" and r["key"] != "sk-from-env-0000"
     auth.delete_key("openai", work)
-    assert auth.get_api_key("openai", vault) == "sk-from-env-0000"  # env satisfies a missing choice
+    with pytest.raises(auth.KeyChoiceError):
+        auth.get_api_key("openai", vault)
 
 
 def test_key_users_names_registered_investigations(home, vault):

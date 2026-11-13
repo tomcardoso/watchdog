@@ -3,8 +3,8 @@
 
 import { BadgeInfo, Coins, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Callout, Empty, ErrorNote, Skeleton, Stat, cx } from '@renderer/components/ui'
-import { useRpc } from '@renderer/lib/rpc'
+import { Badge, Button, Callout, Empty, ErrorNote, Skeleton, Stat, cx } from '@renderer/components/ui'
+import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { fmtCost, fmtDateTime, fmtDuration, fmtNum, fmtTokens, plural } from '@renderer/lib/format'
 import type { KeyCost, UsageKind } from '@shared/api'
 import { useApp } from '@renderer/lib/store'
@@ -66,6 +66,16 @@ function sumByKey(runs: { by_key?: KeyCost[] }[]): KeyCost[] {
 
 function RunDetail({ vault, ts }: { vault: string; ts: string }) {
   const q = useRpc('usage.run', { vault, ts })
+  const [ackError, setAckError] = useState('')
+  const acknowledge = async () => {
+    setAckError('')
+    try {
+      await call('spend.acknowledgeExtraUsage', { vault })
+      invalidate('usage.', 'auth.', 'ingest.')
+    } catch (e) {
+      setAckError(errorMessage(e))
+    }
+  }
   if (q.isLoading) return <Skeleton h={220} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const r = q.data!
@@ -93,7 +103,11 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
         </Callout>
       )}
       {!!r.extra_usage_calls && (
-        <Callout tone="warning" title="Extra usage may have been charged">
+        <Callout
+          tone="warning"
+          title="Extra usage may have been charged"
+          action={r.extra_usage_pending ? <Button size="sm" onClick={() => void acknowledge()}>I&apos;ve checked this</Button> : undefined}
+        >
           Your Claude subscription&apos;s limit was reached, and Claude Code reported that paid extra usage was covering {r.extra_usage_calls === 1 ? 'a call' : `${fmtNum(r.extra_usage_calls)} calls`}. Watchdog stopped {r.extra_usage_calls === 1 ? 'it' : 'them'}, but {r.extra_usage_calls === 1 ? 'it' : 'they'} may already have been charged; Claude Code did not report the amount. Your Claude account&apos;s usage settings show what extra usage cost.
           {!!r.extra_usage?.length && (
             <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
@@ -107,6 +121,12 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
             </ul>
           )}
           {(r.extra_usage_calls ?? 0) > (r.extra_usage?.length ?? 0) && <div className="faint">and {fmtNum((r.extra_usage_calls ?? 0) - (r.extra_usage?.length ?? 0))} more</div>}
+          {r.extra_usage_pending && (
+            <div style={{ marginTop: 8 }}>
+              Until you confirm you&apos;ve checked this, Watchdog won&apos;t use your subscription in this investigation, so a new run can&apos;t be charged the same way. Turning off extra usage in your Claude account&apos;s settings stops it happening again.
+            </div>
+          )}
+          {ackError && <div style={{ marginTop: 8, color: 'var(--danger)' }}>{ackError}</div>}
         </Callout>
       )}
       {r.subscription_note && r.subscription_confirmed === false && !r.extra_usage_calls && (

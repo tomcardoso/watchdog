@@ -114,6 +114,11 @@ def _totals(calls: list[dict]) -> dict:
     }
 
 
+def _extra_usage_pending(vault) -> bool:
+    from watchdog import spend
+    return spend.extra_usage_flag(vault) is not None
+
+
 @method("usage.run")
 def run(vault: str, ts: str | None = None) -> dict:
     """One run's breakdown by stage (latest when `ts` is omitted), as Usage prints it."""
@@ -179,6 +184,8 @@ def run(vault: str, ts: str | None = None) -> dict:
         "subscription_confirmed": subscription_confirmed(calls),
         "extra_usage_calls": extra_usage_calls(calls),
         "extra_usage": extra_usage_list(calls),
+        # Whether subscription work here waits for the reporter to acknowledge such a stop (D408).
+        "extra_usage_pending": _extra_usage_pending(v),
         "by_key": cost_by_key(calls),
         "corpus": corpus,
         "cost_per_page": (totals["cost_usd"] / pages) if pages else None,

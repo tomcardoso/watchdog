@@ -182,6 +182,9 @@ def record(vault: Path, *, session_id: str, mode: str, title: str, call: dict) -
     _write_atomic(path, json.dumps(out, ensure_ascii=False, indent=2))
     from watchdog import key_spend
     key_spend.record("anthropic", call.get("key_label"), call.get("cost_usd"), auth_mode=call.get("auth_mode"))
+    if call.get("overage"):          # the subscription waits for the reporter to look (D408)
+        from watchdog import spend
+        spend.flag_extra_usage(vault)
     try:
         from watchdog import telemetry_db
         if telemetry_db.enabled():

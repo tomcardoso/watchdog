@@ -58,16 +58,19 @@ def _queue(vault, opts: RunOptions) -> tuple[list, list]:
     return queue_files, (queue_files if opts.force else needs_extraction(vault, queue_files))
 
 
-def _auth(plan: Plan) -> dict:
-    """Claude auth is only needed when some stage is routed to it (as a run checks)."""
-    from watchdog.auth import resolve_auth
+def _auth(plan: Plan, vault=None) -> dict:
+    """Claude auth is only needed when some stage is routed to it (as a run checks). Anything that
+    would bill it another way than chosen stops the run here, before it starts (D408)."""
+    from watchdog.auth import billing_problem, resolve_auth
     from watchdog.model_client import CLAUDE_BACKENDS
     if not any(b is None or b in CLAUDE_BACKENDS for b in plan.backends):
         return {"mode": None, "ok": True, "reason": None}
     a = resolve_auth()
     mode = a.get("mode")
-    return {"mode": mode, "ok": mode in ("subscription", "api-key"),
-            "reason": a.get("reason") if mode == "none" else None}
+    if mode == "none":
+        return {"mode": mode, "ok": False, "reason": a.get("reason")}
+    problem = billing_problem(mode, vault)
+    return {"mode": mode, "ok": problem is None, "reason": problem}
 
 
 def _billing(vault, backends) -> list[dict]:
@@ -118,12 +121,12 @@ def preflight(vault: str, options: dict | None = None) -> dict:
     opts = run_options(options)
     plan = resolve_plan(opts)
     _queue_files, to_send = _queue(v, opts)
-    auth = _auth(plan)
+    auth = _auth(plan, v)
 
     enabled = _auto_approve_on(plan.config)
     approve, blocker = False, None
     if enabled and to_send:
-        gate = _auto_approve_verdict(auth_mode=auth["mode"], stages=plan.backends)
+        gate = _auto_approve_verdict(auth_mode=auth["mode"], stages=plan.backends, vault=v)
         approve, blocker = bool(gate.get("approve")), gate.get("blocker")
 
     # Every stage on a model server on this computer: no acknowledgement, one plain line (D306).

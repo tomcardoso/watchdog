@@ -55,6 +55,11 @@ def est_prompt_tokens(docs: list[dict]) -> dict[str, int]:
 
 def _client(api_key: str):
     import anthropic
+    from watchdog import auth
+    conflict = auth.key_env_conflict()     # the batch bills the chosen key or nothing (D408)
+    if conflict:
+        from watchdog.model_client import BillingRouteError
+        raise BillingRouteError(auth.key_env_message(conflict, "the batch"))
     return anthropic.AsyncAnthropic(api_key=api_key)
 
 

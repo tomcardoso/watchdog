@@ -26,16 +26,19 @@ def _ids(ids, all_) -> list[str] | None:
     return [i.strip() for i in ids]
 
 
-def _auth(backend: str | None) -> dict:
-    """Claude auth matters only when the model is a Claude one (as post-processing (`bark`) checks)."""
-    from watchdog.auth import resolve_auth
+def _auth(backend: str | None, vault=None) -> dict:
+    """Claude auth matters only when the model is a Claude one (as post-processing (`bark`) checks).
+    Anything that would bill it another way than chosen stops the re-check before it starts (D408)."""
+    from watchdog.auth import billing_problem, resolve_auth
     from watchdog.model_client import CLAUDE_BACKENDS
     if backend is not None and backend not in CLAUDE_BACKENDS:
         return {"mode": None, "ok": True, "reason": None}
     a = resolve_auth()
     mode = a.get("mode")
-    return {"mode": mode, "ok": mode in ("subscription", "api-key"),
-            "reason": (a.get("reason") or "No way to reach Claude is set up yet.") if mode == "none" else None}
+    if mode == "none":
+        return {"mode": mode, "ok": False, "reason": a.get("reason") or "No way to reach Claude is set up yet."}
+    problem = billing_problem(mode, vault, "the re-check")
+    return {"mode": mode, "ok": problem is None, "reason": problem}
 
 
 def _model(backend: str | None, model: str, effort: str | None, auth_mode: str | None) -> dict:
@@ -65,7 +68,7 @@ def estimate(vault: str, ids: list[str] | None = None, all: bool = False) -> dic
                 "name": "prepared answers"}
     else:
         backend, model, effort = recheck.finalizer_stage()
-        auth = _auth(backend)
+        auth = _auth(backend, v)
         info = _model(backend, model, effort, auth["mode"])
     p = recheck.plan(v, wanted, model, backend)
     if in_sample:
@@ -94,7 +97,7 @@ def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
     from watchdog.ops import sample
     if not sample.is_sample_folder(v):          # the sample needs neither (D307)
         backend, model, _effort = recheck.finalizer_stage()
-        auth = _auth(backend)
+        auth = _auth(backend, v)
         if not auth["ok"]:
             raise RpcError(auth["reason"] or "No way to reach Claude is set up yet.", code="auth_required")
         from watchdog.auth import KeyChoiceError, check_run_keys

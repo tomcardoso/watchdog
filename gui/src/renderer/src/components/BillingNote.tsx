@@ -2,6 +2,8 @@
 // Add documents, the public-records pause and the re-check estimate. With one key per provider
 // there is nothing to choose, so nothing is shown. A chosen key that isn't on this computer is
 // shown as a stop: the run would end before sending anything rather than bill another account.
+// A key from the environment pays only where the investigation chose none (D408), and is named
+// with a warning: no key's spending limit covers it.
 
 import { Wallet } from 'lucide-react'
 import type { Billing } from '@shared/api'
@@ -43,6 +45,12 @@ export function BillingNote({ billing, onSettings }: { billing?: Billing[]; onSe
           </span>
         ))}
         .
+        {rows.some((b) => b.source === 'env') && (
+          <>
+            {' '}
+            A key set in your computer&apos;s environment is not one of your stored keys, so no spending limit you set on a key applies to it. Choosing a key for this investigation on its Overview makes that key pay instead.
+          </>
+        )}
       </span>
     </div>
   )

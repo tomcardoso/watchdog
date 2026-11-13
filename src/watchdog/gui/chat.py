@@ -324,6 +324,10 @@ _SESSION_KEY_NOTE = ("This conversation is set to use your Claude subscription, 
                      "this computer is using an API key ({source}), which is billed per token, so "
                      "Watchdog stopped it. Sign in again with your Claude account under Settings → "
                      "Models & keys, then start a new conversation.")
+_SESSION_WRONG_KEY_NOTE = ("Claude Code did not use the Anthropic key Watchdog gave it, but another "
+                           "credential ({source}), so this conversation would not be billed to the "
+                           "key you chose. Watchdog stopped it. Remove the other credential, then "
+                           "start a new conversation.")
 _SESSION_OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code "
                          "reports that extra usage, which is billed, is now paying for this "
                          "conversation, so Watchdog stopped it. Start a new conversation after the "
@@ -621,16 +625,21 @@ class ChatManager:
             await asyncio.to_thread(_record_session, s.vault, "found")
             try:
                 await self._connect(s)
+                from watchdog import auth
                 if s.subscription:
-                    # The same check as processing's (D406, D407): nothing in the environment that
-                    # bypasses the login, and Claude Code signed in with a Claude account.
-                    from watchdog import auth
+                    # The same check as processing's (D406, D407, D408): nothing in the environment
+                    # that bypasses the login, no unacknowledged extra-usage stop here, and Claude
+                    # Code signed in with a Claude account.
                     problem, s.claude_auth_method = await asyncio.to_thread(
-                        auth.subscription_check, "this conversation")
-                    if problem:
-                        s.billing_stop = problem
-                        self.status(s, "error", s.billing_stop, s.cost)
-                        return
+                        auth.subscription_check, "this conversation", s.vault)
+                else:
+                    # On a key, nothing in the environment may outrank it (D408).
+                    conflict = auth.key_env_conflict()
+                    problem = auth.key_env_message(conflict, "this conversation") if conflict else None
+                if problem:
+                    s.billing_stop = problem
+                    self.status(s, "error", s.billing_stop, s.cost)
+                    return
                 await s.client.query(prompt)
                 async for message in s.client.receive_response():
                     self._handle(s, message)
@@ -663,6 +672,10 @@ class ChatManager:
                 from watchdog import model_client
                 if s.subscription and s.key_source in model_client.METERED_KEY_SOURCES:
                     s.billing_stop = _SESSION_KEY_NOTE.format(source=s.key_source)
+                    s.stop_pending = True
+                elif not s.subscription and s.key_source not in (None, "ANTHROPIC_API_KEY"):
+                    # Watchdog passed a key, and Claude Code is billing something else (D408).
+                    s.billing_stop = _SESSION_WRONG_KEY_NOTE.format(source=s.key_source)
                     s.stop_pending = True
         elif type(message).__name__ == "RateLimitEvent":
             from watchdog import model_client

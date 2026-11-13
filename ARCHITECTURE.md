@@ -1007,9 +1007,8 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
   environment (`auth.subscription_env_conflict`).
 - **Keys (D290).** `~/.watchdog/credentials.json` (0600, written atomically) holds per provider
   `{default, items: [{id, label, key}]}`, each `key` an encrypted blob from the app's main process
-  where the computer has secure storage (D295, D301). `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,
-  else the investigation's choice (by id, then by name, so a shared folder finds the same-named key
-  on another computer), else the default. A choice that resolves to nothing raises `KeyChoiceError`
+  where the computer has secure storage (D295, D301). `auth.resolve_key(provider, vault)` is the one resolver: the investigation's choice (by id, then by name, so a shared folder finds the same-named key
+  on another computer), else the environment variable (which no longer outranks a choice, D408), else the default. A choice that resolves to nothing raises `KeyChoiceError`
   (I16). A run process scopes every lookup to its vault (`auth.use_investigation`, set by
   `_begin_usage_run`), so `model_client`, the batch path and `recheck` need no vault argument;
   `dig`/`bark`/`add` and the re-check check up front (`auth.check_run_keys`); the app's Ask Claude
@@ -1303,8 +1302,10 @@ noted as such.
   every path that would send that provider's key (processing, post-processing, the batch path, the
   contradiction re-check, Ask Claude and Research in API-key mode) stops before any call and names the
   missing key; none falls back to the default or another key. The same holds when the key is stored
-  encrypted by the app and this process can't read it (a key that failed to decrypt): it stops and says why. An environment variable still overrides, as it overrides
-  everything. *History: D290, D295.* Guarded by `tests/test_invariants.py::test_I16_…`,
+  encrypted by the app and this process can't read it (a key that failed to decrypt): it stops and says why. The investigation's choice also beats the provider's
+  environment variable, which pays only where no key was chosen; and a Claude call given a key stops before
+  any request if the environment holds anything that outranks the key or sends it elsewhere
+  (`auth.KEY_ENV_CONFLICTS`), or Claude Code reports a credential other than that key. *History: D290, D295, D408.* Guarded by `tests/test_invariants.py::test_I16_…`,
   `tests/test_labelled_keys.py` and `tests/test_keystore.py`.
 - **I17 — Removing an entity hides it; it never changes what a source says.** An entity the reporter
   removed from the investigation (`registry/hidden.json`) is left out of the views and leads only:
@@ -1339,5 +1340,7 @@ noted as such.
   extra usage is recorded (`overage: true`), since it may have been charged. Ask Claude and Web
   research stop the turn on the same signals, record it, and refuse the conversation's later turns.
   "Not billed" is shown only when every subscription call recorded `auth_method: claude.ai` and
-  `key_source: none`, and none was stopped on extra usage. *History: D406, D407.* Guarded by `tests/test_invariants.py::test_I20_…`,
+  `key_source: none`, and none was stopped on extra usage. After such a stop the investigation's
+  subscription work waits until the reporter acknowledges it in Usage (`spend.extra_usage_flag`).
+  *History: D406, D407, D408.* Guarded by `tests/test_invariants.py::test_I20_…`,
   `tests/test_model_client.py` and `tests/test_gui_chat.py`.

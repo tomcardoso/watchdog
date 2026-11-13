@@ -421,7 +421,7 @@ def _auto_approve_on(config: dict) -> bool:
     return config.get("auto_approve") is True
 
 
-def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) -> dict:
+def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None], vault=None) -> dict:
     """Whether this run may skip the public-records pause (D263): `{"approve": True}` only when
     the auth mode is the Claude subscription and every stage it calls — classify, extract and each
     finishing stage, given by its configured backend — runs on it, which has no per-run charge.
@@ -433,7 +433,7 @@ def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) ->
         # Only once Claude Code is confirmed on a Claude account (D407): a Console account's
         # sign-in bills per token while the setting still says subscription.
         from watchdog import auth
-        problem = auth.subscription_check("this run")[0]
+        problem = auth.subscription_check("this run", vault)[0]
         if problem:
             return {"blocker": problem}
         return {"approve": True}
@@ -1159,7 +1159,7 @@ def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: 
             processing_state(vault).unlink(missing_ok=True)
 
     auto = _auto_approve_on(config)
-    gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends) if auto and q else None)
+    gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends, vault=vault) if auto and q else None)
     if in_sample:
         local_only = sample.NOTE if q else None
     else:

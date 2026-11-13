@@ -359,7 +359,13 @@ class ProviderAuthError(RuntimeError):
     Unlike a rate limit it never clears by waiting, so `--wait` doesn't sleep on it."""
 
 
-class MeteredBillingError(ProviderAuthError):
+class BillingRouteError(ProviderAuthError):
+    """A call would not be billed the way the reporter chose (D406, D408): the base of
+    :class:`MeteredBillingError`, and raised directly when a call made with an Anthropic key would
+    be paid some other way. Halting, like any :class:`ProviderAuthError`."""
+
+
+class MeteredBillingError(BillingRouteError):
     """A call meant for the Claude subscription would be, or was being, billed per token (#872,
     D406): Claude Code reported an API key as its credential, the environment names one, or the
     subscription's limit was reached and Claude Code reported that extra usage was paying. A
@@ -410,6 +416,10 @@ _KEY_SOURCE_NOTE = ("Watchdog is set to use your Claude subscription, but Claude
                     "computer is using an API key ({source}), which is billed per token. Watchdog "
                     "stopped before the call ran. Remove the key, or sign in again with your "
                     "Claude account under Settings → Models & keys.")
+_WRONG_KEY_NOTE = ("Claude Code did not use the Anthropic key Watchdog gave it, but another "
+                   "credential ({source}), so this call would not be billed to the key you chose. "
+                   "Watchdog stopped before the call ran. Remove the other credential, or ask for "
+                   "help with this message.")
 _OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code reports "
                  "that extra usage, which is billed, is now paying for calls. Watchdog stopped the "
                  "run; unfinished documents stay queued. Turn off extra usage in your Claude "
@@ -848,6 +858,10 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                     key_source = source
                     if subscription and source in METERED_KEY_SOURCES:
                         raise _stop_metered(_KEY_SOURCE_NOTE.format(source=source))
+                    if (not subscription and env and env.get("ANTHROPIC_API_KEY")
+                            and source != "ANTHROPIC_API_KEY"):
+                        # The key Watchdog passed is not what Claude Code will bill (D408).
+                        raise BillingRouteError(_WRONG_KEY_NOTE.format(source=source))
             if name == "ResultMessage":
                 out["text"] = getattr(message, "result", "") or ""
                 out["cost_usd"] = getattr(message, "total_cost_usd", None)
@@ -887,7 +901,7 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                 t = getattr(block, "text", "") or ""
                 if t and any(h in t.lower() for h in _RATE_LIMIT_HINTS):
                     notice = t.strip()
-    except MeteredBillingError:
+    except BillingRouteError:
         raise
     except Exception as e:
         # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
@@ -945,6 +959,10 @@ async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema:
         problem, method = await asyncio.to_thread(auth.subscription_check)
         if problem:
             raise _stop_metered(problem)
+    else:
+        conflict = auth.key_env_conflict()      # nothing may outrank the key (D408)
+        if conflict:
+            raise BillingRouteError(auth.key_env_message(conflict))
     full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
     try:
@@ -1588,6 +1606,13 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
             raise ModelError(resolved.get("reason", "no auth configured" + " — set it up in Settings"))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
+        if api_key:
+            # Nothing in the environment may take priority over the chosen key, or send it to
+            # another host, on either Claude backend (D408): the Anthropic SDK reads
+            # ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN itself, and Claude Code more.
+            conflict = auth.key_env_conflict()
+            if conflict:
+                raise BillingRouteError(auth.key_env_message(conflict))
         if chosen is None:
             chosen = "claude-agent-sdk" if auth_mode == "subscription" else "claude-api"
         if chosen == "claude-api" and not api_key:
