@@ -93,7 +93,7 @@ You can keep several named keys for one provider, to bill different accounts: a 
 
 <a id="billing"></a>With more than one key for a provider, a **Billing** card on each investigation's Overview chooses which one pays for that investigation's model calls, including Ask Claude when Claude is on an API key. Only the key's name is saved, inside the investigation's folder, so it travels with the folder; on another computer Watchdog uses that computer's key of the same name. If there is none, Watchdog stops before sending anything rather than bill another account. **Activity → Usage** shows the cost per key.
 
-A key can also be set in your computer's environment (for example `ANTHROPIC_API_KEY`), which some people do for other software. Watchdog uses it only for an investigation that has not chosen a key, and says so when you add documents; no spending limit you set on a stored key applies to it. An investigation that has chosen a key always pays with that key. If something else in the environment would take priority over a Claude key or send it somewhere other than Anthropic, such as `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`, Watchdog names it and stops before sending anything.
+Watchdog uses only the keys you add here. Keys and other model settings in your computer's environment (for example `ANTHROPIC_API_KEY`, which some other software asks you to set) are ignored: the app does not pass them to any of the programs it runs, so they can never decide which account pays.
 
 ## Controlling cost
 

@@ -162,3 +162,25 @@ def test_telemetry_keeps_how_a_claude_call_was_billed(tmp_path, monkeypatch):
         conn.close()
     assert row == ("none", "claude.ai", 1)
     json.dumps(record)
+
+
+# ── what the backend keeps of its environment (D409) ───────────────────────────────────────
+
+def test_under_the_app_the_backend_drops_every_provider_credential(monkeypatch):
+    from watchdog import environment
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY",
+                 "OPENAI_BASE_URL", "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+                 "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "LOCAL_API_KEY", "LOCAL_BASE_URL",
+                 "AWS_PROFILE", "AZURE_OPENAI_API_KEY", "HF_TOKEN"):
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:8080")
+    monkeypatch.delenv(environment.APP_MARKER, raising=False)
+    assert environment.scrub() == []                       # a benchmark script keeps them
+    monkeypatch.setenv(environment.APP_MARKER, "1")
+    gone = environment.scrub()
+    assert "ANTHROPIC_API_KEY" in gone and "LOCAL_BASE_URL" in gone and "HF_TOKEN" in gone
+    import os
+    assert not [k for k in os.environ if environment.scrubbed(k)]
+    assert os.environ["HTTPS_PROXY"] == "http://proxy:8080"
+    assert auth.resolve_key("openai")["source"] == "none"
+

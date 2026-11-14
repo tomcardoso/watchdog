@@ -36,6 +36,8 @@ def _read_request() -> dict:
 
 
 def main() -> int:
+    from watchdog import environment
+    environment.scrub()          # no provider key or endpoint from the app's shell (D409)
     os.environ["WATCHDOG_PROGRESS"] = "1"
     os.environ.setdefault("NO_COLOR", "1")
     if os.name == "nt":

@@ -1344,3 +1344,12 @@ noted as such.
   subscription work waits until the reporter acknowledges it in Usage (`spend.extra_usage_flag`).
   *History: D406, D407, D408.* Guarded by `tests/test_invariants.py::test_I20_…`,
   `tests/test_model_client.py` and `tests/test_gui_chat.py`.
+- **I21 — Nothing in the app's own environment reaches what it runs.** Every program the app starts
+  (the backend and through it each job, Claude Code and the model libraries; the Claude sign-in;
+  the engine installer's programs) gets an environment built from an allowlist of the operating
+  system's, the locale's, the desktop's, the network's and the model folders' variables
+  (`gui/src/main/childEnv.ts`), exact names except `LC_*` and `XDG_*`, so no key, token, endpoint
+  or provider switch exported in a shell decides who pays or where a key goes. Under the app's
+  mark (`WATCHDOG_APP`) the backend and each job also drop every credential or endpoint variable
+  themselves (`watchdog.environment.scrub`). *History: D409.* Guarded by
+  `gui/src/main/childEnv.test.ts` and `tests/test_billing_route.py`.

@@ -78,6 +78,8 @@ def _clean_exit_message(msg: str) -> str:
 
 
 def main() -> None:
+    from watchdog import environment
+    environment.scrub()          # no provider key or endpoint from the app's shell (D409)
     proto_out = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr
 

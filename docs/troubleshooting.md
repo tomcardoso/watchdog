@@ -64,7 +64,7 @@ Watchdog checks that every call set to use your Claude subscription really does.
 
 A run set to use the subscription keeps refusing Claude calls until it ends, and a stopped conversation refuses further questions: start a new one. If extra usage was the reason, **Activity → Usage** lists the calls that may have been charged, and the subscription stays off in that investigation until you choose **I've checked this** there.
 
-A run or conversation on an API key stops the same way if something on this computer would bill another account instead of the key you chose: the message names the setting, such as `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`. Remove it, then try again. If you meant to pay per token, switch Claude to an API key under **Settings → Models & keys**.
+A run or conversation on an API key stops the same way if Claude Code reports that it would bill something other than the key you chose. Watchdog ignores keys and settings in your computer's environment, so this is rare; the message says what Claude Code reported. If you meant to pay per token, switch Claude to an API key under **Settings → Models & keys**.
 
 ## The provider rejected the key, or the account is out of credit
 
