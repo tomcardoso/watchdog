@@ -2,7 +2,7 @@
 // claude-agent-sdk package (the same copy the in-app chat runs). `claude auth login --claudeai`
 // opens the browser; this module then polls `claude auth status --json` until it reports a login.
 
-import { ChildProcess, execFile, spawn, spawnSync } from 'node:child_process'
+import { ChildProcess, execFile, spawn as nodeSpawn, spawnSync } from 'node:child_process'
 import { delimiter } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -42,10 +42,13 @@ export function parseAuthStatus(stdout: string): ClaudeStatus {
 
 const POLL_MS = 2000
 const GIVE_UP_MS = 10 * 60 * 1000
+/** Shown when GIVE_UP_MS runs out. The browser is not told, so a person who finishes there later
+ * lands on a page that will not load; this tells them what to do on coming back (#840). */
+export const TIMED_OUT_MESSAGE = 'Sign-in timed out after 10 minutes. If you finished signing in in your browser after that, press Sign in again.'
 // Once the status reports the login, how long the login command is left to exit by itself before
-// it is stopped (#840). It serves the localhost page the browser is sent back to, and the login
-// can be recorded before the browser has loaded that page: stopping the command at once could
-// leave the browser showing "nothing found at localhost" though sign-in worked.
+// it is stopped (#840). Kept as a precaution: Claude Code 2.1.308 answers the browser's localhost
+// request before it saves the login, so the status cannot report the login while the browser is
+// still waiting on that page, and stopping at once would not break it (D411).
 const EXIT_GRACE_MS = 8000
 
 export class ClaudeSignIn {
@@ -55,12 +58,22 @@ export class ClaudeSignIn {
   private child: ChildProcess | null = null
   private stop: (() => void) | null = null
   private simulate: boolean
+  private spawn: typeof nodeSpawn
+  // The sign-in in progress and the link it printed, so a second Sign in joins it (#840).
+  private pending: Promise<{ ok: boolean; message: string | null }> | null = null
+  private url: string | null = null
 
-  constructor(cli: () => string | null, onUrl: (url: string | null) => void, env: () => NodeJS.ProcessEnv, simulate: boolean) {
+  constructor(cli: () => string | null, onUrl: (url: string | null) => void, env: () => NodeJS.ProcessEnv, simulate: boolean, spawn: typeof nodeSpawn = nodeSpawn) {
     this.cli = cli
     this.onUrl = onUrl
     this.env = env
     this.simulate = simulate
+    this.spawn = spawn
+  }
+
+  /** True while a sign-in is waiting for the browser, so a screen opened meanwhile can show it. */
+  inProgress(): boolean {
+    return this.pending !== null
   }
 
   /** The sign-in check while a login is in progress; blocks, so only used where nothing else waits on it. */
@@ -86,14 +99,33 @@ export class ClaudeSignIn {
     this.stop?.()
   }
 
+  /** Start a sign-in, or join the one already waiting. A second press does not restart it: that
+   * would stop the first login's localhost listener, and a browser tab still finishing the first
+   * would then land on a page that will not load (#840, D411). Cancel starts afresh. */
   signIn(): Promise<{ ok: boolean; message: string | null }> {
-    this.cancel()
+    if (this.pending) {
+      if (this.url) this.onUrl(this.url)
+      return this.pending
+    }
+    const p = this.start().finally(() => {
+      if (this.pending === p) {
+        this.pending = null
+        this.url = null
+      }
+    })
+    this.pending = p
+    return p
+  }
+
+  private start(): Promise<{ ok: boolean; message: string | null }> {
     if (this.simulate) {
       return new Promise((resolve) => {
-        this.onUrl('https://claude.ai/login')
+        this.url = 'https://claude.ai/login'
+        this.onUrl(this.url)
         const t = setTimeout(() => resolve({ ok: true, message: null }), 2500)
         this.stop = () => {
           clearTimeout(t)
+          this.stop = null
           resolve({ ok: false, message: 'Sign-in was cancelled.' })
         }
       })
@@ -112,18 +144,23 @@ export class ClaudeSignIn {
         this.child = null
         this.stop = null
         if (c && c.exitCode === null) c.kill()
+        this.url = null
+        this.pending = null
         this.onUrl(null)
         resolve(r)
       }
       const env = { ...this.env(), PATH: [this.env().PATH ?? '', '/usr/bin'].join(delimiter) }
-      const child = spawn(cli, ['auth', 'login', '--claudeai'], { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+      const child = this.spawn(cli, ['auth', 'login', '--claudeai'], { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
       this.child = child
       const tail: string[] = []
       const watch = (line: string) => {
         tail.push(line)
         if (tail.length > 10) tail.shift()
         const m = line.match(/https:\/\/\S+/)
-        if (m) this.onUrl(m[0])
+        if (m) {
+          this.url = m[0]
+          this.onUrl(m[0])
+        }
       }
       createInterface({ input: child.stdout! }).on('line', watch)
       createInterface({ input: child.stderr! }).on('line', watch)
@@ -142,7 +179,7 @@ export class ClaudeSignIn {
         clearInterval(poll)
         grace = setTimeout(() => finish({ ok: true, message: null }), EXIT_GRACE_MS)
       }, POLL_MS)
-      const giveUp = setTimeout(() => finish({ ok: false, message: 'Sign-in timed out. Try again.' }), GIVE_UP_MS)
+      const giveUp = setTimeout(() => finish({ ok: false, message: TIMED_OUT_MESSAGE }), GIVE_UP_MS)
       this.stop = () => finish({ ok: false, message: 'Sign-in was cancelled.' })
     })
   }

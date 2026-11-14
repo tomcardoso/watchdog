@@ -1308,6 +1308,8 @@ export interface WatchdogBridge {
     /** Opens the browser; resolves when the person has signed in, or with the reason it did not. */
     signIn(): Promise<{ ok: boolean; message: string | null }>
     cancel(): Promise<void>
+    /** True while a sign-in is waiting for the browser; signIn() then joins it rather than restarting. */
+    signInActive(): Promise<boolean>
   }
   dialog: {
     openFiles(opts?: { title?: string; folders?: boolean; multi?: boolean }): Promise<string[]>

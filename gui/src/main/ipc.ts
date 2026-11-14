@@ -53,6 +53,7 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
   ipcMain.handle('claude:status', () => claude.statusAsync())
   ipcMain.handle('claude:signIn', () => claude.signIn())
   ipcMain.handle('claude:cancel', () => claude.cancel())
+  ipcMain.handle('claude:signInActive', () => claude.inProgress())
 
   ipcMain.handle('dialog:openFiles', async (_e, opts: { title?: string; folders?: boolean; multi?: boolean } = {}) => {
     const props: ('openFile' | 'openDirectory' | 'multiSelections')[] = [opts.folders ? 'openDirectory' : 'openFile']
