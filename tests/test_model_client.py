@@ -2641,6 +2641,7 @@ def test_a_call_stopped_on_extra_usage_is_recorded_in_usage(tmp_path, monkeypatc
             orchestrate._end_usage_run(vault)
     [call] = seen["overage"]
     assert call["auth_method"] == "claude.ai"
+    assert call["overage_stopped"] is True
     assert (call["overage"], call["failed"], call["key_source"], call["auth_mode"],
             call["backend"], call["filename"]) == (True, True, "none", "subscription",
                                                    "claude-agent-sdk", "a.pdf")

@@ -994,7 +994,7 @@ def status_data() -> dict:
     env_set = bool(os.environ.get(meta["env"]))
 
     claude = {"mode": mode, "session_mode": sessions, "session_mode_own": bool(state.get("session_mode")),
-              "logged_in": None, "env_key_set": env_set, "env_conflict": subscription_env_conflict(),
+              "logged_in": None, "env_key_set": env_set,
               "key_masked": None, "key_source": None}
     if "subscription" in (mode, sessions):
         claude["logged_in"] = claude_code_logged_in()

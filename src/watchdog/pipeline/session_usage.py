@@ -164,6 +164,7 @@ def call_record(share: dict, result, *, task: str, session_id: str, model: str |
         # Extra usage paid for the turn: stopped there (#872), unless the reporter allowed it (D410).
         record["overage"] = True
         if stopped:
+            record["overage_stopped"] = True
             record["failed"] = True
     return record
 
@@ -184,7 +185,7 @@ def record(vault: Path, *, session_id: str, mode: str, title: str, call: dict) -
     _write_atomic(path, json.dumps(out, ensure_ascii=False, indent=2))
     from watchdog import key_spend
     key_spend.record("anthropic", call.get("key_label"), call.get("cost_usd"), auth_mode=call.get("auth_mode"))
-    if call.get("overage") and call.get("failed"):   # stopped: the subscription waits (D408)
+    if call.get("overage_stopped"):   # stopped on extra usage: the subscription waits (D408)
         from watchdog import spend
         spend.flag_extra_usage(vault)
     try:

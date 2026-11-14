@@ -236,6 +236,7 @@ def test_allowed_extra_usage_carries_on_records_the_charge_and_counts_it(home, v
     assert r.parsed == {"ok": True} and mc._metered_stop is None
     [call] = calls
     assert call["overage"] is True and not call.get("failed") and call["cost_usd"] == 0.31
+    assert "overage_stopped" not in call
     assert spend.counts(call)                              # counts towards the spending limit
     assert spend.recorded(vault) == 0.31
     assert spend.extra_usage_flag(vault) is None           # nothing to acknowledge: it was chosen
@@ -257,5 +258,28 @@ def test_a_conversation_carries_on_when_extra_usage_is_allowed(home, vault):
                                      stopped=False)
     assert call["overage"] is True and "failed" not in call
     session_usage.record(vault, session_id="s", mode="ask", title="t", call=call)
+    assert spend.extra_usage_flag(vault) is None
+
+
+def test_a_charged_call_that_fails_validation_is_still_charged(home, vault, monkeypatch):
+    """`overage_stopped`, not `failed`, marks a stop: an allowed call whose answer then failed
+    validation was charged, and must not read as stopped or raise the gate (D410)."""
+    from watchdog import usage
+    from watchdog.pipeline import orchestrate
+    auth.save_state({"mode": "subscription"})
+    _allow_extra_usage(home)
+    stream = _overage_stream()
+    stream[-1].result = "not json"
+    _agent_stream(monkeypatch, stream)
+    orchestrate._begin_usage_run(vault)
+    try:
+        with pytest.raises(mc.ModelError):
+            asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema={}, max_retries=0))
+        calls = list(orchestrate._run.usage)
+    finally:
+        orchestrate._end_usage_run(vault)
+    [call] = calls
+    assert call["failed"] is True and call["overage"] is True and "overage_stopped" not in call
+    assert usage.extra_usage_charged(calls) == (1, 0.31) and usage.extra_usage_calls(calls) == 0
     assert spend.extra_usage_flag(vault) is None
 

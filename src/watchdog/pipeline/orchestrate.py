@@ -248,6 +248,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["failed"] = True
     if overage:
         record["overage"] = True       # extra usage was paying when the call was stopped (#872)
+        record["overage_stopped"] = True
         if _run.vault is not None:     # and the subscription waits for the reporter (D408)
             from watchdog import spend
             spend.flag_extra_usage(_run.vault)

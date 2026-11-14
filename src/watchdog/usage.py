@@ -198,13 +198,15 @@ def _subscription_calls(calls: list[dict]) -> list[dict]:
 def extra_usage_calls(calls: list[dict]) -> int:
     """How many subscription calls were stopped after Claude Code reported extra usage paying for
     them (#872, D406): each may have been charged, at an amount Watchdog never learned."""
-    return sum(1 for c in _subscription_calls(calls) if c.get("overage") and c.get("failed"))
+    return sum(1 for c in _subscription_calls(calls) if c.get("overage_stopped"))
 
 
 def extra_usage_charged(calls: list[dict]) -> tuple[int, float]:
     """The subscription calls extra usage paid for because the reporter allowed it (D410), and
     their cost as Claude Code reported it: `(calls, usd)`."""
-    paid = [c for c in _subscription_calls(calls) if c.get("overage") and not c.get("failed")]
+    # `overage_stopped`, not `failed`: a charged call can also fail for another reason (an invalid
+    # answer), and it was still charged.
+    paid = [c for c in _subscription_calls(calls) if c.get("overage") and not c.get("overage_stopped")]
     return len(paid), round(sum(c.get("cost_usd") or 0.0 for c in paid), 6)
 
 
@@ -213,7 +215,7 @@ def extra_usage_list(calls: list[dict], limit: int = 20) -> list[dict]:
     document (None for a run-wide step or a conversation) and when the call ended, in UTC."""
     import datetime
     out = []
-    for c in sorted((c for c in _subscription_calls(calls) if c.get("overage") and c.get("failed")),
+    for c in sorted((c for c in _subscription_calls(calls) if c.get("overage_stopped")),
                     key=lambda c: c.get("end_ts") or 0)[:limit]:
         ts = c.get("end_ts")
         out.append({"stage": STAGE.get(c.get("task"), c.get("task")), "filename": c.get("filename"),
