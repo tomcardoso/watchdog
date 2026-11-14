@@ -14,7 +14,8 @@ plus a running run's `.partial.jsonl`. Three kinds of record do not count:
 - Ask Claude and Web research turns (`ask`, `research`), which D318 lets the reporter bill apart
   from processing and which live in `usage/sessions/` anyway;
 - calls on the Claude subscription (`auth_mode: subscription`): their recorded cost is a
-  list-price equivalent, not a charge, so on a subscription the limit does not apply.
+  list-price equivalent, not a charge, so on a subscription the limit does not apply, except to
+  calls extra usage paid for (`overage`, D410), which were charged at about that figure.
 
 The run checks this before each document, between sections of a long document and before each
 finishing stage (`orchestrate._spending_stop`), so a call already under way can take spending past
@@ -168,7 +169,8 @@ def extra_usage_message(flag: dict) -> str:
             f"{'was' if n == 1 else 'were'} stopped after extra usage began paying, and may have "
             "been charged. Watchdog won't use your subscription here again until you've looked: "
             "open Activity → Usage and confirm you've checked it. Turning off extra usage in your "
-            "Claude account's settings stops it happening again.")
+            "Claude account's settings stops it happening again; to let runs carry on and pay for "
+            "it instead, turn on Allow extra usage under Settings → Claude subscription.")
 
 
 # ── recorded spend ───────────────────────────────────────────────────────────────────────
@@ -185,12 +187,13 @@ def _parse_ts(text: str | None, fmt: str = _TS_FMT) -> float | None:
 
 def counts(record: dict) -> bool:
     """Whether a call record is processing spend that was charged: not a conversation's turn, and
-    not a call on the Claude subscription."""
+    not a call on the Claude subscription, unless extra usage paid for it (D410), when its cost is
+    what Claude Code reported at API rates."""
     if not isinstance(record, dict):
         return False
     if record.get("task") in SESSION_TASKS:
         return False
-    return record.get("auth_mode") != "subscription"
+    return record.get("auth_mode") != "subscription" or bool(record.get("overage"))
 
 
 def sum_records(records, since: float | None = None, fallback_ts: float | None = None) -> float:

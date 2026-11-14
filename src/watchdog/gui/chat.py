@@ -331,7 +331,9 @@ _SESSION_WRONG_KEY_NOTE = ("Claude Code did not use the Anthropic key Watchdog g
 _SESSION_OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code "
                          "reports that extra usage, which is billed, is now paying for this "
                          "conversation, so Watchdog stopped it. Start a new conversation after the "
-                         "limit resets, or turn off extra usage in your Claude account's settings.")
+                         "limit resets, or turn off extra usage in your Claude account's settings. "
+                         "To let conversations carry on and pay for extra usage instead, turn on "
+                         "Allow extra usage under Settings → Claude subscription.")
 
 
 def _friendly(error: Exception | str) -> str:
@@ -678,10 +680,12 @@ class ChatManager:
                     s.billing_stop = _SESSION_WRONG_KEY_NOTE.format(source=s.key_source)
                     s.stop_pending = True
         elif type(message).__name__ == "RateLimitEvent":
-            from watchdog import model_client
+            from watchdog import auth, model_client
             if s.subscription and model_client._overage_in_use(getattr(message, "rate_limit_info", None)):
-                s.billing_stop = _SESSION_OVERAGE_NOTE
-                s.turn_overage = s.stop_pending = True
+                s.turn_overage = True
+                if not auth.extra_usage_allowed():     # allowed: carry on, recorded as paid (D410)
+                    s.billing_stop = _SESSION_OVERAGE_NOTE
+                    s.stop_pending = True
         elif isinstance(message, StreamEvent):
             event = message.event or {}
             delta = event.get("delta") or {}
@@ -739,7 +743,8 @@ class ChatManager:
             call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
                                              session_id=s.id, model=s.model, auth_mode=auth_mode,
                                              key_label=s.key_label, key_source=s.key_source,
-                                             overage=overage, auth_method=s.claude_auth_method)
+                                             overage=overage, auth_method=s.claude_auth_method,
+                                             stopped=overage and s.billing_stop is not None)
             session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
         except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
             pass

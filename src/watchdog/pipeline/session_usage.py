@@ -126,7 +126,7 @@ def _session_file(vault: Path, session_id: str) -> Path:
 
 def call_record(share: dict, result, *, task: str, session_id: str, model: str | None,
                 auth_mode: str | None, key_label: str | None, key_source: str | None = None,
-                overage: bool = False, auth_method: str | None = None) -> dict:
+                overage: bool = False, auth_method: str | None = None, stopped: bool = True) -> dict:
     """One turn as a usage call record, in the shape `orchestrate._record_usage` writes."""
     tokens = {k: sum(int(m.get(k) or 0) for m in share["models"].values())
               for _, k in _TOKEN_KEYS}
@@ -161,8 +161,10 @@ def call_record(share: dict, result, *, task: str, session_id: str, model: str |
     if auth_method:
         record["auth_method"] = auth_method  # how Claude Code was signed in (D407)
     if overage:
-        record["overage"] = True           # extra usage was paying when the turn was stopped (#872)
-        record["failed"] = True
+        # Extra usage paid for the turn: stopped there (#872), unless the reporter allowed it (D410).
+        record["overage"] = True
+        if stopped:
+            record["failed"] = True
     return record
 
 
@@ -182,7 +184,7 @@ def record(vault: Path, *, session_id: str, mode: str, title: str, call: dict) -
     _write_atomic(path, json.dumps(out, ensure_ascii=False, indent=2))
     from watchdog import key_spend
     key_spend.record("anthropic", call.get("key_label"), call.get("cost_usd"), auth_mode=call.get("auth_mode"))
-    if call.get("overage"):          # the subscription waits for the reporter to look (D408)
+    if call.get("overage") and call.get("failed"):   # stopped: the subscription waits (D408)
         from watchdog import spend
         spend.flag_extra_usage(vault)
     try:

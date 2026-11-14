@@ -102,6 +102,11 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
           Costs shown are what the work would cost at published per-token rates, not money that was charged. For every Claude call, Claude Code reported that it was signed in with your Claude account and using no API key, so your subscription paid, with no per-token charge.
         </Callout>
       )}
+      {!!r.extra_usage_charged?.calls && (
+        <Callout tone="warning" title="Extra usage was charged">
+          Your Claude subscription&apos;s limit was reached, and {r.extra_usage_charged.calls === 1 ? 'a Claude call' : `${fmtNum(r.extra_usage_charged.calls)} Claude calls`} then ran on extra usage, because <b>Allow extra usage</b> is on in Settings. Extra usage is billed at API rates: Claude Code reported about {fmtCost(r.extra_usage_charged.cost_usd)} for {r.extra_usage_charged.calls === 1 ? 'it' : 'them'}, which counts towards this investigation&apos;s spending limit. Your Claude account&apos;s usage settings show the amount charged.
+        </Callout>
+      )}
       {!!r.extra_usage_calls && (
         <Callout
           tone="warning"
@@ -129,7 +134,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
           {ackError && <div style={{ marginTop: 8, color: 'var(--danger)' }}>{ackError}</div>}
         </Callout>
       )}
-      {r.subscription_note && r.subscription_confirmed === false && !r.extra_usage_calls && (
+      {r.subscription_note && r.subscription_confirmed === false && !r.extra_usage_calls && !r.extra_usage_charged?.calls && (
         <Callout tone="warning" title="Billing not confirmed">
           This work was set to use your Claude subscription, but Watchdog did not confirm how Claude Code paid for some of its calls. Work done with a version of Watchdog that did not yet check cannot be confirmed. Costs shown are what it would cost at published per-token rates. To see whether anything was charged, compare these dates with your Anthropic account&apos;s usage and billing pages.
         </Callout>

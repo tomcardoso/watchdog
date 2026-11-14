@@ -436,6 +436,11 @@ def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None], va
         problem = auth.subscription_check("this run", vault)[0]
         if problem:
             return {"blocker": problem}
+        if auth.extra_usage_allowed():
+            # Extra usage may now pay for this run (D410), so it has a per-run charge after all.
+            return {"blocker": "Allow extra usage is on, so this run may be charged once your "
+                               "subscription's limit is reached; auto-approve applies only when "
+                               "nothing can be"}
         return {"approve": True}
     return {"blocker": "at least one step of this run uses a paid API key, and auto-approve "
                        "applies only when every step runs on your Claude subscription"}

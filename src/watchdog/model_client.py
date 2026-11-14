@@ -424,7 +424,9 @@ _OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and C
                  "that extra usage, which is billed, is now paying for calls. Watchdog stopped the "
                  "run; unfinished documents stay queued. Turn off extra usage in your Claude "
                  "account's settings, or wait until the limit has reset before adding documents "
-                 "again: until then, the next run stops again at its first paid call.")
+                 "again: until then, the next run stops again at its first paid call. To let runs "
+                 "carry on and pay for extra usage instead, turn on Allow extra usage under "
+                 "Settings → Claude subscription.")
 
 
 # Every failure a single model call can end in. Post-ingest stages catch all three and degrade
@@ -848,6 +850,7 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     rejected = False         # the CLI emitted a rate-limit event with status "rejected"
     resets_at = None
     key_source = None        # `apiKeySource` from the init message (#872)
+    overage_paid = False     # extra usage paid for this call, as the reporter allowed (D410)
     try:
         async for message in query(prompt=prompt, options=options):
             name = type(message).__name__
@@ -888,8 +891,10 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
             elif name in ("RateLimitEvent", "RateLimitInfo"):
                 info = getattr(message, "rate_limit_info", message)
                 if subscription and _overage_in_use(info):
-                    raise _stop_metered(_OVERAGE_NOTE, overage=True,
-                                        usage={"key_source": key_source} if key_source else None)
+                    if not auth.extra_usage_allowed():
+                        raise _stop_metered(_OVERAGE_NOTE, overage=True,
+                                            usage={"key_source": key_source} if key_source else None)
+                    overage_paid = True     # the reporter allowed it: carry on, recorded (D410)
                 if getattr(info, "status", None) == "rejected":
                     rejected = True
                     resets_at = getattr(info, "resets_at", None)
@@ -933,6 +938,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         out["reasoning"] = _join_reasoning(thoughts)
     if key_source is not None:
         out["usage"] = {**(out["usage"] or {}), "key_source": key_source}
+    if overage_paid:
+        out["usage"] = {**(out["usage"] or {}), "overage": True}
     return out
 
 

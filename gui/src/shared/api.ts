@@ -992,6 +992,8 @@ export interface UsageRun {
   extra_usage?: { stage: string; filename: string | null; at: string | null }[]
   /** Subscription work in this investigation waits until the reporter acknowledges those calls (D408). */
   extra_usage_pending?: boolean
+  /** Calls extra usage paid for because Settings allows it (D410), with the cost Claude Code reported. */
+  extra_usage_charged?: { calls: number; cost_usd: number }
   by_key?: KeyCost[]
   peak_concurrency?: number | null
   batch_note?: string | null

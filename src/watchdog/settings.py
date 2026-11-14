@@ -681,6 +681,21 @@ SETTINGS = {
         "default": None,
         "default_fn": "watchdog.pipeline.verification:default_reporter_name",
     },
+    # ── Claude subscription ───────────────────────────────────────────────────
+    "allow_extra_usage": {
+        "short": "Let runs carry on, and pay, when your Claude subscription's limit is reached (default: false)",
+        "help": (
+            "When your Claude subscription's usage limit is reached and your Claude account has extra\n"
+            "  usage turned on, Claude Code keeps going and the extra usage is billed at API rates.\n"
+            "  Off, Watchdog stops a run or conversation as soon as Claude Code reports extra usage\n"
+            "  paying, and holds the investigation's subscription until you have looked (D408).\n"
+            "  On, it carries on: those calls are recorded in Activity → Usage as charged, at the\n"
+            "  cost Claude Code reports, and a processing run's count towards the investigation's\n"
+            "  spending limit. Your Claude account's own extra-usage cap still applies. Default: false."
+        ),
+        "type": "bool",
+        "default": False,
+    },
     # ── Privacy ───────────────────────────────────────────────────────────────
     "telemetry": {
         "short": "Record every model call in ~/.watchdog/telemetry.db (default: true)",
@@ -738,6 +753,8 @@ SECTIONS = [
       "table_structure"]),
     ("Transcription", "Speech-to-text for audio and video, on this computer.",
      ["transcription_model", "transcription_language"]),
+    ("Claude subscription", "What happens when your subscription's usage limit is reached.",
+     ["allow_extra_usage"]),
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",

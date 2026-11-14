@@ -15,7 +15,7 @@ import { useState } from 'react'
 
 function costText(e: RecheckEstimate): string {
   if (e.sample) return 'Nothing: the sample investigation uses prepared answers, so nothing is sent to a model.'
-  if (e.subscription) return 'Uses your Claude subscription. Nothing is charged unless your Claude account has extra usage turned on, and Watchdog stops if it sees extra usage begin.'
+  if (e.subscription) return 'Uses your Claude subscription. Nothing is charged unless your Claude account has extra usage turned on; Watchdog then stops when extra usage begins, unless you allowed it under Settings → Claude subscription.'
   if (e.cost_low === null || e.cost_high === null) return 'Watchdog has no price for this model, so it cannot estimate the cost.'
   const low = fmtCost(e.cost_low)
   const high = fmtCost(e.cost_high)

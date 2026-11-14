@@ -24,6 +24,8 @@ You can also put both on one or the other. A subscription alone suits trying Wat
 
 A run set to use your subscription runs on it or not at all. Before each call, Watchdog checks that Claude Code (the program Watchdog uses to reach Claude on a subscription) is signed in with your Claude account. If it is signed in with an Anthropic Console account, a sign-in token or an API key instead, or a setting on this computer would send calls somewhere else, the call stops before it runs: each of those is billed to another account, per token. Sign in again with your Claude account under **Settings → Models & keys**. If your subscription's limit is reached and Claude Code reports that [extra usage](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) (paid for at API rates) is now covering calls, the run stops as well. In both cases the documents it has not finished stay queued. **Ask Claude** and **Web research** are held to the same rule: the conversation stops, and you start a new one once the problem is fixed or the limit resets. Claude Code says extra usage is paying only once a paid call has been accepted, so the calls already running at that moment may be charged for: up to three with the subscription's default of three documents at once, plus any Ask Claude turn under way; **Activity → Usage** lists each one, with its step, document and time, so you can match it against your Claude account. To be sure nothing is charged, also turn off extra usage in your Claude account's settings; Watchdog cannot turn it off for you. After a stop like that, Watchdog won't use your subscription in that investigation again until you open **Activity → Usage** and choose **I've checked this**, so a new run can't be charged the same way without you knowing.
 
+If you would rather finish a batch on extra usage than wait for your limit to reset, turn on **Allow extra usage** under **Settings → Claude subscription**. Runs and conversations then carry on past the limit, and extra usage pays for them at API rates. **Activity → Usage** marks those calls as charged, with the cost Claude Code reported, and in a processing run they count towards the investigation's [spending limit](#a-spending-limit-for-one-investigation). Your Claude account's own cap on extra usage still applies. While it is on, **Auto-approve** no longer skips the public-records pause, since the run may be charged.
+
 **Ask Claude** and **Web research** always run on Claude, so they need a Claude sign-in or key whatever the other steps use.
 
 ## Choosing models
@@ -203,6 +205,12 @@ Two settings belong to a single investigation and live on its Overview instead: 
 | Transcription language | `auto` | The recordings' language, as a code such as `en` or `fr`; `auto` detects it from the start of each recording. |
 
 All the models are close on clear speech. The difference shows on a bad line, a busy room or an unusual name, which is most of what a reporter records, so the default is the most accurate rather than the fastest. In Watchdog's tests on a four-core computer, `medium` (1.5 GB) took 20 to 35 minutes for an hour of audio and got the most names right; `small` (486 MB) took 11 to 16 minutes but made about twice as many errors on poor audio. A change affects recordings added afterwards. Set a language when detection picks the wrong one, for example on a recording that opens with music.
+
+### Claude subscription
+
+| Field | Default | What it controls |
+|---|---|---|
+| Allow extra usage | off | What happens when your subscription's usage limit is reached and your Claude account has extra usage turned on. Off, Watchdog stops at the first call extra usage pays for. On, it carries on, and extra usage is charged at API rates; see [Claude: subscription or API key](#claude-subscription-or-api-key). |
 
 ### Processing
 

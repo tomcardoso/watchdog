@@ -1342,7 +1342,9 @@ noted as such.
   "Not billed" is shown only when every subscription call recorded `auth_method: claude.ai` and
   `key_source: none`, and none was stopped on extra usage. After such a stop the investigation's
   subscription work waits until the reporter acknowledges it in Usage (`spend.extra_usage_flag`).
-  *History: D406, D407, D408.* Guarded by `tests/test_invariants.py::test_I20_…`,
+  The one exception is the reporter's own choice to let extra usage pay (`allow_extra_usage`): the
+  call carries on, is recorded as charged and counts towards the spending limit.
+  *History: D406, D407, D408, D410.* Guarded by `tests/test_invariants.py::test_I20_…`,
   `tests/test_model_client.py` and `tests/test_gui_chat.py`.
 - **I21 — Nothing in the app's own environment reaches what it runs.** Every program the app starts
   (the backend and through it each job, Claude Code and the model libraries; the Claude sign-in;

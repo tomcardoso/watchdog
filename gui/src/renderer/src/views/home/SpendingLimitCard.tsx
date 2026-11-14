@@ -87,7 +87,7 @@ export function SpendingLimitCard({ vault }: { vault: string }) {
         )}
         <div className="home-billing-note">
           The count is the cost already recorded in Activity → Usage, not an estimate. A call already under way still finishes, so a run can pass the limit by what those calls cost. Ask Claude and Research don’t count.
-          {data.claude_mode === 'subscription' && ' Claude calls on your subscription aren’t charged per call, so they don’t count either.'}
+          {data.claude_mode === 'subscription' && ' Claude calls on your subscription aren’t charged per call, so they don’t count either, except calls paid by extra usage when you allow it under Settings → Claude subscription.'}
         </div>
         <Button size="sm" variant="ghost" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={reset} tip="Count from now; earlier spending no longer counts towards the limit">
           Reset the count

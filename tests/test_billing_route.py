@@ -184,3 +184,78 @@ def test_under_the_app_the_backend_drops_every_provider_credential(monkeypatch):
     assert os.environ["HTTPS_PROXY"] == "http://proxy:8080"
     assert auth.resolve_key("openai")["source"] == "none"
 
+
+# ── extra usage, when the reporter allows it (D410) ────────────────────────────────────────
+
+def _allow_extra_usage(home):
+    from watchdog import config
+    home.mkdir(parents=True, exist_ok=True)
+    config.save({**config.read(), "allow_extra_usage": True})
+
+
+def _agent_stream(monkeypatch, messages):
+    import sys
+    import types
+
+    async def fake_query(prompt, options):
+        for m in messages:
+            yield m
+    sdk = types.ModuleType("claude_agent_sdk")
+    sdk.query, sdk.ClaudeAgentOptions = fake_query, (lambda **kw: kw)
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
+    mc._agent_supports_tools.cache_clear()
+    monkeypatch.setattr(mc, "_metered_stop", None)
+
+
+def _overage_stream():
+    info = type("RateLimitInfo", (), {"status": "allowed", "rate_limit_type": None,
+                                      "resets_at": None, "raw": {"isUsingOverage": True}})()
+    return [type("SystemMessage", (), {"subtype": "init", "data": {"apiKeySource": "none"},
+                                       "content": None})(),
+            type("RateLimitEvent", (), {"rate_limit_info": info, "content": None})(),
+            type("ResultMessage", (), {"result": '{"ok": true}', "total_cost_usd": 0.31,
+                                       "usage": {"input_tokens": 9}, "is_error": False,
+                                       "api_error_status": None, "duration_api_ms": None,
+                                       "num_turns": None, "content": None})()]
+
+
+def test_allowed_extra_usage_carries_on_records_the_charge_and_counts_it(home, vault, monkeypatch):
+    from watchdog.pipeline import orchestrate
+    auth.save_state({"mode": "subscription"})
+    assert not auth.extra_usage_allowed()
+    _allow_extra_usage(home)
+    assert auth.extra_usage_allowed()
+    _agent_stream(monkeypatch, _overage_stream())
+    spend.set_limit(vault, 10)
+    orchestrate._begin_usage_run(vault)
+    try:
+        r = asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema={}))
+        calls = list(orchestrate._run.usage)
+    finally:
+        orchestrate._end_usage_run(vault)
+    assert r.parsed == {"ok": True} and mc._metered_stop is None
+    [call] = calls
+    assert call["overage"] is True and not call.get("failed") and call["cost_usd"] == 0.31
+    assert spend.counts(call)                              # counts towards the spending limit
+    assert spend.recorded(vault) == 0.31
+    assert spend.extra_usage_flag(vault) is None           # nothing to acknowledge: it was chosen
+
+
+def test_allowed_extra_usage_does_not_let_auto_approve_skip_the_pause(home, vault):
+    from watchdog.ops.ingest import _auto_approve_verdict
+    assert _auto_approve_verdict(auth_mode="subscription", stages=[None], vault=vault) == {"approve": True}
+    _allow_extra_usage(home)
+    v = _auto_approve_verdict(auth_mode="subscription", stages=[None], vault=vault)
+    assert "Allow extra usage" in v["blocker"]
+
+
+def test_a_conversation_carries_on_when_extra_usage_is_allowed(home, vault):
+    from watchdog.pipeline import session_usage
+    call = session_usage.call_record({"models": {}, "cost_usd": 0.2}, None, task="ask",
+                                     session_id="s", model="m", auth_mode="subscription",
+                                     key_label=None, key_source="none", overage=True,
+                                     stopped=False)
+    assert call["overage"] is True and "failed" not in call
+    session_usage.record(vault, session_id="s", mode="ask", title="t", call=call)
+    assert spend.extra_usage_flag(vault) is None
+

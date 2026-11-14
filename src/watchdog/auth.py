@@ -855,6 +855,12 @@ def subscription_check(what: str = "processing", vault: Path | None = None) -> t
             "under Settings → Models & keys."), method
 
 
+def extra_usage_allowed() -> bool:
+    """Whether the reporter chose to let subscription work carry on, and pay, on extra usage
+    (`allow_extra_usage`, D410). Off unless set to true."""
+    return config.get("allow_extra_usage") is True
+
+
 def billing_problem(mode: str | None, vault: Path | None, what: str = "this run") -> str | None:
     """What would stop Claude work in `mode` from being billed the way the reporter chose, before
     it starts (D406-D408), for Add documents and the re-check to show: `subscription_check` on

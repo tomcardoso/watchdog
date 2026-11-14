@@ -198,7 +198,14 @@ def _subscription_calls(calls: list[dict]) -> list[dict]:
 def extra_usage_calls(calls: list[dict]) -> int:
     """How many subscription calls were stopped after Claude Code reported extra usage paying for
     them (#872, D406): each may have been charged, at an amount Watchdog never learned."""
-    return sum(1 for c in _subscription_calls(calls) if c.get("overage"))
+    return sum(1 for c in _subscription_calls(calls) if c.get("overage") and c.get("failed"))
+
+
+def extra_usage_charged(calls: list[dict]) -> tuple[int, float]:
+    """The subscription calls extra usage paid for because the reporter allowed it (D410), and
+    their cost as Claude Code reported it: `(calls, usd)`."""
+    paid = [c for c in _subscription_calls(calls) if c.get("overage") and not c.get("failed")]
+    return len(paid), round(sum(c.get("cost_usd") or 0.0 for c in paid), 6)
 
 
 def extra_usage_list(calls: list[dict], limit: int = 20) -> list[dict]:
@@ -206,7 +213,7 @@ def extra_usage_list(calls: list[dict], limit: int = 20) -> list[dict]:
     document (None for a run-wide step or a conversation) and when the call ended, in UTC."""
     import datetime
     out = []
-    for c in sorted((c for c in _subscription_calls(calls) if c.get("overage")),
+    for c in sorted((c for c in _subscription_calls(calls) if c.get("overage") and c.get("failed")),
                     key=lambda c: c.get("end_ts") or 0)[:limit]:
         ts = c.get("end_ts")
         out.append({"stage": STAGE.get(c.get("task"), c.get("task")), "filename": c.get("filename"),
@@ -245,11 +252,16 @@ def subscription_note(calls: list[dict]) -> str | None:
     if not sub:
         return None
     extra = extra_usage_calls(calls)
+    paid, paid_usd = extra_usage_charged(calls)
     unchecked = sum(1 for c in sub if not _checked(c) and not c.get("overage"))
-    if not extra and not unchecked:
+    if not extra and not unchecked and not paid:
         return ("subscription auth — Claude costs below are list-price equivalents, "
                 "not amounts billed")
     parts = []
+    if paid:
+        parts.append(f"{paid:,} Claude call{'' if paid == 1 else 's'} ran on extra usage, as "
+                     f"Settings allows, and {'was' if paid == 1 else 'were'} charged about "
+                     f"${paid_usd:,.2f} at API rates")
     if extra:
         parts.append(f"{extra:,} Claude call{'' if extra == 1 else 's'} stopped after extra usage "
                      "began paying, and may have been charged")

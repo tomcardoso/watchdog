@@ -125,7 +125,7 @@ def run(vault: str, ts: str | None = None) -> dict:
     from watchdog.usage import (
         STAGE, STAGE_ORDER, batch_lifecycle_note, peak_concurrency, stage_backends,
         stage_models, subscription_note, subscription_confirmed, extra_usage_calls, wall_span,
-        cost_by_key, extra_usage_list,
+        cost_by_key, extra_usage_list, extra_usage_charged,
     )
     from watchdog.pipeline.orchestrate import usage_files
 
@@ -184,6 +184,8 @@ def run(vault: str, ts: str | None = None) -> dict:
         "subscription_confirmed": subscription_confirmed(calls),
         "extra_usage_calls": extra_usage_calls(calls),
         "extra_usage": extra_usage_list(calls),
+        # Calls extra usage paid for because Settings allows it (D410): count and reported cost.
+        "extra_usage_charged": dict(zip(("calls", "cost_usd"), extra_usage_charged(calls))),
         # Whether subscription work here waits for the reporter to acknowledge such a stop (D408).
         "extra_usage_pending": _extra_usage_pending(v),
         "by_key": cost_by_key(calls),

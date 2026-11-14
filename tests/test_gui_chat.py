@@ -509,6 +509,22 @@ def test_a_stop_on_extra_usage_holds_new_conversations_until_acknowledged(env, m
     assert _wait_state(events, states=("idle",))[0]["data"]["state"] == "idle"
 
 
+def test_a_subscription_session_carries_on_when_extra_usage_is_allowed(env, monkeypatch):
+    """Allowed in Settings (D410): the turn finishes, is recorded as paid by extra usage, and the
+    conversation can go on."""
+    from watchdog import auth, spend
+    vault, events = env
+    _on_subscription(monkeypatch)
+    monkeypatch.setattr(auth, "extra_usage_allowed", lambda: True)
+    FakeClient.scripts = [[_init("none"), _overage_event(), _usage_result(0.40, 5000, 900)]]
+    api.start(str(vault), "ask", prompt="who owns Acme?")
+    assert _wait_state(events)[0]["data"]["state"] == "idle"
+    assert not FakeClient.instances[0].interrupted
+    call = _session_calls(vault)["calls"][0]
+    assert call["overage"] is True and "failed" not in call
+    assert spend.extra_usage_flag(vault) is None
+
+
 def test_a_resumed_session_continues_from_its_saved_totals(env, monkeypatch):
     vault, events = env
     monkeypatch.setattr(chat, "session_auth_env", lambda s: {})
