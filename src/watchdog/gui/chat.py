@@ -64,7 +64,9 @@ def session_auth_env(session: "Session") -> dict:
     a = auth.resolve_auth("anthropic", session.vault, session=True)
     if a.get("mode") != "api-key" or not a.get("key"):
         session.key_label = None
+        session.subscription = True     # held to the login, like processing (#872, D406)
         return {}
+    session.subscription = False
     session.key_label = auth.label_for_key("anthropic", a["key"])
     return {"ANTHROPIC_API_KEY": a["key"]}
 
@@ -318,6 +320,16 @@ def _title(mode: str, text: str | None) -> str:
     return (text if mode == "ask" else f"{base}: {text}")[:60]
 
 
+_SESSION_KEY_NOTE = ("This conversation is set to use your Claude subscription, but Claude Code on "
+                     "this computer is using an API key ({source}), which is billed per token, so "
+                     "Watchdog stopped it. Sign in again with your Claude account under Settings → "
+                     "Models & keys, then start a new conversation.")
+_SESSION_OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code "
+                         "reports that extra usage, which is billed, is now paying for this "
+                         "conversation, so Watchdog stopped it. Start a new conversation after the "
+                         "limit resets, or turn off extra usage in your Claude account's settings.")
+
+
 def _friendly(error: Exception | str) -> str:
     text = str(error)
     low = text.lower()
@@ -351,6 +363,15 @@ class Session:
         self.cost = 0.0
         self.key_label: str | None = None    # the labelled Anthropic key the session bills (#690)
         self.auth_mode: str | None = None    # "api-key" or "subscription", from Claude Code's init message
+        self.key_source: str | None = None   # that message's own `apiKeySource`, recorded with each turn (#872)
+        # A subscription session runs on the login or stops (#872, D406): `billing_stop` is why it
+        # stopped and refuses every later turn; `turn_overage` marks a turn extra usage paid for,
+        # recorded even if its result never arrives; `stop_pending` interrupts the turn.
+        self.subscription = False
+        self.claude_auth_method: str | None = None   # `authMethod` from the check before each turn (D407)
+        self.billing_stop: str | None = None
+        self.turn_overage = False
+        self.stop_pending = False
         self.usage_totals: dict | None = None  # the SDK's running totals at the last result (D296)
         self.closed = False
 
@@ -593,18 +614,40 @@ class ChatManager:
         async with s.lock:
             if s.closed:
                 return
+            if s.billing_stop:
+                self.status(s, "error", s.billing_stop, s.cost)
+                return
             self.status(s, "thinking")
             await asyncio.to_thread(_record_session, s.vault, "found")
             try:
                 await self._connect(s)
+                if s.subscription:
+                    # The same check as processing's (D406, D407): nothing in the environment that
+                    # bypasses the login, and Claude Code signed in with a Claude account.
+                    from watchdog import auth
+                    problem, s.claude_auth_method = await asyncio.to_thread(
+                        auth.subscription_check, "this conversation")
+                    if problem:
+                        s.billing_stop = problem
+                        self.status(s, "error", s.billing_stop, s.cost)
+                        return
                 await s.client.query(prompt)
                 async for message in s.client.receive_response():
                     self._handle(s, message)
+                    if s.stop_pending:
+                        s.stop_pending = False
+                        await s.client.interrupt()
             except asyncio.CancelledError:
                 raise
             except (Exception, SystemExit) as e:  # noqa: BLE001 — every failure reaches the app as a status
-                self.status(s, "error", _friendly(e))
+                self.status(s, "error", s.billing_stop or _friendly(e))
             finally:
+                if s.turn_overage:
+                    # Extra usage paid for this turn and no result reported it: record it anyway.
+                    self._record_usage(s, None)
+                if s.billing_stop:
+                    s.stop_pending = False
+                    self.status(s, "error", s.billing_stop, s.cost)
                 self.save(s)
                 await asyncio.to_thread(_record_session, s.vault)
 
@@ -615,6 +658,17 @@ class ChatManager:
             if message.subtype == "init" and isinstance(message.data, dict):
                 from watchdog.pipeline import session_usage
                 s.auth_mode = session_usage.auth_mode_from_source(message.data.get("apiKeySource")) or s.auth_mode
+                source = message.data.get("apiKeySource")
+                s.key_source = source if isinstance(source, str) else s.key_source
+                from watchdog import model_client
+                if s.subscription and s.key_source in model_client.METERED_KEY_SOURCES:
+                    s.billing_stop = _SESSION_KEY_NOTE.format(source=s.key_source)
+                    s.stop_pending = True
+        elif type(message).__name__ == "RateLimitEvent":
+            from watchdog import model_client
+            if s.subscription and model_client._overage_in_use(getattr(message, "rate_limit_info", None)):
+                s.billing_stop = _SESSION_OVERAGE_NOTE
+                s.turn_overage = s.stop_pending = True
         elif isinstance(message, StreamEvent):
             event = message.event or {}
             delta = event.get("delta") or {}
@@ -646,7 +700,9 @@ class ChatManager:
             if message.session_id:
                 s.sdk_session_id = message.session_id
             self._record_usage(s, message)
-            if message.is_error:
+            if s.billing_stop:
+                self.status(s, "error", s.billing_stop, s.cost)
+            elif message.is_error:
                 detail = _friendly(message.result or "; ".join(message.errors or []) or "")
                 self.status(s, "error", detail, s.cost)
             else:
@@ -657,15 +713,20 @@ class ChatManager:
         the vault's usage files and telemetry as an `ask` or `research` call (D296). The SDK's
         totals are cumulative across turns, so only the difference is this turn's."""
         from watchdog.pipeline import session_usage
-        share, s.usage_totals = session_usage.turn(s.usage_totals, message)
+        overage, s.turn_overage = s.turn_overage, False
+        if message is None:      # a turn stopped on extra usage whose result never came (#872)
+            share = {"models": {}, "cost_usd": 0.0}
+        else:
+            share, s.usage_totals = session_usage.turn(s.usage_totals, message)
         s.cost += share["cost_usd"]
-        if not share["models"] and not share["cost_usd"] and not message.usage:
+        if not overage and not share["models"] and not share["cost_usd"] and not message.usage:
             return
         auth_mode = s.auth_mode or ("api-key" if s.key_label else "subscription")
         try:
             call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
                                              session_id=s.id, model=s.model, auth_mode=auth_mode,
-                                             key_label=s.key_label)
+                                             key_label=s.key_label, key_source=s.key_source,
+                                             overage=overage, auth_method=s.claude_auth_method)
             session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
         except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
             pass

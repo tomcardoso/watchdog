@@ -261,7 +261,33 @@ def test_status_subscription_without_a_login_or_with_an_env_key(wdg_home, monkey
     monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: True)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-envenvenvenv1234")
     c = call("auth.status")["claude"]
-    assert c["env_key_set"] is True and "metered" in c["reason"]
+    assert c["env_key_set"] is True and "ANTHROPIC_API_KEY" in c["reason"] and "billed" in c["reason"]
+
+
+def test_status_a_console_account_sign_in_is_not_signed_in_to_the_subscription(wdg_home, monkeypatch):
+    """A Console account's sign-in leaves a login on the computer but bills the Console account
+    (#872, D407): Settings says so and keeps the sign-in offered."""
+    from watchdog import auth
+    write_creds(wdg_home, "subscription")
+    monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: True)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "oauth_token"})
+    c = call("auth.status")["claude"]
+    assert c["signed_in"] is False and c["logged_in"] is False and "Console account" in c["reason"]
+
+
+def test_status_subscription_names_any_variable_that_bypasses_the_login(wdg_home, monkeypatch):
+    """A bearer token, another endpoint or a cloud provider is reported by Claude Code like the
+    login itself, so Settings names it before a run can start (#872)."""
+    write_creds(wdg_home, "subscription")
+    monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: True)
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "0")
+    assert call("auth.status")["claude"]["reason"] is None
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    assert "CLAUDE_CODE_USE_BEDROCK" in call("auth.status")["claude"]["reason"]
+    monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
+    c = call("auth.status")["claude"]
+    assert "ANTHROPIC_AUTH_TOKEN" in c["reason"] and c["env_key_set"] is False
 
 
 def test_status_api_key_mode_masks_and_never_returns_a_key(wdg_home):

@@ -87,9 +87,31 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
           sub={t.wall_seconds && t.latency_s ? `${fmtDuration(t.latency_s)} summed across calls` : undefined}
         />
       </div>
-      {r.subscription_note && (
+      {r.subscription_note && r.subscription_confirmed !== false && (
         <Callout tone="info" title="Not billed">
-          Costs shown are what the work would cost at published per-token rates, not money that was charged. A Claude subscription has no per-token charge.
+          Costs shown are what the work would cost at published per-token rates, not money that was charged. For every Claude call, Claude Code reported that it was signed in with your Claude account and using no API key, so your subscription paid, with no per-token charge.
+        </Callout>
+      )}
+      {!!r.extra_usage_calls && (
+        <Callout tone="warning" title="Extra usage may have been charged">
+          Your Claude subscription&apos;s limit was reached, and Claude Code reported that paid extra usage was covering {r.extra_usage_calls === 1 ? 'a call' : `${fmtNum(r.extra_usage_calls)} calls`}. Watchdog stopped {r.extra_usage_calls === 1 ? 'it' : 'them'}, but {r.extra_usage_calls === 1 ? 'it' : 'they'} may already have been charged; Claude Code did not report the amount. Your Claude account&apos;s usage settings show what extra usage cost.
+          {!!r.extra_usage?.length && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              {r.extra_usage.map((c, i) => (
+                <li key={i}>
+                  {stageLabel(c.stage)}
+                  {c.filename ? ` · ${c.filename}` : ''}
+                  {c.at ? ` · ${fmtDateTime(c.at)}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(r.extra_usage_calls ?? 0) > (r.extra_usage?.length ?? 0) && <div className="faint">and {fmtNum((r.extra_usage_calls ?? 0) - (r.extra_usage?.length ?? 0))} more</div>}
+        </Callout>
+      )}
+      {r.subscription_note && r.subscription_confirmed === false && !r.extra_usage_calls && (
+        <Callout tone="warning" title="Billing not confirmed">
+          This work was set to use your Claude subscription, but Watchdog did not confirm how Claude Code paid for some of its calls. Work done with a version of Watchdog that did not yet check cannot be confirmed. Costs shown are what it would cost at published per-token rates. To see whether anything was charged, compare these dates with your Anthropic account&apos;s usage and billing pages.
         </Callout>
       )}
       <ByKey rows={r.by_key} title="Paid by" />
@@ -204,7 +226,7 @@ export default function UsagePanel() {
                 <span>{fmtCost(r.cost_usd)}</span>
                 <span className="faint">{r.kind === 'ask' || r.kind === 'research' ? plural(r.calls, 'turn') : `${fmtNum(r.calls)} calls`} · {fmtTokens(r.input_tokens)} in · {fmtTokens(r.output_tokens)} out</span>
               </div>
-              {r.subscription ? <Badge tip="Costs are what this would cost at published rates — not billed">Subscription</Badge> : <span />}
+              {r.subscription ? <Badge tip={r.subscription_confirmed === false ? 'Set to use the subscription; how it was billed was not confirmed. Costs are at published rates' : 'Costs are what this would cost at published rates — not billed'}>Subscription</Badge> : <span />}
             </button>
           )
         })}

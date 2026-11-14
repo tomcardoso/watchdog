@@ -54,6 +54,16 @@ Document reading, **Ask Claude** and **Web research** each need a way to reach a
 
 **Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in or key either way. They can also be billed differently from document reading: **Ask Claude and Research** in **Settings → Models & keys** shows which they use. Set to **Claude subscription**, they need you signed in to Claude, and the sign-in button appears there when you are not. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
 
+## A run or conversation set to use the subscription stopped because it would be billed
+
+Watchdog checks that every call set to use your Claude subscription really does. A run stops, with every unfinished document still queued, and an **Ask Claude** or **Web research** conversation stops, when one of these happens:
+
+- **Claude Code is not signed in with your Claude account.** Claude Code, the program Watchdog uses to reach Claude on a subscription, is signed in with an Anthropic Console account or a sign-in token, or found an API key on this computer, so its calls would be billed per token to that account. Open **Settings → Models & keys** and sign in again with your Claude account.
+- **A setting names another account.** The message names a setting, such as `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, that sends Claude Code's calls past your sign-in. Remove it from this computer, or set Claude to use an API key instead.
+- **Extra usage started paying.** Your subscription's limit was reached and your Claude account is set to carry on with paid extra usage. Turn off extra usage in your Claude account's settings, or wait until the limit has reset before adding the documents again: while the limit is still passed, the next run stops again at its first paid call.
+
+A run set to use the subscription keeps refusing Claude calls until it ends, and a stopped conversation refuses further questions: start a new one. If extra usage was the reason, **Activity → Usage** lists the calls that may have been charged. If you meant to pay per token, switch Claude to an API key under **Settings → Models & keys**.
+
 ## The provider rejected the key, or the account is out of credit
 
 If a run stops with "the provider refused the credentials or account", every document is still queued; nothing was set aside as failed. The model provider turned the request down: the API key is wrong, revoked, or lacks access to the model, or the account has run out of credit or quota. The message includes the provider's own explanation.

@@ -7,8 +7,8 @@ import { delimiter } from 'node:path'
 import { createInterface } from 'node:readline'
 
 /** How Claude Code on this computer is signed in. `claude.ai` is a subscription login (what
- * `claude auth login --claudeai` makes); `oauth_token` is a long-lived subscription token from the
- * environment; `api_key` is an Anthropic API key. Anything else (a cloud provider, a gateway) is `other`. */
+ * `claude auth login --claudeai` makes); `token` is any other sign-in token (an Anthropic Console
+ * account's sign-in, or a token from the environment), which is not treated as the subscription; `api_key` is an Anthropic API key. Anything else (a cloud provider, a gateway) is `other`. */
 export type ClaudeMethod = 'subscription' | 'token' | 'api_key' | 'other'
 export interface ClaudeStatus {
   installed: boolean
@@ -22,8 +22,10 @@ export interface ClaudeStatus {
 
 const NOT_SIGNED_IN: ClaudeStatus = { installed: true, loggedIn: false, method: null, plan: null, email: null }
 
-/** True for a login that runs on a Claude subscription, not an API key. */
-export const usesSubscription = (s: Pick<ClaudeStatus, 'loggedIn' | 'method'>): boolean => s.loggedIn && (s.method === 'subscription' || s.method === 'token')
+/** True for a login that runs on a Claude subscription. Only a claude.ai sign-in does: a token
+ * (`oauth_token`) is also what an Anthropic Console account's sign-in reports, and that bills the
+ * Console account (#872, D407). */
+export const usesSubscription = (s: Pick<ClaudeStatus, 'loggedIn' | 'method'>): boolean => s.loggedIn && s.method === 'subscription'
 
 /** Read the JSON of `claude auth status --json`. */
 export function parseAuthStatus(stdout: string): ClaudeStatus {

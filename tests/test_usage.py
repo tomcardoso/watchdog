@@ -74,6 +74,28 @@ def test_backends_name_auth_only_for_claude():
     assert usage.run_backends([]) == "—"
 
 
+def test_not_billed_only_when_claude_code_confirmed_every_subscription_call():
+    """`auth_mode` alone is the setting that was chosen (#872): only a recorded `key_source` of
+    `none` confirms the login, so an older run's note says its billing was not confirmed."""
+    checked = {**_call(backend="claude-agent-sdk", auth_mode="subscription"), "key_source": "none",
+               "auth_method": "claude.ai"}
+    console = {**checked, "auth_method": "oauth_token"}   # reports no key, bills the Console (D407)
+    assert usage.subscription_confirmed([console]) is False
+    old = _call(backend="claude-agent-sdk", auth_mode="subscription")
+    assert usage.subscription_confirmed([checked]) is True
+    assert "not amounts billed" in usage.subscription_note([checked])
+    assert usage.subscription_confirmed([checked, old]) is False
+    note = usage.subscription_note([checked, old])
+    assert "list-price" in note and "1 of 2" in note and "not amounts billed" not in note
+    assert usage.subscription_confirmed([_call()]) is None
+    stopped = {**checked, "overage": True, "end_ts": 1_700_000_000}
+    assert usage.subscription_confirmed([checked, stopped]) is False
+    assert usage.extra_usage_calls([checked, stopped]) == 1
+    assert "1 Claude call stopped after extra usage" in usage.subscription_note([checked, stopped])
+    assert usage.extra_usage_list([checked, stopped]) == [
+        {"stage": "extractor", "filename": "doc.pdf", "at": "2023-11-14T22:13:20+00:00"}]
+
+
 def test_subscription_costs_are_flagged_as_list_price():
     assert "list-price" in usage.subscription_note([_call(backend="claude-agent-sdk", auth_mode="subscription")])
     assert usage.subscription_note([_call(backend="claude-api", auth_mode="api-key")]) is None

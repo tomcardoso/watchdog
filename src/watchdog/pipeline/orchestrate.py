@@ -183,7 +183,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
                   vault: Path | None = None, prompt_hash: str | None = None,
                   key_label: str | None = None, stop_reason: str | None = None,
-                  reasoning_file: str | None = None) -> None:
+                  reasoning_file: str | None = None, overage: bool = False) -> None:
     """Append one call's usage record to `_run.usage` (and the run's partial file), if a run is active.
 
     Takes explicit fields rather than a `ModelResult` so batch-collected items can be recorded too.
@@ -227,6 +227,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    if u.get("key_source") is not None:
+        # The credential Claude Code reported using (#872, D406): `none` on a checked
+        # subscription call, what shows a run's "Not billed" was confirmed rather than assumed.
+        record["key_source"] = u["key_source"]
+    if u.get("auth_method") is not None:
+        record["auth_method"] = u["auth_method"]   # how Claude Code was signed in (D407)
     reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
     if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
         record["reasoning_tokens"] = reasoning_tokens
@@ -240,6 +246,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["pruned"] = pruned
     if failed:
         record["failed"] = True
+    if overage:
+        record["overage"] = True       # extra usage was paying when the call was stopped (#872)
     if batch_meta:
         record["batch_id"] = batch_meta.get("batch_id")
         record["batch_submitted_at"] = batch_meta.get("submitted_at")
@@ -306,6 +314,16 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
         r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                               backend=backend, max_retries=max_retries, effort=effort,
                                               **extra)
+    except model_client.MeteredBillingError as e:
+        if e.overage:
+            # Stopped after extra usage began paying for it (#872, D406): it may have been
+            # charged, so it is recorded, marked, though its tokens were never reported.
+            _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=None,
+                         effort=effort, auth_mode=e.auth_mode, filename=filename, detail=detail,
+                         failed=True, est_input_tokens=est_input_tokens,
+                         est_prompt_tokens=est_prompt_tokens, vault=vault, prompt_hash=prompt_hash,
+                         key_label=e.key_label, overage=True)
+        raise
     except model_client.ModelError as e:
         if e.usage is not None or e.cost_usd is not None:
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,

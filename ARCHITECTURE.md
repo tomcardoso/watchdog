@@ -1001,6 +1001,10 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
   processing steps reach Claude; `session_mode`, when set, is how the app's sessions do (Ask Claude,
   Research, setting the context), else they follow `mode`. `auth.resolve_auth(..., session=True)`
   reads it, and `chat.session_auth_env` passes the result to each session.
+  A subscription call is checked against what Claude Code reports (D406, I20): its credential
+  source (`apiKeySource`, recorded as `key_source`), its sign-in (`claude auth status --json`'s
+  `authMethod`, recorded as `auth_method`, through `auth.subscription_check`), extra usage, and the
+  environment (`auth.subscription_env_conflict`).
 - **Keys (D290).** `~/.watchdog/credentials.json` (0600, written atomically) holds per provider
   `{default, items: [{id, label, key}]}`, each `key` an encrypted blob from the app's main process
   where the computer has secure storage (D295, D301). `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,
@@ -1325,3 +1329,15 @@ noted as such.
   and between model calls; and is recorded as applied only when it finished. A new investigation
   is stamped with every current migration. *History: D336.* Guarded by
   `tests/test_invariants.py::test_I19_…` and `tests/test_migrations.py`.
+- **I20 — A call set to use the Claude subscription runs on the login or not at all.** Before every
+  Agent SDK call on the subscription, an environment variable that sends Claude Code past the login
+  stops it, and so does any sign-in other than a claude.ai account (`claude auth status`'s
+  `authMethod`; a Console account's sign-in reports no API key); a key Claude Code reports as its
+  credential stops it before the request; extra usage
+  reported as paying stops it mid-call. Each raises `MeteredBillingError` (a halting
+  `ProviderAuthError`), and the worker refuses every later subscription call. A call stopped on
+  extra usage is recorded (`overage: true`), since it may have been charged. Ask Claude and Web
+  research stop the turn on the same signals, record it, and refuse the conversation's later turns.
+  "Not billed" is shown only when every subscription call recorded `auth_method: claude.ai` and
+  `key_source: none`, and none was stopped on extra usage. *History: D406, D407.* Guarded by `tests/test_invariants.py::test_I20_…`,
+  `tests/test_model_client.py` and `tests/test_gui_chat.py`.

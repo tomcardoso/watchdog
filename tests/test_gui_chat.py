@@ -371,16 +371,98 @@ def test_each_turn_is_recorded_once_in_the_vaults_usage_and_telemetry(env, monke
 def test_a_subscription_session_records_tokens_with_the_cost_marked_not_billed(env, monkeypatch):
     from watchdog.gui.api import usage
     vault, events = env
-    monkeypatch.setattr(chat, "session_auth_env", lambda s: setattr(s, "key_label", None) or {})
+    monkeypatch.setattr(chat, "session_auth_env",
+                        lambda s: setattr(s, "key_label", None) or setattr(s, "subscription", True) or {})
     FakeClient.scripts = [[_init("none"), _assistant(TextBlock("found it")), _usage_result(0.40, 5000, 900)]]
     api.start(str(vault), "research", prompt="shell companies")
     _wait_state(events)
     call = _session_calls(vault)["calls"][0]
     assert (call["task"], call["auth_mode"], call["input_tokens"]) == ("research", "subscription", 5000)
-    assert "key_label" not in call
+    assert "key_label" not in call and (call["key_source"], call["auth_method"]) == ("none", "claude.ai")
     run = usage.run(str(vault))
     assert run["subscription_note"] and run["stages"][0]["stage"] == "research"
+    assert run["subscription_confirmed"] is True
     assert usage.runs(str(vault))["runs"][0]["subscription"] is True
+
+
+def _overage_event():
+    from claude_agent_sdk import RateLimitEvent, RateLimitInfo
+    return RateLimitEvent(rate_limit_info=RateLimitInfo(status="allowed", raw={"status": "allowed",
+                                                                               "isUsingOverage": True}),
+                          uuid="u", session_id="sdk-9")
+
+
+def _on_subscription(monkeypatch):
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: setattr(s, "subscription", True) or {})
+
+
+def test_a_subscription_session_stops_when_extra_usage_starts_paying(env, monkeypatch):
+    """The turn is interrupted, recorded as extra usage, and the conversation refuses another turn
+    (#872, D406), so Usage never calls it not billed."""
+    from watchdog.gui.api import usage
+    vault, events = env
+    _on_subscription(monkeypatch)
+    FakeClient.scripts = [[_init("none"), _overage_event(), _usage_result(0.40, 5000, 900)]]
+    sid = api.start(str(vault), "ask", prompt="who owns Acme?")["session"]
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "extra usage" in err["detail"] and FakeClient.instances[0].interrupted
+    call = _session_calls(vault)["calls"][0]
+    assert call["overage"] is True and call["key_source"] == "none"
+    run = usage.run(str(vault))
+    assert run["subscription_confirmed"] is False and run["extra_usage_calls"] == 1
+    assert run["extra_usage"][0]["stage"] == "ask"
+    before = len(FakeClient.instances[0].prompts)
+    api.send(sid, "and who else?")
+    _wait_state(events, states=("error",), count=2)
+    assert len(FakeClient.instances[0].prompts) == before
+
+
+def test_a_turn_stopped_on_extra_usage_is_recorded_even_without_a_result(env, monkeypatch):
+    vault, events = env
+    _on_subscription(monkeypatch)
+    FakeClient.scripts = [[_init("none"), _overage_event()]]
+    api.start(str(vault), "research", prompt="shell companies")
+    _wait_state(events, states=("error",))
+    call = _session_calls(vault)["calls"][0]
+    assert (call["task"], call["overage"], call["cost_usd"]) == ("research", True, 0.0)
+
+
+def test_a_subscription_session_stops_when_claude_code_reports_a_key(env, monkeypatch):
+    vault, events = env
+    _on_subscription(monkeypatch)
+    FakeClient.scripts = [[_init("/login managed key"), _usage_result(0.10, 1000, 100)]]
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "/login managed key" in err["detail"] and FakeClient.instances[0].interrupted
+
+
+def test_an_api_key_session_is_not_stopped_by_extra_usage_fields(env, monkeypatch):
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: {"ANTHROPIC_API_KEY": "sk-ant-x"})
+    FakeClient.scripts = [[_init("ANTHROPIC_API_KEY"), _overage_event(), _usage_result(0.10, 1000, 100)]]
+    api.start(str(vault), "ask", prompt="x")
+    assert _wait_state(events)[0]["data"]["state"] == "idle"
+    assert not FakeClient.instances[0].interrupted
+
+
+def test_a_subscription_session_refuses_a_variable_that_bypasses_the_login(env, monkeypatch):
+    vault, events = env
+    _on_subscription(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "ANTHROPIC_AUTH_TOKEN" in err["detail"] and FakeClient.instances[0].prompts == []
+
+
+def test_a_subscription_session_refuses_a_console_account_sign_in(env, monkeypatch):
+    """A Console account's sign-in reports no API key, but bills the Console account (D407)."""
+    from watchdog import auth
+    vault, events = env
+    _on_subscription(monkeypatch)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "oauth_token"})
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "Console account" in err["detail"] and FakeClient.instances[0].prompts == []
 
 
 def test_a_resumed_session_continues_from_its_saved_totals(env, monkeypatch):

@@ -359,6 +359,64 @@ class ProviderAuthError(RuntimeError):
     Unlike a rate limit it never clears by waiting, so `--wait` doesn't sleep on it."""
 
 
+class MeteredBillingError(ProviderAuthError):
+    """A call meant for the Claude subscription would be, or was being, billed per token (#872,
+    D406): Claude Code reported an API key as its credential, the environment names one, or the
+    subscription's limit was reached and Claude Code reported that extra usage was paying. A
+    :class:`ProviderAuthError`, so every stage halts on it as on a refused key.
+
+    `overage` marks the one case where the call had already started on extra usage and may have
+    been charged: the orchestrator records it in Usage, with `model`, `backend`, `auth_mode` and
+    `usage` (the credential source) filled in by `_acomplete_json`. Its tokens are unknown, since
+    the call ended before Claude Code reported them."""
+
+    def __init__(self, message: str, *, overage: bool = False, usage: dict | None = None):
+        super().__init__(message)
+        self.overage = overage
+        self.usage = usage
+        self.model = self.backend = self.auth_mode = self.key_label = None
+
+
+# Where the bundled Claude Code says its credential came from (`apiKeySource` in its init
+# message): each of these is an API key, billed per token. `none` is a claude.ai login, a
+# bearer token or a cloud provider, which the environment check below tells apart (#872).
+METERED_KEY_SOURCES = frozenset({"ANTHROPIC_API_KEY", "apiKeyHelper", "/login managed key"})
+
+# Once a subscription call has been found metered, every later one in this process is refused
+# without running (D406): a job is its own worker process, so this lasts exactly one run, and it
+# stops post-processing stages that degrade on a failed call from each spending again.
+_metered_stop: str | None = None
+
+
+def _stop_metered(message: str, **kw) -> MeteredBillingError:
+    global _metered_stop
+    _metered_stop = message
+    return MeteredBillingError(message, **kw)
+
+
+def _overage_in_use(info) -> bool:
+    """Whether a rate-limit event says extra usage is paying for the request (#872). The CLI sends
+    `isUsingOverage`/`overageInUse` in the event's raw form; a limit of type `overage` that is not
+    a refusal means the same. A refused request is a rate limit, handled apart."""
+    raw = getattr(info, "raw", None)
+    raw = raw if isinstance(raw, dict) else {}
+    if raw.get("isUsingOverage") is True or raw.get("overageInUse") is True:
+        return True
+    return (getattr(info, "rate_limit_type", None) == "overage"
+            and getattr(info, "status", None) != "rejected")
+
+
+_KEY_SOURCE_NOTE = ("Watchdog is set to use your Claude subscription, but Claude Code on this "
+                    "computer is using an API key ({source}), which is billed per token. Watchdog "
+                    "stopped before the call ran. Remove the key, or sign in again with your "
+                    "Claude account under Settings → Models & keys.")
+_OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code reports "
+                 "that extra usage, which is billed, is now paying for calls. Watchdog stopped the "
+                 "run; unfinished documents stay queued. Turn off extra usage in your Claude "
+                 "account's settings, or wait until the limit has reset before adding documents "
+                 "again: until then, the next run stops again at its first paid call.")
+
+
 # Every failure a single model call can end in. Post-ingest stages catch all three and degrade
 # (skip synthesis, keep the timeline untouched) rather than crash a run whose documents are saved.
 CALL_FAILURES = (ModelError, RateLimitError, ProviderAuthError)
@@ -729,7 +787,12 @@ def _agent_supports_thinking() -> bool:
 
 
 async def _agent_query(prompt: str, model: str, env: dict | None,
-                       effort: str | None = None) -> dict:
+                       effort: str | None = None, subscription: bool = False) -> dict:
+    """One single-turn Claude Code call. With `subscription`, the call must run on the Claude
+    login (#872, D406): a key reported as the credential stops it before the request is made, and
+    extra usage reported while it runs stops it there; either raises :class:`MeteredBillingError`
+    and refuses every later subscription call in this process. The credential source Claude Code
+    reported is returned in `usage["key_source"]`, so the run's record says what was checked."""
     from claude_agent_sdk import query, ClaudeAgentOptions
 
     # This is a headless, single-turn completion call — claude.ai connectors are irrelevant
@@ -774,9 +837,17 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     notice = ""              # human-readable limit notice, if the CLI emitted one as text
     rejected = False         # the CLI emitted a rate-limit event with status "rejected"
     resets_at = None
+    key_source = None        # `apiKeySource` from the init message (#872)
     try:
         async for message in query(prompt=prompt, options=options):
             name = type(message).__name__
+            if name == "SystemMessage" and getattr(message, "subtype", None) == "init":
+                data = getattr(message, "data", None)
+                source = data.get("apiKeySource") if isinstance(data, dict) else None
+                if isinstance(source, str):
+                    key_source = source
+                    if subscription and source in METERED_KEY_SOURCES:
+                        raise _stop_metered(_KEY_SOURCE_NOTE.format(source=source))
             if name == "ResultMessage":
                 out["text"] = getattr(message, "result", "") or ""
                 out["cost_usd"] = getattr(message, "total_cost_usd", None)
@@ -802,6 +873,9 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                     out["stop_reason"] = message.stop_reason   # recorded only: never read as a truncation
             elif name in ("RateLimitEvent", "RateLimitInfo"):
                 info = getattr(message, "rate_limit_info", message)
+                if subscription and _overage_in_use(info):
+                    raise _stop_metered(_OVERAGE_NOTE, overage=True,
+                                        usage={"key_source": key_source} if key_source else None)
                 if getattr(info, "status", None) == "rejected":
                     rejected = True
                     resets_at = getattr(info, "resets_at", None)
@@ -813,6 +887,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                 t = getattr(block, "text", "") or ""
                 if t and any(h in t.lower() for h in _RATE_LIMIT_HINTS):
                     notice = t.strip()
+    except MeteredBillingError:
+        raise
     except Exception as e:
         # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
         # "Claude Code returned an error result: …", or a {type:error} stream message. If it
@@ -841,6 +917,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         raise ProviderAuthError(f"Claude could not authenticate: {out['text']}")
     if _capturing():
         out["reasoning"] = _join_reasoning(thoughts)
+    if key_source is not None:
+        out["usage"] = {**(out["usage"] or {}), "key_source": key_source}
     return out
 
 
@@ -855,9 +933,29 @@ async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema:
     pagination, #343) is likewise unused — with no client-enforced output ceiling there is
     nothing to continue past, so this backend never truncates on max_tokens.
     """
+    subscription = not api_key
+    if subscription:
+        # Checked before every call, not only when a run starts (#872): a refused run stays
+        # refused, and a credential in the environment is used by Claude Code ahead of the login.
+        if _metered_stop:
+            raise MeteredBillingError(_metered_stop)
+        # Claude Code must report a claude.ai sign-in (D407): its `apiKeySource` says `none` for a
+        # Console account's sign-in too, which bills the Console account. Kept a minute, so a run's
+        # calls share one check; a subprocess, so it runs off the event loop.
+        problem, method = await asyncio.to_thread(auth.subscription_check)
+        if problem:
+            raise _stop_metered(problem)
     full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
-    return await _agent_query(full, model_id, env, effort)
+    try:
+        out = await _agent_query(full, model_id, env, effort, subscription=subscription)
+    except MeteredBillingError as e:
+        if subscription and e.usage is not None:
+            e.usage["auth_method"] = method
+        raise
+    if subscription:
+        out["usage"] = {**(out.get("usage") or {}), "auth_method": method}
+    return out
 
 
 # Response headers, per provider, that report a rate-limit window's ceiling/remaining/reset
@@ -1686,6 +1784,10 @@ async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, 
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
                                                   api_key, max_tokens, effort_arg, task)
+        except MeteredBillingError as e:
+            # Say which call it was, so a call stopped on extra usage can be recorded (#872).
+            e.model, e.backend, e.auth_mode, e.key_label = model_id, chosen, auth_mode, key_label
+            raise _scrubbed(e, api_key)
         except (RateLimitError, ModelError, ProviderAuthError) as e:
             raise _scrubbed(e, api_key)
         except Exception as e:                  # any backend/transport failure → typed error

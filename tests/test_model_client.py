@@ -2539,6 +2539,163 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     assert out["usage"] is None
 
 
+# ── subscription calls really run on the subscription (#872, D406) ───────────────────────
+
+def _init_message(source):
+    """A stand-in for the SDK's init `SystemMessage`, carrying Claude Code's `apiKeySource`."""
+    return type("SystemMessage", (), {"subtype": "init", "data": {"apiKeySource": source},
+                                      "content": None})()
+
+
+def _rate_limit_event(status="allowed", **raw):
+    info = type("RateLimitInfo", (), {"status": status, "resets_at": None,
+                                      "rate_limit_type": raw.pop("rate_limit_type", None),
+                                      "raw": {"status": status, **raw}})()
+    return type("RateLimitEvent", (), {"rate_limit_info": info, "content": None})()
+
+
+def _patch_agent_stream(monkeypatch, messages, seen=None):
+    """Like `_patch_agent_query`, for a stream of messages; `seen` collects what was yielded, so
+    a test can show the stream stopped before the result."""
+    import sys
+    import types
+
+    async def fake_query(prompt, options):
+        for m in messages:
+            if seen is not None:
+                seen.append(type(m).__name__)
+            yield m
+
+    fake_module = types.ModuleType("claude_agent_sdk")
+    fake_module.query = fake_query
+    fake_module.ClaudeAgentOptions = lambda **kwargs: kwargs
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", fake_module)
+    mc._agent_supports_tools.cache_clear()
+    monkeypatch.setattr(mc, "_metered_stop", None)
+
+
+_RESULT = _result_message(result='{"name": "Acme"}', usage={"input_tokens": 10})
+
+
+@pytest.mark.parametrize("source", sorted(mc.METERED_KEY_SOURCES))
+def test_subscription_call_stops_when_claude_code_reports_a_key(monkeypatch, source):
+    """A key reported as the credential stops the call at the init message, before the result,
+    and every later subscription call in the process is refused without running."""
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message(source), _RESULT], seen)
+    with pytest.raises(mc.MeteredBillingError) as e:
+        asyncio.run(mc._agent_query("p", "model", None, subscription=True))
+    assert source in str(e.value) and isinstance(e.value, mc.ProviderAuthError)
+    assert seen == ["SystemMessage"]
+    seen.clear()
+    with pytest.raises(mc.MeteredBillingError):
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert seen == []
+
+
+def test_subscription_call_on_the_login_records_its_key_source(monkeypatch):
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _rate_limit_event(), _RESULT])
+    out = asyncio.run(mc._agent_query("p", "model", None, subscription=True))
+    assert out["usage"] == {"input_tokens": 10, "key_source": "none"}
+    assert mc._metered_stop is None
+
+
+def test_api_key_call_is_not_stopped_by_its_own_key(monkeypatch):
+    _patch_agent_stream(monkeypatch, [_init_message("ANTHROPIC_API_KEY"), _RESULT])
+    out = asyncio.run(mc._agent_query("p", "model", {"ANTHROPIC_API_KEY": "k"}))
+    assert out["usage"]["key_source"] == "ANTHROPIC_API_KEY"
+
+
+@pytest.mark.parametrize("raw", [{"isUsingOverage": True}, {"overageInUse": True},
+                                 {"rate_limit_type": "overage"}])
+def test_subscription_call_stops_when_extra_usage_is_paying(monkeypatch, raw):
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _rate_limit_event(**raw), _RESULT], seen)
+    with pytest.raises(mc.MeteredBillingError) as e:
+        asyncio.run(mc._agent_query("p", "model", None, subscription=True))
+    assert "extra usage" in str(e.value) and e.value.overage
+    assert e.value.usage == {"key_source": "none"}       # `auth_method` is added a level up
+    assert "ResultMessage" not in seen and mc._metered_stop
+
+
+def test_a_call_stopped_on_extra_usage_is_recorded_in_usage(tmp_path, monkeypatch):
+    """The one stopped call that may have been charged reaches Usage, marked (#872); a call
+    stopped for a key, which never ran, does not."""
+    from watchdog import auth
+    from watchdog.pipeline import orchestrate
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    auth.save_state({"mode": "subscription"})
+    seen = {}
+    for name, stream in (("overage", [_init_message("none"), _rate_limit_event(isUsingOverage=True), _RESULT]),
+                         ("key", [_init_message("apiKeyHelper"), _RESULT])):
+        vault = tmp_path / name
+        vault.mkdir()
+        _patch_agent_stream(monkeypatch, stream)
+        orchestrate._begin_usage_run(vault)
+        try:
+            with pytest.raises(mc.MeteredBillingError):
+                asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema={},
+                                                    filename="a.pdf"))
+            seen[name] = list(orchestrate._run.usage)
+        finally:
+            orchestrate._end_usage_run(vault)
+    [call] = seen["overage"]
+    assert call["auth_method"] == "claude.ai"
+    assert (call["overage"], call["failed"], call["key_source"], call["auth_mode"],
+            call["backend"], call["filename"]) == (True, True, "none", "subscription",
+                                                   "claude-agent-sdk", "a.pdf")
+    assert seen["key"] == []
+
+
+def test_a_refused_overage_limit_is_still_a_rate_limit(monkeypatch):
+    """A refused request is not billed: it stays a rate limit, which `--wait` can sleep on."""
+    _patch_agent_stream(monkeypatch, [_init_message("none"),
+                                      _rate_limit_event("rejected", rate_limit_type="overage",
+                                                        isUsingOverage=False), _RESULT])
+    with pytest.raises(mc.RateLimitError):
+        asyncio.run(mc._agent_query("p", "model", None, subscription=True))
+    assert mc._metered_stop is None
+
+
+def test_a_console_account_sign_in_is_refused_though_it_reports_no_key(monkeypatch):
+    """`apiKeySource` is `none` for every OAuth sign-in; only `authMethod: claude.ai` is the
+    subscription (#872, D407). The refusal comes before the call, and stops later ones."""
+    from watchdog import auth
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT], seen)
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: {"loggedIn": True, "authMethod": "oauth_token"})
+    with pytest.raises(mc.MeteredBillingError) as e:
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert "Console account" in str(e.value) and seen == [] and mc._metered_stop
+
+
+def test_a_subscription_call_records_the_sign_in_it_was_checked_against(monkeypatch):
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT])
+    out = asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert out["usage"] == {"input_tokens": 10, "key_source": "none", "auth_method": "claude.ai"}
+
+
+def test_an_unreadable_sign_in_status_refuses_the_subscription(monkeypatch):
+    from watchdog import auth
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT])
+    monkeypatch.setattr(auth, "_run_auth_status", lambda: None)
+    with pytest.raises(mc.MeteredBillingError, match="could not check"):
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+
+
+def test_subscription_call_refused_before_running_when_the_environment_bypasses_the_login(monkeypatch):
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message("none"), _RESULT], seen)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
+    with pytest.raises(mc.MeteredBillingError) as e:
+        asyncio.run(mc._agent_complete_async("p", "model", {}, None))
+    assert "ANTHROPIC_AUTH_TOKEN" in str(e.value) and seen == []
+    # An API-key call is unaffected: the key it passes is the billing it asked for.
+    monkeypatch.setattr(mc, "_metered_stop", None)
+    out = asyncio.run(mc._agent_complete_async("p", "model", {}, "sk-ant-key"))
+    assert out["text"] == '{"name": "Acme"}'
+
+
 @pytest.mark.parametrize("backend, model_id", [
     ("claude-api", "claude-sonnet-5-5"),
     ("claude-api", "claude-haiku-5-5"),

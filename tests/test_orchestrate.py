@@ -2638,10 +2638,13 @@ def test_record_usage_appends_to_partial_file_immediately(tmp_path):
         record = json.loads(lines[0])
         assert record["task"] == "extract" and record["input_tokens"] == 10
 
-        orchestrate._record_usage("briefing", model="m", backend="claude-api",
-                                  usage={"input_tokens": 3, "output_tokens": 1}, cost_usd=0.0002)
+        orchestrate._record_usage("briefing", model="m", backend="claude-agent-sdk",
+                                  usage={"input_tokens": 3, "output_tokens": 1, "key_source": "none"},
+                                  cost_usd=0.0002, auth_mode="subscription")
         lines = partial.read_text(encoding="utf-8").splitlines()
         assert len(lines) == 2
+        # The credential Claude Code reported is kept, so Usage can say it was checked (#872).
+        assert json.loads(lines[1])["key_source"] == "none" and "key_source" not in record
     finally:
         orchestrate._end_usage_run(vault)
 

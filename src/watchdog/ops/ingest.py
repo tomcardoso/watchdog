@@ -430,6 +430,12 @@ def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) ->
     estimate: an estimate from past runs can come out low, and the pause it would skip is the only
     check on what leaves the computer."""
     if auth_mode == "subscription" and all(b in (None, "claude-agent-sdk") for b in stages):
+        # Only once Claude Code is confirmed on a Claude account (D407): a Console account's
+        # sign-in bills per token while the setting still says subscription.
+        from watchdog import auth
+        problem = auth.subscription_check("this run")[0]
+        if problem:
+            return {"blocker": problem}
         return {"approve": True}
     return {"blocker": "at least one step of this run uses a paid API key, and auto-approve "
                        "applies only when every step runs on your Claude subscription"}

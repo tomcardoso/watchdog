@@ -62,6 +62,16 @@ def no_ambient_provider_keys(monkeypatch):
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
                 "LOCAL_API_KEY", "OPENROUTER_API_KEY", "LOCAL_BASE_URL", "OPENROUTER_BASE_URL"):
         monkeypatch.delenv(var, raising=False)
+    # And the ones that keep a subscription call off the Claude login (#872): a hosted shell
+    # can set ANTHROPIC_BASE_URL, which would refuse every subscription call a test makes.
+    from watchdog import auth
+    for var in auth.SUBSCRIPTION_ENV_CONFLICTS:
+        monkeypatch.delenv(var, raising=False)
+    # Never run the real Claude Code in a test (D407): Claude Code is signed in with a Claude
+    # account unless a test says otherwise, and no answer is carried over from another test.
+    monkeypatch.setattr(auth, "_run_auth_status",
+                        lambda: {"loggedIn": True, "authMethod": auth.SUBSCRIPTION_AUTH_METHOD})
+    monkeypatch.setattr(auth, "_auth_status_cache", None)
 
 
 @pytest.fixture(autouse=True)
