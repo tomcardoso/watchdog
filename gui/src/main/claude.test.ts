@@ -28,3 +28,82 @@ test('anything else signed in is "other"; not signed in or unreadable output is 
   assert.equal(parseAuthStatus('').loggedIn, false)
   assert.equal(parseAuthStatus('not json').method, null)
 })
+
+// Sign-in with a stand-in for `claude auth login`: no program runs and no browser opens.
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { ClaudeSignIn, TIMED_OUT_MESSAGE, type ClaudeStatus } from './claude.ts'
+
+class FakeLogin extends EventEmitter {
+  stdout = new PassThrough()
+  stderr = new PassThrough()
+  exitCode: number | null = null
+  killed = false
+  kill(): boolean {
+    this.killed = true
+    this.exitCode = 143
+    return true
+  }
+}
+
+const notSignedIn: ClaudeStatus = { installed: true, loggedIn: false, method: null, plan: null, email: null }
+
+function harness() {
+  const logins: FakeLogin[] = []
+  const urls: (string | null)[] = []
+  const spawn = (() => {
+    const c = new FakeLogin()
+    logins.push(c)
+    return c
+  }) as unknown as ConstructorParameters<typeof ClaudeSignIn>[4]
+  class Quiet extends ClaudeSignIn {
+    status(): ClaudeStatus {
+      return notSignedIn
+    }
+  }
+  const s = new Quiet(() => '/fake/claude', (u) => urls.push(u), () => ({ PATH: '/bin' }), false, spawn)
+  return { s, logins, urls }
+}
+
+test('a second Sign in joins the waiting sign-in instead of restarting it (#840)', async () => {
+  const { s, logins, urls } = harness()
+  const first = s.signIn()
+  logins[0].stdout.write("If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?x=1\n")
+  await new Promise((r) => setImmediate(r))
+  assert.equal(s.inProgress(), true)
+  const second = s.signIn()
+  assert.equal(second, first)
+  assert.equal(logins.length, 1, 'no second login started')
+  assert.equal(logins[0].killed, false, 'the first login keeps its localhost listener')
+  assert.equal(urls.at(-1), 'https://claude.com/cai/oauth/authorize?x=1', 'the link is shown again')
+  s.cancel()
+  assert.deepEqual(await first, { ok: false, message: 'Sign-in was cancelled.' })
+  assert.equal(logins[0].killed, true)
+  assert.equal(s.inProgress(), false)
+})
+
+test('after Cancel, Sign in starts a fresh login', async () => {
+  const { s, logins } = harness()
+  const first = s.signIn()
+  s.cancel()
+  await first
+  const next = s.signIn()
+  assert.equal(logins.length, 2)
+  s.cancel()
+  await next
+})
+
+test('a login that exits without signing in ends the sign-in', async () => {
+  const { s, logins } = harness()
+  const p = s.signIn()
+  logins[0].exitCode = 1
+  logins[0].emit('close', 1)
+  const r = await p
+  assert.equal(r.ok, false)
+  assert.equal(s.inProgress(), false)
+})
+
+test('the time-out message says what to do if the browser finished later', () => {
+  assert.match(TIMED_OUT_MESSAGE, /10 minutes/)
+  assert.match(TIMED_OUT_MESSAGE, /Sign in again/)
+})

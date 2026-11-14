@@ -20,11 +20,15 @@ export function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { on
   const [login, setLogin] = useState<ClaudeLogin | null>(null)
   useEvent('claude.signin', (d) => setUrl(d.url))
   useEffect(() => {
-    void window.watchdog.claude.status().then((s) => {
+    void window.watchdog.claude.status().then(async (s) => {
       setLogin(s)
       if (onSubscription(s)) {
         setPhase('done')
         onSignedIn()
+      } else if (await window.watchdog.claude.signInActive()) {
+        // A sign-in started before this screen opened is still waiting: show it, not a fresh
+        // button whose press would otherwise have restarted it (issue 840, D411).
+        void go()
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,7 +70,7 @@ export function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { on
       {phase === 'waiting' && url && (
         <div className="signin-note">
           If the browser did not open, <a href={url} onClick={(e) => { e.preventDefault(); void window.watchdog.shell.openExternal(url) }}>open the sign-in page</a>.
-          {' '}If your browser ends on a page that will not load, come back here: sign-in may still have worked, and this screen will say so.
+          {' '}If your browser ends on a page that will not load, come back here: sign-in may still have worked, and this screen will say so. If you closed the sign-in tab, press Cancel and sign in again.
         </div>
       )}
       {error && <Callout tone="danger">{error}</Callout>}

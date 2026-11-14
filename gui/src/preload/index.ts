@@ -52,7 +52,8 @@ const bridge: WatchdogBridge = {
   claude: {
     status: () => ipcRenderer.invoke('claude:status'),
     signIn: () => ipcRenderer.invoke('claude:signIn'),
-    cancel: () => ipcRenderer.invoke('claude:cancel')
+    cancel: () => ipcRenderer.invoke('claude:cancel'),
+    signInActive: () => ipcRenderer.invoke('claude:signInActive')
   },
   dialog: {
     openFiles: (opts) => ipcRenderer.invoke('dialog:openFiles', opts),
