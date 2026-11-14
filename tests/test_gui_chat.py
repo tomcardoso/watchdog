@@ -465,6 +465,66 @@ def test_a_subscription_session_refuses_a_console_account_sign_in(env, monkeypat
     assert "Console account" in err["detail"] and FakeClient.instances[0].prompts == []
 
 
+def test_a_key_session_stops_when_claude_code_bills_another_credential(env, monkeypatch):
+    """Watchdog passed a key; Claude Code reporting another source means another account pays
+    (D408)."""
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: {"ANTHROPIC_API_KEY": "sk-ant-x"})
+    FakeClient.scripts = [[_init("apiKeyHelper"), _usage_result(0.10, 1000, 100)]]
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "apiKeyHelper" in err["detail"] and FakeClient.instances[0].interrupted
+
+
+def test_a_key_session_refuses_a_variable_that_outranks_its_key(env, monkeypatch):
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: {"ANTHROPIC_API_KEY": "sk-ant-x"})
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.example")
+    api.start(str(vault), "ask", prompt="x")
+    err = _wait_state(events, states=("error",))[0]["data"]
+    assert "ANTHROPIC_BASE_URL" in err["detail"] and FakeClient.instances[0].prompts == []
+
+
+def test_a_stop_on_extra_usage_holds_new_conversations_until_acknowledged(env, monkeypatch):
+    """The stop is per conversation in the app, but the investigation's gate holds every new
+    one on the subscription until the reporter has looked (D408)."""
+    from watchdog import spend
+    vault, events = env
+    _on_subscription(monkeypatch)
+    FakeClient.scripts = [[_init("none"), _overage_event(), _usage_result(0.40, 5000, 900)]]
+    api.start(str(vault), "ask", prompt="first")
+    _wait_state(events, states=("error",))
+    assert spend.extra_usage_flag(vault)["calls"] == 1
+    sid = api.start(str(vault), "ask", prompt="second")["session"]
+    deadline = time.time() + 10
+    while not [e for e in events if e["event"] == "chat.status" and e["data"]["session"] == sid
+               and e["data"]["state"] == "error"] and time.time() < deadline:
+        time.sleep(0.02)
+    err = [e for e in events if e["event"] == "chat.status" and e["data"]["session"] == sid
+           and e["data"]["state"] == "error"][0]["data"]
+    assert "Activity → Usage" in err["detail"] and FakeClient.instances[1].prompts == []
+    spend.acknowledge_extra_usage(vault)
+    FakeClient.scripts = [[_init("none"), _usage_result(0.50, 6000, 1000)]]
+    api.start(str(vault), "ask", prompt="third")
+    assert _wait_state(events, states=("idle",))[0]["data"]["state"] == "idle"
+
+
+def test_a_subscription_session_carries_on_when_extra_usage_is_allowed(env, monkeypatch):
+    """Allowed in Settings (D410): the turn finishes, is recorded as paid by extra usage, and the
+    conversation can go on."""
+    from watchdog import auth, spend
+    vault, events = env
+    _on_subscription(monkeypatch)
+    monkeypatch.setattr(auth, "extra_usage_allowed", lambda: True)
+    FakeClient.scripts = [[_init("none"), _overage_event(), _usage_result(0.40, 5000, 900)]]
+    api.start(str(vault), "ask", prompt="who owns Acme?")
+    assert _wait_state(events)[0]["data"]["state"] == "idle"
+    assert not FakeClient.instances[0].interrupted
+    call = _session_calls(vault)["calls"][0]
+    assert call["overage"] is True and "failed" not in call
+    assert spend.extra_usage_flag(vault) is None
+
+
 def test_a_resumed_session_continues_from_its_saved_totals(env, monkeypatch):
     vault, events = env
     monkeypatch.setattr(chat, "session_auth_env", lambda s: {})

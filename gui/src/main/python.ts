@@ -12,6 +12,7 @@ import type { BackendStatus } from '@shared/api'
 import { getPref } from './prefs'
 import { accessFile } from './access'
 import { Engine, PENDING_ENV, versionAtLeast } from './engine'
+import { childEnv } from './childEnv'
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }
 
@@ -75,7 +76,8 @@ function pythonPathEnv(src: string | null, engine?: Engine, managed = false): No
   // UTF-8 mode, as for the engine's own Python: the engine reads and writes text files without
   // naming an encoding, which on Windows would otherwise mean the system code page (cp1252), and
   // building the sample investigation failed there on its first template.
-  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
+  // Only what the app chooses (D409): see childEnv.ts.
+  const env: NodeJS.ProcessEnv = { ...childEnv(), PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
   delete env[PENDING_ENV]
   // While the engine's background phase is unfinished the backend refuses to add documents
   // (D272). The simulated engine sets it too, so the gated screens can be exercised.

@@ -2,6 +2,8 @@
 // Add documents, the public-records pause and the re-check estimate. With one key per provider
 // there is nothing to choose, so nothing is shown. A chosen key that isn't on this computer is
 // shown as a stop: the run would end before sending anything rather than bill another account.
+// The app never passes a key from its environment to the backend (D409), so `env` is seen only
+// when the backend was started some other way.
 
 import { Wallet } from 'lucide-react'
 import type { Billing } from '@shared/api'

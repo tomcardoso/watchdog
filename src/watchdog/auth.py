@@ -460,17 +460,19 @@ def resolve_key(provider: str = "anthropic", vault: Path | None = None, *, prefe
     """The one resolver for which key pays for `provider` in an investigation (D290):
     `{"key", "id", "label", "source"}` with `source` one of `env`, `chosen`, `default`, `none`.
 
-    The environment variable overrides everything, as before. Otherwise the investigation's
-    choice applies (`vault`, or the process's `use_investigation` scope); a choice this computer
-    can't satisfy raises `KeyChoiceError` rather than falling back to another account. With no
-    choice, the key `prefer` names when it is stored (Ask Claude's own key), else the provider's
-    default key."""
+    The investigation's choice applies first (`vault`, or the process's `use_investigation`
+    scope), even over the provider's environment variable (D408); a choice this computer can't
+    satisfy raises `KeyChoiceError` rather than falling back to another account. With no choice,
+    the environment variable, then the key `prefer` names when it is stored (Ask Claude's own
+    key), else the provider's default key."""
     meta = PROVIDERS.get(provider)
-    if meta and os.environ.get(meta["env"]):
-        return {"key": os.environ[meta["env"]], "id": None, "label": _env_label(provider), "source": "env"}
     items, default = key_items(load_state(), provider)
     target = vault if vault is not None else _scope_vault
     choice = investigation_keys(target).get(provider) if target is not None else None
+    # The investigation's choice comes first, ahead of a key in the environment (D408): a key
+    # exported in a shell must never pay for an investigation that named another one.
+    if meta and os.environ.get(meta["env"]) and not choice:
+        return {"key": os.environ[meta["env"]], "id": None, "label": _env_label(provider), "source": "env"}
     if choice:
         item = _match_choice(items, choice)
         if item is None:
@@ -542,7 +544,7 @@ def setting_secrets_for_job() -> dict[str, str]:
 def secrets_for_run(vault: Path | None, providers=None) -> dict[str, str]:
     """The encrypted keys a job in `vault` may use, as `{blob data: key}` for
     `keystore.read_stdin` (D295): per provider, only the key the investigation resolves to (its
-    choice, else the default), and nothing where the environment variable overrides it or the key
+    choice, else the default), and nothing where the environment variable pays (no choice, D408) or the key
     is stored in plain text (the job reads that from the file, as before). With `providers`, only
     those providers' keys: the ones the job's models use (`gui/jobs.run_providers_for`). A job
     outside an investigation gets nothing."""
@@ -553,10 +555,10 @@ def secrets_for_run(vault: Path | None, providers=None) -> dict[str, str]:
     for p, meta in PROVIDERS.items():
         if providers is not None and p not in providers:
             continue
-        if os.environ.get(meta["env"]):
+        choice = investigation_keys(vault).get(p)
+        if os.environ.get(meta["env"]) and not choice:     # the environment pays (D408)
             continue
         items, default = key_items(state, p)
-        choice = investigation_keys(vault).get(p)
         item = _match_choice(items, choice) if choice else next((i for i in items if i["id"] == default), None)
         if item and item["key"] and keystore.is_blob(item["stored"]):
             out[item["stored"]["data"]] = item["key"]
@@ -735,20 +737,36 @@ SUBSCRIPTION_ENV_CONFLICTS = (
     "CLAUDE_CODE_USE_ANTHROPIC_AWS", "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
     "CLAUDE_CODE_USE_MANTLE", "CLAUDE_CODE_USE_GATEWAY",
 )
+# The same, for a call that passes an Anthropic key (D408): each takes priority over the key (a
+# cloud provider, a bearer or OAuth token, a profile) or sends it to another host, so the call
+# would not bill the key the reporter chose. `ANTHROPIC_API_KEY` itself is the key.
+KEY_ENV_CONFLICTS = tuple(v for v in SUBSCRIPTION_ENV_CONFLICTS if v != "ANTHROPIC_API_KEY")
 _OFF = ("", "0", "false", "no", "off")
 
 
-def subscription_env_conflict() -> str | None:
+def subscription_env_conflict(names=SUBSCRIPTION_ENV_CONFLICTS) -> str | None:
     """The first variable in this process's environment that would keep a subscription call off
-    the Claude login (`SUBSCRIPTION_ENV_CONFLICTS`), or None. A `CLAUDE_CODE_USE_*` switch set to
-    0, false, no or off is off."""
-    for name in SUBSCRIPTION_ENV_CONFLICTS:
+    the Claude login (`SUBSCRIPTION_ENV_CONFLICTS`, or `names`), or None. A `CLAUDE_CODE_USE_*`
+    switch set to 0, false, no or off is off."""
+    for name in names:
         value = (os.environ.get(name) or "").strip()
         if name.startswith("CLAUDE_CODE_USE_") and value.lower() in _OFF:
             continue
         if value:
             return name
     return None
+
+
+def key_env_conflict() -> str | None:
+    """The first variable that would keep a call made with an Anthropic key from billing that key
+    (`KEY_ENV_CONFLICTS`, D408), or None."""
+    return subscription_env_conflict(KEY_ENV_CONFLICTS)
+
+
+def key_env_message(name: str, what: str = "processing") -> str:
+    return (f"{name} is set in your environment. It takes priority over the Anthropic key "
+            f"Watchdog uses, or sends the key somewhere other than Anthropic, so {what} might not "
+            "be billed to the key you chose. Remove it from your environment, then try again.")
 
 
 def subscription_env_message(name: str, what: str = "processing") -> str:
@@ -803,15 +821,22 @@ def claude_code_auth_status() -> dict | None:
     return _auth_status_cache[1]
 
 
-def subscription_check(what: str = "processing") -> tuple[str | None, str | None]:
+def subscription_check(what: str = "processing", vault: Path | None = None) -> tuple[str | None, str | None]:
     """Whether work meant for the Claude subscription would run on it (#872, D406, D407):
     `(problem, auth_method)`, `problem` None when it would. A variable in the environment that
-    sends Claude Code past its sign-in is named first; then Claude Code must report a claude.ai
+    sends Claude Code past its sign-in is named first; then a call stopped on extra usage in this
+    investigation that the reporter has not looked at yet (D408); then Claude Code must report a claude.ai
     sign-in. A Console account's sign-in or any token (`oauth_token`), a key (`api_key`,
     `api_key_helper`) and a cloud provider (`third_party`) are each billed elsewhere."""
     conflict = subscription_env_conflict()
     if conflict:
         return subscription_env_message(conflict, what), None
+    target = vault if vault is not None else _scope_vault
+    if target is not None:
+        from watchdog import spend
+        flagged = spend.extra_usage_flag(target)
+        if flagged:
+            return spend.extra_usage_message(flagged), None
     status = claude_code_auth_status()
     if status is None:
         return ("Watchdog could not check how Claude Code on this computer is signed in, so it "
@@ -828,6 +853,24 @@ def subscription_check(what: str = "processing") -> tuple[str | None, str | None
     return (f"Claude Code on this computer is signed in with {how}, not your Claude subscription, "
             f"so {what} would be billed to that account. Sign in again with your Claude account "
             "under Settings → Models & keys."), method
+
+
+def extra_usage_allowed() -> bool:
+    """Whether the reporter chose to let subscription work carry on, and pay, on extra usage
+    (`allow_extra_usage`, D410). Off unless set to true."""
+    return config.get("allow_extra_usage") is True
+
+
+def billing_problem(mode: str | None, vault: Path | None, what: str = "this run") -> str | None:
+    """What would stop Claude work in `mode` from being billed the way the reporter chose, before
+    it starts (D406-D408), for Add documents and the re-check to show: `subscription_check` on
+    the subscription, a variable that outranks the key on an API key. None when nothing would."""
+    if mode == "subscription":
+        return subscription_check(what, vault)[0]
+    if mode == "api-key":
+        conflict = key_env_conflict()
+        return key_env_message(conflict, what) if conflict else None
+    return None
 
 
 def resolve_auth(provider: str = "anthropic", vault: Path | None = None, *, session: bool = False) -> dict:
@@ -951,7 +994,7 @@ def status_data() -> dict:
     env_set = bool(os.environ.get(meta["env"]))
 
     claude = {"mode": mode, "session_mode": sessions, "session_mode_own": bool(state.get("session_mode")),
-              "logged_in": None, "env_key_set": env_set, "env_conflict": subscription_env_conflict(),
+              "logged_in": None, "env_key_set": env_set,
               "key_masked": None, "key_source": None}
     if "subscription" in (mode, sessions):
         claude["logged_in"] = claude_code_logged_in()

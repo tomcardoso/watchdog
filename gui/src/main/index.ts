@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs'
 import { loadRoots, registerIpc, resumeEngine } from './ipc'
 import { registerUpdater } from './updater'
 import { provideSecrets } from './secrets'
+import { childEnv } from './childEnv'
 
 registerSchemePrivileges()
 app.setName('Watchdog')
@@ -56,7 +57,8 @@ const engine = new Engine({
   resources: app.isPackaged ? process.resourcesPath : join(__dirname, '..', '..', 'resources'),
   isPackaged: app.isPackaged,
   repoRoot: existsSync(join(__dirname, '..', '..', '..', 'pyproject.toml')) ? join(__dirname, '..', '..', '..') : null,
-  emit: (e) => send('engine.progress', e)
+  emit: (e) => send('engine.progress', e),
+  childEnv: (env) => childEnv(env)
 })
 
 const backend = new PythonBackend((event, data) => send(event, data), (status) => send('backend.status', status), engine, provideSecrets)
@@ -75,11 +77,13 @@ function lookupClaudeCli(python: string): string | null {
   const r = spawnSync(python, ['-m', 'watchdog.gui.engine_setup', 'claude-path'], {
     encoding: 'utf8',
     timeout: 30000,
-    env: { ...process.env, ...(engine.isDev && bundledSource() ? { PYTHONPATH: bundledSource()! } : {}) }
+    env: { ...childEnv(), ...(engine.isDev && bundledSource() ? { PYTHONPATH: bundledSource()! } : {}) }
   })
   return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null
 }
-const claude = new ClaudeSignIn(claudeCli, (url) => send('claude.signin', { url }), () => process.env, !!engine.simulate)
+// The sign-in runs Claude Code with the same environment the backend gives it (D409), so the
+// login it records is the one every call later finds.
+const claude = new ClaudeSignIn(claudeCli, (url) => send('claude.signin', { url }), () => childEnv(), !!engine.simulate)
 
 interface Bounds { x?: number; y?: number; width: number; height: number; maximized?: boolean }
 

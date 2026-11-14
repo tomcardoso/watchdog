@@ -60,9 +60,11 @@ Watchdog checks that every call set to use your Claude subscription really does.
 
 - **Claude Code is not signed in with your Claude account.** Claude Code, the program Watchdog uses to reach Claude on a subscription, is signed in with an Anthropic Console account or a sign-in token, or found an API key on this computer, so its calls would be billed per token to that account. Open **Settings → Models & keys** and sign in again with your Claude account.
 - **A setting names another account.** The message names a setting, such as `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, that sends Claude Code's calls past your sign-in. Remove it from this computer, or set Claude to use an API key instead.
-- **Extra usage started paying.** Your subscription's limit was reached and your Claude account is set to carry on with paid extra usage. Turn off extra usage in your Claude account's settings, or wait until the limit has reset before adding the documents again: while the limit is still passed, the next run stops again at its first paid call.
+- **Extra usage started paying.** Your subscription's limit was reached and your Claude account is set to carry on with paid extra usage. Turn off extra usage in your Claude account's settings, or wait until the limit has reset before adding the documents again: while the limit is still passed, the next run stops again at its first paid call. If you want runs to carry on and pay for extra usage instead, turn on **Allow extra usage** under **Settings → Claude subscription**.
 
-A run set to use the subscription keeps refusing Claude calls until it ends, and a stopped conversation refuses further questions: start a new one. If extra usage was the reason, **Activity → Usage** lists the calls that may have been charged. If you meant to pay per token, switch Claude to an API key under **Settings → Models & keys**.
+A run set to use the subscription keeps refusing Claude calls until it ends, and a stopped conversation refuses further questions: start a new one. If extra usage was the reason, **Activity → Usage** lists the calls that may have been charged, and the subscription stays off in that investigation until you choose **I've checked this** there.
+
+A run or conversation on an API key stops the same way if Claude Code reports that it would bill something other than the key you chose. Watchdog ignores keys and settings in your computer's environment, so this is rare; the message says what Claude Code reported. If you meant to pay per token, switch Claude to an API key under **Settings → Models & keys**.
 
 ## The provider rejected the key, or the account is out of credit
 

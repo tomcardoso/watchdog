@@ -324,10 +324,16 @@ _SESSION_KEY_NOTE = ("This conversation is set to use your Claude subscription, 
                      "this computer is using an API key ({source}), which is billed per token, so "
                      "Watchdog stopped it. Sign in again with your Claude account under Settings → "
                      "Models & keys, then start a new conversation.")
+_SESSION_WRONG_KEY_NOTE = ("Claude Code did not use the Anthropic key Watchdog gave it, but another "
+                           "credential ({source}), so this conversation would not be billed to the "
+                           "key you chose. Watchdog stopped it. Remove the other credential, then "
+                           "start a new conversation.")
 _SESSION_OVERAGE_NOTE = ("Your Claude subscription's usage limit has been reached, and Claude Code "
                          "reports that extra usage, which is billed, is now paying for this "
                          "conversation, so Watchdog stopped it. Start a new conversation after the "
-                         "limit resets, or turn off extra usage in your Claude account's settings.")
+                         "limit resets, or turn off extra usage in your Claude account's settings. "
+                         "To let conversations carry on and pay for extra usage instead, turn on "
+                         "Allow extra usage under Settings → Claude subscription.")
 
 
 def _friendly(error: Exception | str) -> str:
@@ -621,16 +627,21 @@ class ChatManager:
             await asyncio.to_thread(_record_session, s.vault, "found")
             try:
                 await self._connect(s)
+                from watchdog import auth
                 if s.subscription:
-                    # The same check as processing's (D406, D407): nothing in the environment that
-                    # bypasses the login, and Claude Code signed in with a Claude account.
-                    from watchdog import auth
+                    # The same check as processing's (D406, D407, D408): nothing in the environment
+                    # that bypasses the login, no unacknowledged extra-usage stop here, and Claude
+                    # Code signed in with a Claude account.
                     problem, s.claude_auth_method = await asyncio.to_thread(
-                        auth.subscription_check, "this conversation")
-                    if problem:
-                        s.billing_stop = problem
-                        self.status(s, "error", s.billing_stop, s.cost)
-                        return
+                        auth.subscription_check, "this conversation", s.vault)
+                else:
+                    # On a key, nothing in the environment may outrank it (D408).
+                    conflict = auth.key_env_conflict()
+                    problem = auth.key_env_message(conflict, "this conversation") if conflict else None
+                if problem:
+                    s.billing_stop = problem
+                    self.status(s, "error", s.billing_stop, s.cost)
+                    return
                 await s.client.query(prompt)
                 async for message in s.client.receive_response():
                     self._handle(s, message)
@@ -664,11 +675,17 @@ class ChatManager:
                 if s.subscription and s.key_source in model_client.METERED_KEY_SOURCES:
                     s.billing_stop = _SESSION_KEY_NOTE.format(source=s.key_source)
                     s.stop_pending = True
+                elif not s.subscription and s.key_source not in (None, "ANTHROPIC_API_KEY"):
+                    # Watchdog passed a key, and Claude Code is billing something else (D408).
+                    s.billing_stop = _SESSION_WRONG_KEY_NOTE.format(source=s.key_source)
+                    s.stop_pending = True
         elif type(message).__name__ == "RateLimitEvent":
-            from watchdog import model_client
+            from watchdog import auth, model_client
             if s.subscription and model_client._overage_in_use(getattr(message, "rate_limit_info", None)):
-                s.billing_stop = _SESSION_OVERAGE_NOTE
-                s.turn_overage = s.stop_pending = True
+                s.turn_overage = True
+                if not auth.extra_usage_allowed():     # allowed: carry on, recorded as paid (D410)
+                    s.billing_stop = _SESSION_OVERAGE_NOTE
+                    s.stop_pending = True
         elif isinstance(message, StreamEvent):
             event = message.event or {}
             delta = event.get("delta") or {}
@@ -726,7 +743,8 @@ class ChatManager:
             call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
                                              session_id=s.id, model=s.model, auth_mode=auth_mode,
                                              key_label=s.key_label, key_source=s.key_source,
-                                             overage=overage, auth_method=s.claude_auth_method)
+                                             overage=overage, auth_method=s.claude_auth_method,
+                                             stopped=overage and s.billing_stop is not None)
             session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
         except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
             pass

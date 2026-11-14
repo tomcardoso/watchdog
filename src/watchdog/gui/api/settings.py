@@ -581,6 +581,18 @@ def reset_spending(vault: str) -> dict:
     return _spending_limit(v)
 
 
+@method("spend.acknowledgeExtraUsage")
+def acknowledge_extra_usage(vault: str) -> dict:
+    """The reporter has looked at the calls stopped on extra usage (D408): work here may run on the
+    subscription again. Writes `.watchdog/settings.json`, as the spending limit does."""
+    from watchdog import spend
+    from watchdog.gui.vaultio import require_vault
+
+    v = require_vault(vault)
+    spend.acknowledge_extra_usage(v)
+    return {"extra_usage_pending": spend.extra_usage_flag(v) is not None}
+
+
 @method("auth.setBaseUrl")
 def set_base_url(provider: str, url: str) -> dict:
     """Set (or, with an empty `url`, remove) the endpoint of a provider that takes one."""

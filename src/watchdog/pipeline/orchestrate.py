@@ -248,6 +248,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["failed"] = True
     if overage:
         record["overage"] = True       # extra usage was paying when the call was stopped (#872)
+        record["overage_stopped"] = True
+        if _run.vault is not None:     # and the subscription waits for the reporter (D408)
+            from watchdog import spend
+            spend.flag_extra_usage(_run.vault)
+    elif u.get("overage"):
+        record["overage"] = True       # extra usage paid for it, as the reporter allowed (D410)
     if batch_meta:
         record["batch_id"] = batch_meta.get("batch_id")
         record["batch_submitted_at"] = batch_meta.get("submitted_at")

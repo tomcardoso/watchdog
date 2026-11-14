@@ -88,10 +88,17 @@ def test_not_billed_only_when_claude_code_confirmed_every_subscription_call():
     note = usage.subscription_note([checked, old])
     assert "list-price" in note and "1 of 2" in note and "not amounts billed" not in note
     assert usage.subscription_confirmed([_call()]) is None
-    stopped = {**checked, "overage": True, "end_ts": 1_700_000_000}
+    stopped = {**checked, "overage": True, "overage_stopped": True, "failed": True,
+               "end_ts": 1_700_000_000}
     assert usage.subscription_confirmed([checked, stopped]) is False
     assert usage.extra_usage_calls([checked, stopped]) == 1
     assert "1 Claude call stopped after extra usage" in usage.subscription_note([checked, stopped])
+    paid = {**checked, "overage": True, "cost_usd": 0.25}       # allowed in Settings (D410)
+    # A charged call that then failed validation was still charged, not stopped.
+    assert usage.extra_usage_charged([{**paid, "failed": True}]) == (1, 0.25)
+    assert usage.extra_usage_charged([checked, paid, stopped]) == (1, 0.25)
+    assert usage.extra_usage_calls([paid]) == 0 and usage.subscription_confirmed([paid]) is False
+    assert "charged about $0.25" in usage.subscription_note([paid])
     assert usage.extra_usage_list([checked, stopped]) == [
         {"stage": "extractor", "filename": "doc.pdf", "at": "2023-11-14T22:13:20+00:00"}]
 

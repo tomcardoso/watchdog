@@ -103,6 +103,9 @@ export interface EngineOptions {
   env?: NodeJS.ProcessEnv
   /** process.platform, for tests. */
   platform?: NodeJS.Platform
+  /** What the programs the engine runs may see of `env` (the app passes `childEnv`, D409); all of
+   * it when omitted, for tests. */
+  childEnv?: (env: NodeJS.ProcessEnv) => NodeJS.ProcessEnv
 }
 
 export interface InstallOptions {
@@ -398,8 +401,12 @@ export class Engine {
     }
   }
 
+  private childEnv(): NodeJS.ProcessEnv {
+    return this.opts.childEnv ? this.opts.childEnv(this.env) : { ...this.env }
+  }
+
   private uvEnv(): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...this.env }
+    const env: NodeJS.ProcessEnv = { ...this.childEnv() }      // only what the app chooses (D409)
     for (const k of Object.keys(env)) if (k.startsWith('UV_') || k === 'VIRTUAL_ENV' || k === 'PYTHONPATH' || k === 'PYTHONHOME') delete env[k]
     Object.assign(env, {
       UV_PYTHON_INSTALL_DIR: join(this.dir, 'python'),
@@ -420,7 +427,7 @@ export class Engine {
 
   /** The environment for Python the engine runs itself (the model step, core-requirements). */
   private pythonEnv(external: boolean): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...this.env, WATCHDOG_PROGRESS: '1', PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
+    const env: NodeJS.ProcessEnv = { ...this.childEnv(), WATCHDOG_PROGRESS: '1', PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
     for (const k of ['PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV']) delete env[k]
     const uv = this.uvPath()
     if (uv) env.WATCHDOG_UV = uv

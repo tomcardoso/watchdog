@@ -990,6 +990,10 @@ export interface UsageRun {
   extra_usage_calls?: number
   /** Those calls (up to 20, oldest first): stage, document, when the call ended (UTC ISO). */
   extra_usage?: { stage: string; filename: string | null; at: string | null }[]
+  /** Subscription work in this investigation waits until the reporter acknowledges those calls (D408). */
+  extra_usage_pending?: boolean
+  /** Calls extra usage paid for because Settings allows it (D410), with the cost Claude Code reported. */
+  extra_usage_charged?: { calls: number; cost_usd: number }
   by_key?: KeyCost[]
   peak_concurrency?: number | null
   batch_note?: string | null
@@ -1168,6 +1172,7 @@ export interface Methods {
   'spend.limit': [{ vault: string }, SpendingLimitInfo]
   'spend.setLimit': [{ vault: string; usd: number | string | null }, SpendingLimitInfo]
   'spend.reset': [{ vault: string }, SpendingLimitInfo]
+  'spend.acknowledgeExtraUsage': [{ vault: string }, { extra_usage_pending: boolean }]
   'auth.setBaseUrl': [{ provider: 'local' | 'openrouter'; url: string }, AuthStatus]
   'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
   'skills.read': [{ name: string }, { name: string; text: string }]

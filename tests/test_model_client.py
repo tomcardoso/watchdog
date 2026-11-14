@@ -2641,6 +2641,7 @@ def test_a_call_stopped_on_extra_usage_is_recorded_in_usage(tmp_path, monkeypatc
             orchestrate._end_usage_run(vault)
     [call] = seen["overage"]
     assert call["auth_method"] == "claude.ai"
+    assert call["overage_stopped"] is True
     assert (call["overage"], call["failed"], call["key_source"], call["auth_mode"],
             call["backend"], call["filename"]) == (True, True, "none", "subscription",
                                                    "claude-agent-sdk", "a.pdf")
@@ -2690,10 +2691,50 @@ def test_subscription_call_refused_before_running_when_the_environment_bypasses_
     with pytest.raises(mc.MeteredBillingError) as e:
         asyncio.run(mc._agent_complete_async("p", "model", {}, None))
     assert "ANTHROPIC_AUTH_TOKEN" in str(e.value) and seen == []
-    # An API-key call is unaffected: the key it passes is the billing it asked for.
+    # An API-key call is refused too: the token would outrank its key (D408).
     monkeypatch.setattr(mc, "_metered_stop", None)
+    with pytest.raises(mc.BillingRouteError, match="ANTHROPIC_AUTH_TOKEN"):
+        asyncio.run(mc._agent_complete_async("p", "model", {}, "sk-ant-key"))
+    assert seen == []
+
+
+def test_an_api_key_call_stops_when_claude_code_bills_another_credential(monkeypatch):
+    """Watchdog passed a key; Claude Code reporting anything else means another account pays
+    (D408). The call stops at the init message, before its request."""
+    seen = []
+    _patch_agent_stream(monkeypatch, [_init_message("apiKeyHelper"), _RESULT], seen)
+    with pytest.raises(mc.BillingRouteError) as e:
+        asyncio.run(mc._agent_complete_async("p", "model", {}, "sk-ant-key"))
+    assert "apiKeyHelper" in str(e.value) and not isinstance(e.value, mc.MeteredBillingError)
+    assert seen == ["SystemMessage"]
+    _patch_agent_stream(monkeypatch, [_init_message("ANTHROPIC_API_KEY"), _RESULT])
     out = asyncio.run(mc._agent_complete_async("p", "model", {}, "sk-ant-key"))
-    assert out["text"] == '{"name": "Acme"}'
+    assert out["text"] == '{"name": "Acme"}' and out["usage"]["key_source"] == "ANTHROPIC_API_KEY"
+
+
+def test_an_api_key_run_is_refused_when_the_environment_outranks_the_key(tmp_path, monkeypatch):
+    """Both Claude backends refuse before any request: the Anthropic SDK itself reads
+    ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN (D408)."""
+    from watchdog import auth
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    auth.save_state({"mode": "api-key"})
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-envkey-000000")
+    sent = []
+
+    async def backend(*a, **k):
+        sent.append(a)
+        return {"text": "{}", "usage": {}, "cost_usd": 0.0}
+    for b in ("claude-api", "claude-agent-sdk"):
+        monkeypatch.setitem(mc._ABACKENDS, b, backend)
+    for name in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_VERTEX"):
+        monkeypatch.setenv(name, "1")
+        for b in ("claude-api", "claude-agent-sdk"):
+            with pytest.raises(mc.BillingRouteError, match=name):
+                asyncio.run(mc.acomplete_json(task="extract", prompt="p", schema={}, backend=b))
+        monkeypatch.delenv(name)
+    assert sent == []
+    asyncio.run(mc.acomplete_json(task="extract", prompt="p", schema={}, backend="claude-api"))
+    assert len(sent) == 1
 
 
 @pytest.mark.parametrize("backend, model_id", [
