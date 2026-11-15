@@ -5,11 +5,12 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 ## Releases
 
 - **The app**: a tag `v<semver>` runs `.github/workflows/app-release.yml`. `v1.0.5` is a stable
-  release, `v1.1.0-beta.1` a beta. It tests the Python package and, at the same time, builds the
-  app on macOS (Apple silicon and Intel, in separate jobs so their notarizations overlap), Windows
-  and Linux with the tag's version. No installer is built until the app's end-to-end tests (`gui/tests`)
-  have passed on every platform (`.github/workflows/e2e.yml`, D385). Once the tests and every
-  build pass, it publishes:
+  release, `v1.1.0-beta.1` a beta. It first runs every check at once: lint and the Python tests,
+  the app's typecheck and unit tests, and the app's end-to-end tests (`gui/tests`) on every
+  platform (`.github/workflows/e2e.yml`, D385). No installer is built until all of them have
+  passed (D412). It then builds the app on macOS (Apple silicon and Intel, in separate jobs so
+  their notarizations overlap), Windows and Linux with the tag's version. Once every build
+  passes, it publishes:
   1. a stable release as the repository's **latest release**, titled "Watchdog 1.0.5". It is the
      page to send people (https://github.com/tomcardoso/watchdog/releases/latest) and the feed
      installed stable copies read for updates;
@@ -61,8 +62,8 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 
 To check a change builds on every platform before tagging, run the workflow by hand (Actions →
 App release → Run workflow, on a branch): it builds and signs as a release does, keeps the
-installers as the run's artifacts for five days, and publishes nothing. It takes the screenshots
-too, and keeps them as the `screenshots` artifact rather than opening a pull request.
+installers as the run's artifacts for five days, and publishes nothing. It does not take the
+screenshots, which follow only a stable release.
 To run only the end-to-end tests, without building installers, run Actions → End-to-end tests →
 Run workflow on the branch. **Platform** picks one (`linux`, `windows`, `macos-arm64` or
 `macos-x64`, the last on an Intel runner) or `all`, the default.

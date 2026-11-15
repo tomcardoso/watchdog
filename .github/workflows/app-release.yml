@@ -12,6 +12,13 @@ name: App release
 # and nothing is published. Run by hand on main with "release" ticked, it releases pyproject.toml's
 # version as a stable release, as a pushed tag would: the tag `v<version>` is made only once every
 # build and test has passed (D319), so a phone is enough to release.
+#
+# Order (D412): `version` (works out the tag and checks it is free; it creates nothing), the
+# Python `test` job (ruff, then the suite), `app-checks` (the app's typecheck and unit tests) and
+# `e2e` (every platform) all start together. `app`, the installer builds, needs every one of them,
+# so no installer is built, signed or notarized while a check is still running or after one has
+# failed. Then `release` (which creates the tag, then the draft release), then `screenshots`,
+# which runs only after a stable release is published.
 
 on:
   push:
@@ -80,6 +87,7 @@ jobs:
           echo "release=true" >> "$GITHUB_OUTPUT"
 
   test:
+    # Lint, then the Python suite, on one Python: ci.yml's matrix of four is for pull requests.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -90,7 +98,33 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Lint with ruff
+        # The same pin as ci.yml's lint job.
+        run: pip install "ruff==0.15.*" && ruff check src tests
       - uses: ./.github/actions/run-tests
+
+  app-checks:
+    # The app's typecheck (with the no-colour-literals check) and unit tests, once, on Linux,
+    # before any installer is built. The build jobs do not repeat them.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - run: npm run typecheck
+      - run: npm run test:unit
 
   e2e:
     # The app's end-to-end tests on every platform (e2e.yml).
@@ -101,12 +135,12 @@ jobs:
       contents: read
 
   app:
-    # Built, and signed where the secrets exist, on each platform from the same tag. It runs
-    # alongside `test` rather than after it: nothing is published until `release`, which waits
-    # for both. The two Mac architectures build in separate jobs so their notarizations, each
+    # Built, and signed where the secrets exist, on each platform from the same tag. No build
+    # starts until every check has passed: lint and the Python suite, the app's typecheck and unit
+    # tests, and the end-to-end tests on every platform (D385, D412). Nothing is published until
+    # `release`. The two Mac architectures build in separate jobs so their notarizations, each
     # about three minutes of waiting on Apple, run at once; `release` merges their update feeds.
-    # No build starts until the end-to-end tests have passed on every platform (D385).
-    needs: [version, e2e]
+    needs: [version, test, app-checks, e2e]
     strategy:
       fail-fast: false
       matrix:
@@ -152,10 +186,6 @@ jobs:
         run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
 
       - run: npm ci
-
-      - run: npm run typecheck
-
-      - run: npm run test:unit
 
       - name: Import signing certificate (macOS)
         if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
@@ -211,7 +241,8 @@ jobs:
           compression-level: 0
 
   release:
-    needs: [version, test, app]
+    # `app` needs every check, so its success implies theirs.
+    needs: [version, app]
     if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -346,13 +377,9 @@ jobs:
     #
     # Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull
     # requests". If the merge is refused, the pull request stays open to merge by hand and the job
-    # fails, so the run shows it. A test build (run by hand on a branch) takes the screenshots too
-    # and keeps them as the run's artifact instead, so the job can be tried.
+    # fails, so the run shows it. A test build, or a beta, never runs it.
     needs: [version, release]
-    if: >-
-      !cancelled() && (
-        (needs.release.result == 'success' && needs.version.outputs.channel == 'stable') ||
-        needs.version.outputs.release != 'true')
+    if: needs.release.result == 'success' && needs.version.outputs.channel == 'stable'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -391,17 +418,7 @@ jobs:
         working-directory: gui
         run: WATCHDOG_PYTHON="$(command -v python)" xvfb-run -a npm run screenshots
 
-      - name: Keep the screenshots (a test build)
-        if: needs.version.outputs.release != 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: screenshots
-          path: docs/images/app-*.png
-          retention-days: 5
-          if-no-files-found: error
-
       - name: Merge them into main
-        if: needs.version.outputs.release == 'true'
         run: |
           if git diff --quiet -- docs/images; then
             echo "The screenshots are unchanged."
@@ -440,5 +457,5 @@ jobs:
         # A release published or a merge made with this job's token starts no other workflow, so
         # pages.yml's `release` trigger never fires for them; a dispatch is the one
         # event that token can start.
-        if: always() && needs.version.outputs.release == 'true'
+        if: always()
         run: gh workflow run pages.yml --ref main
