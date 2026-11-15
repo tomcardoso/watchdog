@@ -62,8 +62,8 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 
 To check a change builds on every platform before tagging, run the workflow by hand (Actions →
 App release → Run workflow, on a branch): it builds and signs as a release does, keeps the
-installers as the run's artifacts for five days, and publishes nothing. It takes the screenshots
-too, and keeps them as the `screenshots` artifact rather than opening a pull request.
+installers as the run's artifacts for five days, and publishes nothing. It does not take the
+screenshots, which follow only a stable release.
 To run only the end-to-end tests, without building installers, run Actions → End-to-end tests →
 Run workflow on the branch. **Platform** picks one (`linux`, `windows`, `macos-arm64` or
 `macos-x64`, the last on an Intel runner) or `all`, the default.

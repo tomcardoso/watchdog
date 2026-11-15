@@ -17,7 +17,8 @@ name: App release
 # Python `test` job (ruff, then the suite), `app-checks` (the app's typecheck and unit tests) and
 # `e2e` (every platform) all start together. `app`, the installer builds, needs every one of them,
 # so no installer is built, signed or notarized while a check is still running or after one has
-# failed. Then `release` (which creates the tag, then the draft release), then `screenshots`.
+# failed. Then `release` (which creates the tag, then the draft release), then `screenshots`,
+# which runs only after a stable release is published.
 
 on:
   push:
@@ -104,7 +105,7 @@ jobs:
 
   app-checks:
     # The app's typecheck (with the no-colour-literals check) and unit tests, once, on Linux,
-    # before any installer is built. Each build job still runs them on its own platform.
+    # before any installer is built. The build jobs do not repeat them.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -185,10 +186,6 @@ jobs:
         run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
 
       - run: npm ci
-
-      - run: npm run typecheck
-
-      - run: npm run test:unit
 
       - name: Import signing certificate (macOS)
         if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
@@ -380,13 +377,9 @@ jobs:
     #
     # Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull
     # requests". If the merge is refused, the pull request stays open to merge by hand and the job
-    # fails, so the run shows it. A test build (run by hand on a branch) takes the screenshots too
-    # and keeps them as the run's artifact instead, so the job can be tried.
+    # fails, so the run shows it. A test build, or a beta, never runs it.
     needs: [version, release]
-    if: >-
-      !cancelled() && (
-        (needs.release.result == 'success' && needs.version.outputs.channel == 'stable') ||
-        needs.version.outputs.release != 'true')
+    if: needs.release.result == 'success' && needs.version.outputs.channel == 'stable'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -425,17 +418,7 @@ jobs:
         working-directory: gui
         run: WATCHDOG_PYTHON="$(command -v python)" xvfb-run -a npm run screenshots
 
-      - name: Keep the screenshots (a test build)
-        if: needs.version.outputs.release != 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: screenshots
-          path: docs/images/app-*.png
-          retention-days: 5
-          if-no-files-found: error
-
       - name: Merge them into main
-        if: needs.version.outputs.release == 'true'
         run: |
           if git diff --quiet -- docs/images; then
             echo "The screenshots are unchanged."
@@ -474,5 +457,5 @@ jobs:
         # A release published or a merge made with this job's token starts no other workflow, so
         # pages.yml's `release` trigger never fires for them; a dispatch is the one
         # event that token can start.
-        if: always() && needs.version.outputs.release == 'true'
+        if: always()
         run: gh workflow run pages.yml --ref main
