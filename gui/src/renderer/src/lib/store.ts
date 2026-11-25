@@ -3,6 +3,7 @@
 
 import { create } from 'zustand'
 import type { Job, LogLine, Project, ReviewKind } from '@shared/api'
+import type { Track } from './addTrack'
 
 // ── routes ───────────────────────────────────────────────────────────────────
 export type Route =
@@ -49,6 +50,9 @@ interface State {
   theme: Theme
   paletteOpen: boolean
   addOpen: { paths: string[] } | null
+  // The Add documents flow's track and the jobs it covers, so the corner card shows the whole
+  // flow for them rather than one job's own count (D413).
+  addTrack: { jobs: string[]; track: Track } | null
   // Files are being dragged over the window (DropOverlay tracks it; Add documents shows it).
   dragging: boolean
   toasts: Toast[]
@@ -62,6 +66,7 @@ interface State {
   setPalette: (open: boolean) => void
   openAdd: (paths?: string[]) => void
   closeAdd: () => void
+  setAddTrack: (t: { jobs: string[]; track: Track } | null) => void
   setDragging: (on: boolean) => void
   toast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: number) => void
@@ -81,6 +86,7 @@ export const useApp = create<State>((set, get) => ({
   theme: 'system',
   paletteOpen: false,
   addOpen: null,
+  addTrack: null,
   dragging: false,
   toasts: [],
   jobs: {},
@@ -114,6 +120,7 @@ export const useApp = create<State>((set, get) => ({
   setPalette: (open) => set({ paletteOpen: open }),
   openAdd: (paths = []) => set({ addOpen: { paths } }),
   closeAdd: () => set({ addOpen: null }),
+  setAddTrack: (addTrack) => set({ addTrack }),
   setDragging: (on) => { if (get().dragging !== on) set({ dragging: on }) },
   toast: (t) => {
     const id = toastId++

@@ -175,6 +175,10 @@ def log_dir() -> Path:
     return config.home() / "jobs"
 
 
+# How many finished files a job's progress lists (D413); `file_count` counts them all.
+FILES_KEEP = 200
+
+
 class Job:
     def __init__(self, vault: Path | None, op: str, params: dict, label: str, kind: str | None):
         self.id = uuid.uuid4().hex[:12]
@@ -188,8 +192,11 @@ class Job:
         self.exit_code: int | None = None
         self.started = _now()
         self.finished: str | None = None
+        # `plan`: post-processing's stages in order, once the run announces them; `seen`: the
+        # stages that have started, in order; `files`: the latest `FILES_KEEP` files
+        # pre-processing finished, and `file_count` how many it has finished in all.
         self.progress = {"stage": None, "done": None, "total": None, "current": None, "note": None,
-                         "docs": {}}
+                         "docs": {}, "plan": None, "seen": [], "files": [], "file_count": 0}
         self.log: collections.deque = collections.deque(maxlen=LOG_LINES)
         self.pending: list[dict] = []
         self.lock = threading.Lock()
@@ -213,20 +220,26 @@ class Job:
         job.log.extend(ln for ln in rec.get("log") or [] if isinstance(ln, dict))
         return job
 
-    def save(self) -> None:
+    def save(self, state: str | None = None) -> None:
         """Write this finished job, with its output, to `log_dir()`, readable only by its owner
-        (the output names the investigation's files). A failed write loses only the record."""
+        (the output names the investigation's files). A failed write loses only the record.
+        `state` is the state to record, when the job is not yet showing it."""
         from watchdog.pipeline.json_io import write_private_json
         with self.lock:
             log = list(self.log)
+        record = {**self.to_dict(), "log": log}
+        if state:
+            record["state"] = state
         try:
-            write_private_json(log_dir() / f"{self.id}.json", {**self.to_dict(), "log": log})
+            write_private_json(log_dir() / f"{self.id}.json", record)
         except OSError:
             pass
 
     def to_dict(self) -> dict:
         with self.lock:
-            snapshot = {**self.progress, "docs": {k: dict(v) for k, v in self.progress["docs"].items()}}
+            snapshot = {**self.progress, "docs": {k: dict(v) for k, v in self.progress["docs"].items()},
+                        "seen": list(self.progress.get("seen") or []),
+                        "files": [dict(f) for f in self.progress.get("files") or []]}
         return {"id": self.id, "label": self.label, "kind": self.kind,
                 "vault": str(self.vault) if self.vault else None, "op": self.op,
                 "params": self.params, "result": self.result,
@@ -239,6 +252,11 @@ class Job:
             p = self.progress
             if kind == "stage":
                 p.update(stage=event.get("stage"), done=event.get("done"), total=event.get("total"))
+                seen = p.setdefault("seen", [])
+                if event.get("stage") and event["stage"] not in seen:
+                    seen.append(event["stage"])
+            elif kind == "plan":
+                p["plan"] = [str(s) for s in event.get("stages") or []]
                 if event.get("path"):
                     p["current"] = event["path"]
             elif kind == "doc":
@@ -258,6 +276,13 @@ class Job:
                     p["done"] = event.get("done", p["done"])
                     p["current"] = event.get("name")
                     p["note"] = None
+                    # Only the latest few are kept: every progress event carries the whole
+                    # state, so a full list would grow each event with the folder's size.
+                    files = p.setdefault("files", [])
+                    files.append({"name": event.get("name"), "outcome": event.get("outcome"),
+                                  "pages": event.get("pages")})
+                    del files[:-FILES_KEEP]
+                    p["file_count"] = (p.get("file_count") or 0) + 1
             elif kind == "transcribe":
                 # A recording being transcribed (D273): kept beside the file count, not over it.
                 pos, dur = event.get("position"), event.get("duration")
@@ -381,8 +406,11 @@ class JobManager:
         job.exit_code = code
         job.finished = _now()
         # A stopped job is "cancelled" however it exits: a graceful Ctrl+C stop often exits 0.
-        job.state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
-        job.save()
+        # The record is written before the job shows as finished, so anything that waits for the
+        # end finds the record already there, not its write still under way.
+        state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
+        job.save(state)
+        job.state = state
         rpc.emit("job.finished", {"job": job.to_dict()})
 
     def cancel(self, job_id: str) -> None:

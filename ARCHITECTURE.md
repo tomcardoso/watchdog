@@ -1095,7 +1095,8 @@ See D45–D48.
   parameters, then run `python -m watchdog.worker` in the vault with `{op, params}` on stdin
   (and the keys, for the operations that call a model, D295, or archive to the Wayback Machine, D341), `NO_COLOR=1` (for third-party
   libraries) and `WATCHDOG_PROGRESS=1`. The worker's `Reporter` writes log lines and
-  `progress` events (chew files, per-document extraction states, finalize stages), which the
+  `progress` events (chew files, per-document extraction states, finalize stages, and before
+  the first of those the `plan` of post-processing's stages, `orchestrate.POST_STAGES`, D413), which the
   server turns into `job.progress` events, then the operation's result. A finished job, output
   included, is saved to `~/.watchdog/jobs/<id>.json` (0600, the newest 50) and read back on the
   next start (D360). An operation never asks a

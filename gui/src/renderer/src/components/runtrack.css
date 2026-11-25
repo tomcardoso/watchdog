@@ -1,0 +1,181 @@
+/* The Add documents track (D413). */
+.run-track {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.run-track-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.run-track-line b {
+  font-size: var(--fs-lg);
+  font-weight: 620;
+  flex: none;
+}
+.run-track-line span {
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+.run-track-bars {
+  display: grid;
+  grid-template-columns: 1fr 22px 1fr 1fr 0.6fr;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.run-track.compact .run-track-bars {
+  grid-template-columns: 1fr 12px 1fr 1fr 0.6fr;
+  gap: 3px;
+}
+.run-track-bars li {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.run-track-bars .bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.run-track.compact .bar {
+  height: 6px;
+}
+.run-track-bars .bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 300ms var(--ease);
+}
+.run-track-bars .done .bar > i {
+  background: var(--success);
+}
+.run-track-bars .stopped .bar {
+  border-color: var(--warning);
+}
+.run-track-bars .stopped .bar > i {
+  background: var(--warning);
+}
+.run-track-bars .skipped .bar {
+  border-style: dashed;
+}
+.run-track-bars .bar.pulse > i {
+  width: 100% !important;
+  background: var(--text-2);
+  animation: run-track-breathe 1.6s ease-in-out infinite;
+}
+@keyframes run-track-breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+.run-track-bars .diamond {
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: -1px auto 0;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+}
+.run-track.compact .diamond {
+  width: 7px;
+  height: 7px;
+  margin-top: 0;
+}
+.run-track-bars .rt-gate.now .diamond {
+  background: var(--marker);
+  border-color: var(--marker);
+  animation: run-track-blink 1.4s ease-in-out infinite;
+}
+.run-track-bars .rt-gate.done .diamond {
+  background: var(--success);
+  border-color: var(--success);
+}
+.run-track-bars .rt-gate.skipped .diamond {
+  border-style: dashed;
+}
+@keyframes run-track-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.run-track-bars .t {
+  font-size: var(--fs-sm);
+  font-weight: 560;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-track-bars .now .t,
+.run-track-bars .stopped .t {
+  color: var(--text);
+}
+.run-track-bars .done .t {
+  color: var(--text-2);
+}
+.run-track-bars .where-tag {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  padding: 0 5px;
+  border-radius: 4px;
+  margin-left: 5px;
+}
+.run-track-bars .where-tag.local {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.run-track-bars .where-tag.model {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.run-track-bars .d {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  min-height: 1.3em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-track-bars .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .run-track-bars .where-tag {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-track-bars .bar.pulse > i,
+  .run-track-bars .rt-gate.now .diamond {
+    animation: none;
+  }
+  .run-track-bars .bar.pulse > i {
+    opacity: 0.3;
+  }
+}

@@ -697,6 +697,19 @@ export interface ProgressState {
   /** A transient detail beside the stage, such as which recording is being transcribed. */
   note?: string | null
   docs: Record<string, DocProgress>
+  /** Post-processing's stages in order, once the run announces them (D413). */
+  plan?: string[] | null
+  /** The stages that have started, in order. */
+  seen?: string[]
+  /** The latest files pre-processing finished (at most 200): outcome and page count. */
+  files?: ChewFile[]
+  /** How many files pre-processing has finished in all. */
+  file_count?: number
+}
+export interface ChewFile {
+  name: string
+  outcome: 'ok' | 'skipped' | 'failed' | 'duplicate'
+  pages: number | null
 }
 export interface Job<O extends OpName = OpName> {
   id: string

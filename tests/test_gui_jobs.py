@@ -278,3 +278,55 @@ def test_shared_run_options_an_operation_does_not_take_are_dropped():
     assert ops.validate("dig", {"verify": False, "skill": "", "limit": None}) == {"verify": False}
     with pytest.raises(ops.OpError):
         ops.validate("bark", {"paths": ["x"]})
+
+
+def test_progress_keeps_the_plan_the_stages_seen_and_each_file_read():
+    job = jobs.Job(None, "add", {}, "Adding", "add")
+    job.apply_progress({"kind": "chew", "state": "start", "total": 2})
+    job.apply_progress({"kind": "chew", "state": "file", "name": "a.pdf", "outcome": "ok", "pages": 3, "done": 1, "total": 2})
+    job.apply_progress({"kind": "chew", "state": "file", "name": "b.pdf", "outcome": "skipped", "pages": 0, "done": 2, "total": 2})
+    job.apply_progress({"kind": "plan", "stages": ["fold", "reconcile", "commit"]})
+    for stage in ("fold", "commit", "commit"):
+        job.apply_progress({"kind": "stage", "stage": stage, "done": None, "total": None})
+    p = job.to_dict()["progress"]
+    assert p["files"] == [{"name": "a.pdf", "outcome": "ok", "pages": 3},
+                          {"name": "b.pdf", "outcome": "skipped", "pages": 0}]
+    assert p["file_count"] == 2
+    assert p["plan"] == ["fold", "reconcile", "commit"]
+    assert p["seen"] == ["fold", "commit"]
+    # The snapshot is a copy: later events do not change one already taken.
+    job.apply_progress({"kind": "stage", "stage": "reconcile", "done": None, "total": None})
+    assert p["seen"] == ["fold", "commit"]
+
+
+def test_a_job_shows_as_finished_only_once_its_record_is_written(sink, fake_cli, monkeypatch):
+    """Anything that waits for a job to end (the app, a test scanning the folder) finds its saved
+    record complete, not still being written: the record is written before the state changes."""
+    from watchdog.pipeline import json_io
+    real = json_io.write_private_json
+
+    def slow(path, data):
+        time.sleep(0.5)
+        return real(path, data)
+
+    monkeypatch.setattr(json_io, "write_private_json", slow)
+    started = _run("print('hi')", label="x")
+    deadline = time.time() + 20
+    job = jobs.MANAGER.get(started["id"])
+    while job.state == "running" and time.time() < deadline:
+        time.sleep(0.01)
+    assert job.state == "done"
+    assert (jobs.log_dir() / f"{job.id}.json").exists()
+    assert not list(jobs.log_dir().glob(".*.tmp"))
+
+
+def test_progress_lists_only_the_latest_files_but_counts_them_all(monkeypatch):
+    """Every progress event carries the whole state, so a large folder must not make each one
+    longer than the last."""
+    monkeypatch.setattr(jobs, "FILES_KEEP", 3)
+    job = jobs.Job(None, "chew", {}, "Reading", "chew")
+    for i in range(10):
+        job.apply_progress({"kind": "chew", "state": "file", "name": f"{i}.pdf", "outcome": "ok", "pages": 1, "done": i + 1, "total": 10})
+    p = job.to_dict()["progress"]
+    assert [f["name"] for f in p["files"]] == ["7.pdf", "8.pdf", "9.pdf"]
+    assert p["file_count"] == 10

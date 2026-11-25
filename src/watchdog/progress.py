@@ -22,6 +22,9 @@ Events (every one has `kind`):
     {"kind": "stage", "stage": "dig|fold|reconcile|commit|contradictions|synthesis|timeline|
      briefing|leads|requests|done", "done": n|null, "total": n|null, "path": str|null}
         `dig` carries the run's document count as `total`; `done` is the briefing path.
+    {"kind": "plan", "stages": [str]}
+        post-processing's stages in order (`orchestrate.POST_STAGES`), before the first; a stage
+        with nothing to do emits no `stage` event.
     {"kind": "download", "done": n, "total": n, "url": str|null}   (research fetch)
     {"kind": "model", "name": "transcription", "label": str, "state": "start|progress|done|failed",
      "done": MB|null, "total": MB|null, "detail": str|null}
