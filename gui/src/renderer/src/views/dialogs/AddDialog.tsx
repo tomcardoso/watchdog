@@ -28,7 +28,7 @@ import type { ChewFile, Effort, Estimate, Job, LanguageQuestion, Preflight, RunO
 type Phase = 'choose' | 'reading' | 'gate' | 'running' | 'done'
 
 /** One file the Read step finished: its outcome, page count and how long it took. */
-type ReadEntry = { name: string; outcome: ChewFile['outcome'] | 'folder'; pages: number | null; secs: number | null }
+type ReadEntry = { name: string; outcome: ChewFile['outcome'] | 'folder' | 'more'; pages: number | null; secs: number | null }
 
 const NEW_PATHS_EVENT = 'wd:add'
 
@@ -47,8 +47,10 @@ export function AddDialog() {
   const [paths, setPaths] = useState<string[]>([])
   const [retry, setRetry] = useState(false)
   const [options, setOptions] = useState<RunOptions>({})
-  const [readState, setReadState] = useState<{ i: number; n: number; job: string | null; label: string; items: string[]; paths: (string | null)[]; incoming: number } | null>(null)
+  const [readState, setReadState] = useState<{ i: number; n: number; job: string | null; label: string; items: string[]; paths: (string | null)[]; incoming: number; logged: boolean } | null>(null)
   const [readLog, setReadLog] = useState<ReadEntry[]>([])
+  // Files the Read step has finished in all: the log lists at most the latest of a large batch.
+  const [readDone, setReadDone] = useState(0)
   // How the pause went: shown and answered, or passed without asking (D413's track draws both).
   const [confirmMode, setConfirmMode] = useState<'asked' | 'auto' | null>(null)
   const [readIssues, setReadIssues] = useState<string[]>([])
@@ -160,15 +162,22 @@ export function AddDialog() {
       const work: (string | null)[] = [...paths, ...(needIncoming ? [null] : [])]
       const items = work.map((p) => (p ? basename(p) : 'Documents waiting in this investigation'))
       setReadLog([])
+      setReadDone(0)
       setConfirmMode(null)
       for (let i = 0; i < work.length; i++) {
         const p = work[i]
         const label = p ? `Reading ${basename(p)}` : 'Reading documents'
-        setReadState({ i, n: work.length, job: null, label, items, paths: work, incoming: pf0?.incoming ?? 0 })
+        setReadState({ i, n: work.length, job: null, label, items, paths: work, incoming: pf0?.incoming ?? 0, logged: false })
         const j = await startJob('chew', { ...chewOptions, paths: p ? [p] : undefined }, label, 'chew', vault)
-        setReadState({ i, n: work.length, job: j.id, label, items, paths: work, incoming: pf0?.incoming ?? 0 })
+        setReadState({ i, n: work.length, job: j.id, label, items, paths: work, incoming: pf0?.incoming ?? 0, logged: false })
         const fin = await waitForJob(j.id)
-        setReadLog((prev) => [...prev, ...readEntries(useApp.getState().jobs[j.id] ?? fin, p)])
+        // The item's files move to the log in the same update that marks it logged, so the count
+        // never drops between the job ending and the log catching up.
+        const finJob = useApp.getState().jobs[j.id] ?? fin
+        const entries = readEntries(finJob, p)
+        setReadLog((prev) => [...prev, ...entries])
+        setReadDone((prev) => prev + Math.max(finJob.progress.file_count ?? 0, entries.filter((e) => e.outcome !== 'more').length))
+        setReadState((s) => (s ? { ...s, logged: true } : s))
         if (fin.state === 'cancelled') {
           setPaths((prev) => [...new Set([...prev, ...laterRef.current])])
           setLater([])
@@ -275,7 +284,7 @@ export function AddDialog() {
   const nothingToExtract = !!gate && countFor(gate.pf, retry, folders.length) === 0
   const track = buildTrack({
     phase: effective,
-    read: readCounts(effective, readState, readJob, readLog),
+    read: readCounts(effective, readState, readJob, readDone),
     confirm: confirmMode,
     run: job?.progress ?? null,
     runEnded: effective === 'done' && job ? (job.state === 'done' ? 'done' : 'stopped') : null,
@@ -437,25 +446,27 @@ function lastError(log: { stream: string; text: string }[]): string {
 }
 
 /** The files and pages the Read step has covered so far: for the track's Read section. */
-function readCounts(phase: Phase, state: { i: number; n: number; items: string[]; paths: (string | null)[]; incoming: number } | null, job: Job | undefined, log: ReadEntry[]): { done: number; total: number; inner: number } | null {
+function readCounts(phase: Phase, state: { i: number; n: number; paths: (string | null)[]; incoming: number; logged: boolean } | null, job: Job | undefined, done: number): { done: number; total: number; inner: number } | null {
   if (phase === 'choose') return null
-  if (phase !== 'reading') return { done: log.length, total: log.length, inner: 0 }
+  if (phase !== 'reading') return { done, total: done, inner: 0 }
   if (!state) return null
-  // The current item can be many files (the ones already waiting); its finished files are on its
-  // job until it ends, when they move to the log.
+  // The current item can be many files (the ones already waiting); its finished files count from
+  // its job until they are logged.
   const cur = job?.progress
-  const curDone = job && job.state === 'running' ? cur?.files?.length ?? 0 : 0
+  const curDone = state.logged ? 0 : cur?.file_count ?? cur?.files?.length ?? 0
   // Until the job reports its own count, the files already waiting count as the preflight saw them.
-  const curTotal = Math.max(cur?.total ?? 0, curDone, state.paths[state.i] === null ? state.incoming : 1, 1)
-  const ended = job && job.state !== 'running'
-  return { done: log.length + curDone, total: log.length + (ended ? 0 : curTotal) + (state.n - state.i - 1), inner: 0 }
+  const curTotal = state.logged ? 0 : Math.max(cur?.total ?? 0, curDone, state.paths[state.i] === null ? state.incoming : 1, 1)
+  return { done: done + curDone, total: done + curTotal + (state.n - state.i - 1), inner: 0 }
 }
 
 /** What one Read job finished, as log entries: each file it reported, or the item itself. */
 function readEntries(job: Job, path: string | null): ReadEntry[] {
   const secs = job.finished ? Math.max(0, Math.round((Date.parse(job.finished) - Date.parse(job.started)) / 1000)) : null
   const files = job.progress.files ?? []
-  if (files.length) return files.map((f) => ({ name: basename(f.name), outcome: f.outcome, pages: f.pages, secs: files.length === 1 ? secs : null }))
+  // A large batch lists only its latest files; the rest are one line.
+  const unlisted = (job.progress.file_count ?? files.length) - files.length
+  const more: ReadEntry[] = unlisted > 0 ? [{ name: `${plural(unlisted, 'earlier file')}`, outcome: 'more', pages: null, secs: null }] : []
+  if (files.length) return [...more, ...files.map((f) => ({ name: basename(f.name), outcome: f.outcome, pages: f.pages, secs: files.length === 1 ? secs : null }))]
   const log = useApp.getState().jobs[job.id]?.log ?? []
   const folder = path && log.some((l) => /is a folder/i.test(l.text))
   if (!path && job.state === 'done') return []   // nothing was waiting after all
@@ -893,20 +904,22 @@ function useNow(on: boolean): number {
 }
 
 const READ_OUTCOME: Record<ReadEntry['outcome'], string> = {
-  ok: 'Read', skipped: 'No text found', failed: 'Could not be read', duplicate: 'Already added', folder: 'A folder, added with the run'
+  ok: 'Read', skipped: 'No text found', failed: 'Could not be read', duplicate: 'Already added', folder: 'A folder, read with the run', more: 'Not listed'
 }
 
 /** The Read step's files: each finished one with its outcome, the one being read, the rest waiting. */
-function ReadList({ state, job, log }: { state: { i: number; n: number; label: string; items: string[] } | null; job?: Job; log: ReadEntry[] }) {
-  const running = job?.state === 'running'
+function ReadList({ state, job, log }: { state: { i: number; n: number; label: string; items: string[]; logged: boolean } | null; job?: Job; log: ReadEntry[] }) {
+  // The current item is shown until its files are logged; after the last, nothing is current.
+  const active = !!state && !state.logged && (!job || job.state === 'running')
+  const running = active && job?.state === 'running'
   const now = useNow(running)
   const current = job?.progress
   const inFlight = running ? current?.files ?? [] : []
   // A many-file item (the files already waiting) is named as itself, with its count: the job
   // reports a file's name only once it has finished it.
   const many = (current?.total ?? 0) > 1
-  const curName = state ? state.items[state.i] : null
-  const curNote = current?.note ?? (many ? `${inFlight.length} of ${current?.total}` : 'Reading')
+  const curName = active && state ? state.items[state.i] : null
+  const curNote = current?.note ?? (many ? `${current?.file_count ?? inFlight.length} of ${current?.total}` : 'Reading')
   const elapsed = running && job ? Math.max(0, Math.round((now - Date.parse(job.started)) / 1000)) : null
   const waiting = state ? state.items.slice(state.i + 1) : []
   const done = [...log, ...inFlight.map((f) => ({ name: basename(f.name), outcome: f.outcome, pages: f.pages, secs: null }))]

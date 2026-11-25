@@ -291,6 +291,7 @@ def test_progress_keeps_the_plan_the_stages_seen_and_each_file_read():
     p = job.to_dict()["progress"]
     assert p["files"] == [{"name": "a.pdf", "outcome": "ok", "pages": 3},
                           {"name": "b.pdf", "outcome": "skipped", "pages": 0}]
+    assert p["file_count"] == 2
     assert p["plan"] == ["fold", "reconcile", "commit"]
     assert p["seen"] == ["fold", "commit"]
     # The snapshot is a copy: later events do not change one already taken.
@@ -317,3 +318,15 @@ def test_a_job_shows_as_finished_only_once_its_record_is_written(sink, fake_cli,
     assert job.state == "done"
     assert (jobs.log_dir() / f"{job.id}.json").exists()
     assert not list(jobs.log_dir().glob(".*.tmp"))
+
+
+def test_progress_lists_only_the_latest_files_but_counts_them_all(monkeypatch):
+    """Every progress event carries the whole state, so a large folder must not make each one
+    longer than the last."""
+    monkeypatch.setattr(jobs, "FILES_KEEP", 3)
+    job = jobs.Job(None, "chew", {}, "Reading", "chew")
+    for i in range(10):
+        job.apply_progress({"kind": "chew", "state": "file", "name": f"{i}.pdf", "outcome": "ok", "pages": 1, "done": i + 1, "total": 10})
+    p = job.to_dict()["progress"]
+    assert [f["name"] for f in p["files"]] == ["7.pdf", "8.pdf", "9.pdf"]
+    assert p["file_count"] == 10

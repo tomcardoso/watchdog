@@ -127,7 +127,8 @@ export function JobDock() {
         <div className="job-chips">
           {chips.map((j) => {
             const p = progressText(j)
-            const pct = p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : null
+            // A job of the Add documents flow is one part of it: its own percentage would mislead.
+            const pct = p.total && !addTrack?.jobs.includes(j.id) ? Math.round(((p.done ?? 0) / p.total) * 100) : null
             return (
               <div className="job-chip" key={j.id}>
                 <button

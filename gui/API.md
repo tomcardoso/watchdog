@@ -398,9 +398,10 @@ last line on stderr), 64 (a request it could not read) or 130.
 ```
 Job = { id, label, kind, vault|null, op, params, result|null, state: "running"|"done"|"failed"|"cancelled",
 ProgressState = { stage|null, done|null, total|null, current|null, note?: string|null, docs: {[sha]: {filename, state, detail|null}},
-                  plan?: string[]|null, seen?: string[], files?: {name, outcome: "ok"|"skipped"|"failed"|"duplicate", pages|null}[] }
+                  plan?: string[]|null, seen?: string[], files?: {name, outcome: "ok"|"skipped"|"failed"|"duplicate", pages|null}[], file_count?: number }
 // plan is post-processing's stages in order (orchestrate.POST_STAGES), announced before the first;
-// seen, the stages started so far; files, each file pre-processing finished (D413).
+// seen, the stages started so far; files, the latest 200 files pre-processing finished, and
+// file_count, how many it has finished in all (D413).
 // stage "model" is a one-time model download (current = "Downloading the transcription model (486 MB)", done/total in MB);
 // note is a transient detail beside the stage ("Transcribing hearing.mp4, 12:05 of 1:02:05").
 LogLine = { t, stream: "out"|"err", text }

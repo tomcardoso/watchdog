@@ -76,3 +76,13 @@ test('a run that only finishes an earlier batch has nothing to extract', () => {
   assert.equal(t.sections[2].state, 'skipped')
   assert.equal(t.sections[2].where, 'Nothing new')
 })
+
+test('a folder added with the run: its reading is Read, and its documents are extracted', () => {
+  const reading = buildTrack({ ...base, phase: 'running', confirm: 'asked', nothingToExtract: true, run: run({ stage: 'chew', done: 3, total: 30 }) })
+  assert.equal(states(reading), 'now done waiting waiting waiting')
+  assert.equal(reading.headline, 'Reading · 3 of 30 files')
+  // The pause counted no documents (folders are not in its count), but the run extracts some.
+  const extracting = buildTrack({ ...base, phase: 'running', confirm: 'asked', nothingToExtract: true, run: run({ stage: 'dig', done: 1, total: 30, docs: { a: { state: 'done' } } }) })
+  assert.equal(extracting.sections[2].state, 'now')
+  assert.equal(extracting.headline, 'Extracting · 1 of 30 documents')
+})

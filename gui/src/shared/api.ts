@@ -701,8 +701,10 @@ export interface ProgressState {
   plan?: string[] | null
   /** The stages that have started, in order. */
   seen?: string[]
-  /** Each file pre-processing finished: its outcome and page count. */
+  /** The latest files pre-processing finished (at most 200): outcome and page count. */
   files?: ChewFile[]
+  /** How many files pre-processing has finished in all. */
+  file_count?: number
 }
 export interface ChewFile {
   name: string

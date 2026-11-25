@@ -88,6 +88,8 @@ export function buildTrack(input: TrackInput, labels: Record<string, string> = {
   const { phase, read, confirm, run, runEnded } = input
   const started = phase !== 'choose'
   const atRun = phase === 'running' || phase === 'done'
+  // The run reads files itself when a folder was added: its pre-processing is Read's, not Extract's.
+  const runReading = atRun && !runEnded && (run?.stage === 'chew' || run?.stage === 'model')
 
   // ── Read ──
   let readSec: TrackSection
@@ -95,6 +97,9 @@ export function buildTrack(input: TrackInput, labels: Record<string, string> = {
     readSec = section('read', 'now', read.total ? (read.done + read.inner) / read.total : 0, `${read.done} of ${plural(read.total, 'file')}`)
   } else if (phase === 'reading') {
     readSec = section('read', 'now', 0, '', true)
+  } else if (runReading) {
+    const t = run?.stage === 'chew' ? run?.total ?? 0 : 0
+    readSec = section('read', 'now', t ? (run?.done ?? 0) / t : 0, t ? `${run?.done ?? 0} of ${plural(t, 'file')}` : '', !t)
   } else if (started) {
     readSec = read && read.total ? section('read', 'done', 1, `${read.done} of ${plural(read.total, 'file')}`) : section('read', 'done', 1)
   } else {
@@ -122,8 +127,11 @@ export function buildTrack(input: TrackInput, labels: Record<string, string> = {
   const docTotal = (stage === 'dig' && run?.total) || docs.length
   const docDone = docs.filter((d) => d.state === 'done' || d.state === 'failed').length
   const docWhere = docTotal ? `${docDone} of ${plural(docTotal, 'document')}` : ''
-  if (!atRun) extractSec = section('extract', 'waiting')
-  else if (input.nothingToExtract) extractSec = section('extract', 'skipped', 0, 'Nothing new')
+  // Nothing to extract by the pause's count, and the run has extracted nothing: a folder's
+  // documents are not in that count, so the run's own progress decides.
+  const noExtraction = input.nothingToExtract && !docs.length && stage !== 'dig'
+  if (!atRun || runReading) extractSec = section('extract', 'waiting')
+  else if (noExtraction) extractSec = section('extract', 'skipped', 0, 'Nothing new')
   else if (reachedPost || runEnded === 'done') extractSec = section('extract', 'done', 1, docWhere)
   else if (runEnded) extractSec = section('extract', 'stopped', docTotal ? docDone / docTotal : 0, docWhere)
   else extractSec = section('extract', 'now', docTotal ? docDone / docTotal : 0, docWhere, !docTotal)
@@ -156,13 +164,14 @@ export function buildTrack(input: TrackInput, labels: Record<string, string> = {
   else if (atRun) {
     const stopped = sections.find((s) => s.state === 'stopped')
     const now = sections.find((s) => s.state === 'now')
-    const verb: Record<string, string> = { extract: 'Extracting', write: 'Writing up', brief: 'Briefing' }
+    const verb: Record<string, string> = { read: 'Reading', extract: 'Extracting', write: 'Writing up', brief: 'Briefing' }
     if (stopped) headline = `Stopped during ${stopped.label}`
     else if (now) headline = now.where ? `${verb[now.key]} · ${now.where.charAt(0).toLowerCase()}${now.where.slice(1)}` : verb[now.key]
     if (inPlan) {
       side = labels[stage!] ?? stage
       if (run?.total) side += ` · ${run.done ?? 0} of ${run.total}`
     } else if (!reachedPost && stage && stage !== 'dig' && labels[stage]) side = labels[stage]
+    if (runReading && run?.stage === 'model') side = labels.model ?? null
   }
   return { sections, headline, side }
 }

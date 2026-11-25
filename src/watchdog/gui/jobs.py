@@ -175,6 +175,10 @@ def log_dir() -> Path:
     return config.home() / "jobs"
 
 
+# How many finished files a job's progress lists (D413); `file_count` counts them all.
+FILES_KEEP = 200
+
+
 class Job:
     def __init__(self, vault: Path | None, op: str, params: dict, label: str, kind: str | None):
         self.id = uuid.uuid4().hex[:12]
@@ -189,9 +193,10 @@ class Job:
         self.started = _now()
         self.finished: str | None = None
         # `plan`: post-processing's stages in order, once the run announces them; `seen`: the
-        # stages that have started, in order; `files`: each file pre-processing finished.
+        # stages that have started, in order; `files`: the latest `FILES_KEEP` files
+        # pre-processing finished, and `file_count` how many it has finished in all.
         self.progress = {"stage": None, "done": None, "total": None, "current": None, "note": None,
-                         "docs": {}, "plan": None, "seen": [], "files": []}
+                         "docs": {}, "plan": None, "seen": [], "files": [], "file_count": 0}
         self.log: collections.deque = collections.deque(maxlen=LOG_LINES)
         self.pending: list[dict] = []
         self.lock = threading.Lock()
@@ -271,9 +276,13 @@ class Job:
                     p["done"] = event.get("done", p["done"])
                     p["current"] = event.get("name")
                     p["note"] = None
-                    p.setdefault("files", []).append({"name": event.get("name"),
-                                                      "outcome": event.get("outcome"),
-                                                      "pages": event.get("pages")})
+                    # Only the latest few are kept: every progress event carries the whole
+                    # state, so a full list would grow each event with the folder's size.
+                    files = p.setdefault("files", [])
+                    files.append({"name": event.get("name"), "outcome": event.get("outcome"),
+                                  "pages": event.get("pages")})
+                    del files[:-FILES_KEEP]
+                    p["file_count"] = (p.get("file_count") or 0) + 1
             elif kind == "transcribe":
                 # A recording being transcribed (D273): kept beside the file count, not over it.
                 pos, dur = event.get("position"), event.get("duration")
