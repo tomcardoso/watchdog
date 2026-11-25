@@ -296,3 +296,24 @@ def test_progress_keeps_the_plan_the_stages_seen_and_each_file_read():
     # The snapshot is a copy: later events do not change one already taken.
     job.apply_progress({"kind": "stage", "stage": "reconcile", "done": None, "total": None})
     assert p["seen"] == ["fold", "commit"]
+
+
+def test_a_job_shows_as_finished_only_once_its_record_is_written(sink, fake_cli, monkeypatch):
+    """Anything that waits for a job to end (the app, a test scanning the folder) finds its saved
+    record complete, not still being written: the record is written before the state changes."""
+    from watchdog.pipeline import json_io
+    real = json_io.write_private_json
+
+    def slow(path, data):
+        time.sleep(0.5)
+        return real(path, data)
+
+    monkeypatch.setattr(json_io, "write_private_json", slow)
+    started = _run("print('hi')", label="x")
+    deadline = time.time() + 20
+    job = jobs.MANAGER.get(started["id"])
+    while job.state == "running" and time.time() < deadline:
+        time.sleep(0.01)
+    assert job.state == "done"
+    assert (jobs.log_dir() / f"{job.id}.json").exists()
+    assert not list(jobs.log_dir().glob(".*.tmp"))

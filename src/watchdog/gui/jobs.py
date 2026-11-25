@@ -215,14 +215,18 @@ class Job:
         job.log.extend(ln for ln in rec.get("log") or [] if isinstance(ln, dict))
         return job
 
-    def save(self) -> None:
+    def save(self, state: str | None = None) -> None:
         """Write this finished job, with its output, to `log_dir()`, readable only by its owner
-        (the output names the investigation's files). A failed write loses only the record."""
+        (the output names the investigation's files). A failed write loses only the record.
+        `state` is the state to record, when the job is not yet showing it."""
         from watchdog.pipeline.json_io import write_private_json
         with self.lock:
             log = list(self.log)
+        record = {**self.to_dict(), "log": log}
+        if state:
+            record["state"] = state
         try:
-            write_private_json(log_dir() / f"{self.id}.json", {**self.to_dict(), "log": log})
+            write_private_json(log_dir() / f"{self.id}.json", record)
         except OSError:
             pass
 
@@ -393,8 +397,11 @@ class JobManager:
         job.exit_code = code
         job.finished = _now()
         # A stopped job is "cancelled" however it exits: a graceful Ctrl+C stop often exits 0.
-        job.state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
-        job.save()
+        # The record is written before the job shows as finished, so anything that waits for the
+        # end finds the record already there, not its write still under way.
+        state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
+        job.save(state)
+        job.state = state
         rpc.emit("job.finished", {"job": job.to_dict()})
 
     def cancel(self, job_id: str) -> None:
