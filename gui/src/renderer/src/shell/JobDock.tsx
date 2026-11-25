@@ -4,6 +4,7 @@
 import { Minus, Square, SquareArrowOutUpRight, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button, Progress } from '@renderer/components/ui'
+import { RunTrack } from '@renderer/components/RunTrack'
 import { stopJob } from '@renderer/lib/jobs'
 import { useApp } from '@renderer/lib/store'
 import type { Job } from '@shared/api'
@@ -56,6 +57,8 @@ export function JobDock() {
   const jobs = useApp((s) => s.jobs)
   const route = useApp((s) => s.route)
   const navigate = useApp((s) => s.navigate)
+  // The Add documents flow's track, for the jobs it covers (D413).
+  const addTrack = useApp((s) => s.addTrack)
   // Per job: 'min' shows it as a chip, 'hidden' takes it off the dock (it still runs, and Activity
   // still lists it). Forgotten when the job ends, so the next run of anything starts as a card.
   const [shown, setShown] = useState<Record<string, 'min' | 'hidden'>>({})
@@ -105,6 +108,7 @@ export function JobDock() {
     <div className="job-dock" ref={ref} aria-label="Running jobs">
       {cards.map((j) => {
         const p = progressText(j)
+        const flow = addTrack?.jobs.includes(j.id) ? addTrack.track : null
         return (
           <div className="job-card" key={j.id}>
             <div className="row">
@@ -114,8 +118,8 @@ export function JobDock() {
               <Button variant="ghost" size="sm" icon={Square} tip="Stop" onClick={() => stopJob(j.id)} />
               <Button variant="ghost" size="sm" icon={Minus} tip="Minimise" onClick={() => set(j.id, 'min')} />
             </div>
-            <div className="detail truncate">{p.text}</div>
-            <Progress value={p.done} max={p.total ?? 1} indeterminate={!p.total} />
+            <div className="detail truncate">{flow?.headline ?? p.text}</div>
+            {flow ? <RunTrack track={flow} compact /> : <Progress value={p.done} max={p.total ?? 1} indeterminate={!p.total} />}
           </div>
         )
       })}

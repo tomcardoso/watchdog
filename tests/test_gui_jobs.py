@@ -278,3 +278,21 @@ def test_shared_run_options_an_operation_does_not_take_are_dropped():
     assert ops.validate("dig", {"verify": False, "skill": "", "limit": None}) == {"verify": False}
     with pytest.raises(ops.OpError):
         ops.validate("bark", {"paths": ["x"]})
+
+
+def test_progress_keeps_the_plan_the_stages_seen_and_each_file_read():
+    job = jobs.Job(None, "add", {}, "Adding", "add")
+    job.apply_progress({"kind": "chew", "state": "start", "total": 2})
+    job.apply_progress({"kind": "chew", "state": "file", "name": "a.pdf", "outcome": "ok", "pages": 3, "done": 1, "total": 2})
+    job.apply_progress({"kind": "chew", "state": "file", "name": "b.pdf", "outcome": "skipped", "pages": 0, "done": 2, "total": 2})
+    job.apply_progress({"kind": "plan", "stages": ["fold", "reconcile", "commit"]})
+    for stage in ("fold", "commit", "commit"):
+        job.apply_progress({"kind": "stage", "stage": stage, "done": None, "total": None})
+    p = job.to_dict()["progress"]
+    assert p["files"] == [{"name": "a.pdf", "outcome": "ok", "pages": 3},
+                          {"name": "b.pdf", "outcome": "skipped", "pages": 0}]
+    assert p["plan"] == ["fold", "reconcile", "commit"]
+    assert p["seen"] == ["fold", "commit"]
+    # The snapshot is a copy: later events do not change one already taken.
+    job.apply_progress({"kind": "stage", "stage": "reconcile", "done": None, "total": None})
+    assert p["seen"] == ["fold", "commit"]

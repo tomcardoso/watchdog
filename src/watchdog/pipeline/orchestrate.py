@@ -2709,6 +2709,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         failed = 0
         answered = False
         for n, chunk in enumerate(chunks, 1):
+            if n > 1:
+                progress.emit("stage", stage="synthesis", done=sum(len(c) for c in chunks[:n - 1]),
+                              total=n_ents)
             if n > 1 and _stage_stop(vault, out):
                 failed += sum(len(c) for c in chunks[n - 1:])
                 break
@@ -3521,6 +3524,15 @@ def _history_cause(vault: Path, shas: list[str]) -> dict:
     return {"kind": "run", "documents": names, "document_count": len(shas)}
 
 
+# Post-processing's progress stages, in the order `_finalize` and `_post_ingest` emit them. The
+# app is told this list before the first one starts (a `plan` progress event), so it can count
+# steps: a stage that has nothing to do emits nothing and is simply passed. Keep it in step with
+# the code below; tests/test_progress.py checks every emitted stage against it.
+POST_STAGES = ("fact-tags", "fold", "reconcile", "role-targets", "dates", "commit",
+               "contradictions", "relationships", "synthesis", "timeline",
+               "briefing", "leads", "request-sources", "requests")
+
+
 async def _finalize(vault: Path, *, post_model: str, brief: str | None, results: list | None,
                     post_effort: str | None, post_backend: str | None,
                     skip_briefing: bool,
@@ -3533,6 +3545,7 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
 
     shas = _pending_commits(vault)
     _restore_missing_results(vault, shas)
+    progress.emit("plan", stages=[s for s in POST_STAGES if not (skip_briefing and s == "briefing")])
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     # The spending limit before the first finishing stage (D324). Reconciliation must come before
     # the commit (I7), so a stop here commits nothing and the whole batch stays pending.

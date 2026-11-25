@@ -188,8 +188,10 @@ class Job:
         self.exit_code: int | None = None
         self.started = _now()
         self.finished: str | None = None
+        # `plan`: post-processing's stages in order, once the run announces them; `seen`: the
+        # stages that have started, in order; `files`: each file pre-processing finished.
         self.progress = {"stage": None, "done": None, "total": None, "current": None, "note": None,
-                         "docs": {}}
+                         "docs": {}, "plan": None, "seen": [], "files": []}
         self.log: collections.deque = collections.deque(maxlen=LOG_LINES)
         self.pending: list[dict] = []
         self.lock = threading.Lock()
@@ -226,7 +228,9 @@ class Job:
 
     def to_dict(self) -> dict:
         with self.lock:
-            snapshot = {**self.progress, "docs": {k: dict(v) for k, v in self.progress["docs"].items()}}
+            snapshot = {**self.progress, "docs": {k: dict(v) for k, v in self.progress["docs"].items()},
+                        "seen": list(self.progress.get("seen") or []),
+                        "files": [dict(f) for f in self.progress.get("files") or []]}
         return {"id": self.id, "label": self.label, "kind": self.kind,
                 "vault": str(self.vault) if self.vault else None, "op": self.op,
                 "params": self.params, "result": self.result,
@@ -239,6 +243,11 @@ class Job:
             p = self.progress
             if kind == "stage":
                 p.update(stage=event.get("stage"), done=event.get("done"), total=event.get("total"))
+                seen = p.setdefault("seen", [])
+                if event.get("stage") and event["stage"] not in seen:
+                    seen.append(event["stage"])
+            elif kind == "plan":
+                p["plan"] = [str(s) for s in event.get("stages") or []]
                 if event.get("path"):
                     p["current"] = event["path"]
             elif kind == "doc":
@@ -258,6 +267,9 @@ class Job:
                     p["done"] = event.get("done", p["done"])
                     p["current"] = event.get("name")
                     p["note"] = None
+                    p.setdefault("files", []).append({"name": event.get("name"),
+                                                      "outcome": event.get("outcome"),
+                                                      "pages": event.get("pages")})
             elif kind == "transcribe":
                 # A recording being transcribed (D273): kept beside the file count, not over it.
                 pos, dur = event.get("position"), event.get("duration")

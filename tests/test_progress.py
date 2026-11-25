@@ -89,3 +89,37 @@ def test_lines_writes_each_change_as_one_plain_line(capsys):
     assert out.splitlines() == ["  → a.pdf · extracting…", "  → a.pdf · verifying…",
                                 "  a note", "  ✓ a.pdf  3 entities"]
     assert "\x1b" not in out and "\r" not in out
+
+
+def test_post_processing_announces_its_stages_before_the_first(tmp_path, monkeypatch):
+    """The app counts post-processing's steps from the `plan` event, so it comes before the first
+    of them, and every stage the run then emits is in it, in its order (a stage with nothing to do
+    emits nothing and is passed)."""
+    monkeypatch.setenv("WATCHDOG_PROGRESS", "1")
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+    buf = _capture(monkeypatch)
+    asyncio.run(orchestrate.run(vault))
+    events = _events(buf)
+    plans = [i for i, e in enumerate(events) if e["kind"] == "plan"]
+    assert len(plans) == 1
+    plan = events[plans[0]]["stages"]
+    assert plan == list(orchestrate.POST_STAGES)
+    after = [e["stage"] for e in events[plans[0] + 1:] if e["kind"] == "stage" and e["stage"] != "done"]
+    assert after, "no post-processing stage was emitted"
+    positions = [plan.index(s) for s in after]   # raises if a stage is missing from the plan
+    assert positions == sorted(positions), after
+    before = [e["stage"] for e in events[:plans[0]] if e["kind"] == "stage"]
+    assert not set(before) & set(plan), before
+
+
+def test_the_plan_leaves_out_a_skipped_briefing(tmp_path, monkeypatch):
+    monkeypatch.setenv("WATCHDOG_PROGRESS", "1")
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+    buf = _capture(monkeypatch)
+    asyncio.run(orchestrate.run(vault, skip_briefing=True))
+    plan = [e for e in _events(buf) if e["kind"] == "plan"][0]["stages"]
+    assert "briefing" not in plan and "requests" in plan

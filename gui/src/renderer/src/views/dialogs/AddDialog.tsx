@@ -1,5 +1,5 @@
-// Add documents: the `add` operation, the core workflow, as four steps. Choose → Read (local, no model)
-// → Public-records gate → Run. Nothing is sent to a model before the gate has been acknowledged
+// Add documents: the `add` operation, the core workflow. Choose, then one track (D413): Read (local,
+// no model) → the public-records gate → Extract → Write up → Brief. Nothing is sent to a model before the gate has been acknowledged
 // (or auto-approve, which the run itself honours, applies). A run with every stage on a model
 // server on this computer has no gate (D306): the preflight says so and the run decides it again.
 // A document partly in another language always stops at the gate (D383): it asks whether to read
@@ -9,7 +9,7 @@ import {
   ArrowRight, Check, ChevronDown, ChevronRight, Circle, FilePlus2, FolderInput, RefreshCw, ShieldAlert, X, CircleCheck, CircleX, Calculator
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
-import { Badge, Button, Callout, Empty, Field, Modal, Progress, Skeleton, Spinner, Switch } from '@renderer/components/ui'
+import { Badge, Button, Callout, Empty, Field, Modal, Skeleton, Spinner, Switch } from '@renderer/components/ui'
 import { basename, fmtCost, plural } from '@renderer/lib/format'
 import { startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
@@ -21,17 +21,14 @@ import { ElsewhereNote } from '@renderer/components/ElsewhereNote'
 import { investigationName, isElsewhere, switchTo } from '@renderer/lib/investigation'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
 import { pageRanges } from '@renderer/lib/readIn'
-import type { Effort, Estimate, Job, LanguageQuestion, Preflight, RunOptions } from '@shared/api'
+import { buildTrack, stepList, type Track } from '@renderer/lib/addTrack'
+import { RunTrack } from '@renderer/components/RunTrack'
+import type { ChewFile, Effort, Estimate, Job, LanguageQuestion, Preflight, RunOptions } from '@shared/api'
 
 type Phase = 'choose' | 'reading' | 'gate' | 'running' | 'done'
-const STEPS = ['Choose', 'Read', 'Confirm', 'Add']
-const STEP_OF: Record<Phase, number> = { choose: 0, reading: 1, gate: 2, running: 3, done: 3 }
 
-// Pipeline stage → step of the run stepper: Read, Extract, Write, Brief.
-const STAGE_STEP: Record<string, number> = {
-  model: 0, chew: 0, classify: 1, extract: 1, dig: 1, fold: 1, reconcile: 2, dates: 2, commit: 2, contradictions: 2, relationships: 2, synthesis: 2, timeline: 2, briefing: 3, leads: 3, requests: 3, done: 3
-}
-const RUN_STEPS = ['Read', 'Extract', 'Write', 'Brief']
+/** One file the Read step finished: its outcome, page count and how long it took. */
+type ReadEntry = { name: string; outcome: ChewFile['outcome'] | 'folder'; pages: number | null; secs: number | null }
 
 const NEW_PATHS_EVENT = 'wd:add'
 
@@ -50,7 +47,10 @@ export function AddDialog() {
   const [paths, setPaths] = useState<string[]>([])
   const [retry, setRetry] = useState(false)
   const [options, setOptions] = useState<RunOptions>({})
-  const [readState, setReadState] = useState<{ i: number; n: number; job: string | null; label: string } | null>(null)
+  const [readState, setReadState] = useState<{ i: number; n: number; job: string | null; label: string; items: string[]; paths: (string | null)[]; incoming: number } | null>(null)
+  const [readLog, setReadLog] = useState<ReadEntry[]>([])
+  // How the pause went: shown and answered, or passed without asking (D413's track draws both).
+  const [confirmMode, setConfirmMode] = useState<'asked' | 'auto' | null>(null)
   const [readIssues, setReadIssues] = useState<string[]>([])
   const [folders, setFolders] = useState<string[]>([])
   const [gate, setGate] = useState<{ pf: Preflight; blocked: Blocked[] } | null>(null)
@@ -158,13 +158,17 @@ export function AddDialog() {
       const issues: string[] = []
       const dirs: string[] = []
       const work: (string | null)[] = [...paths, ...(needIncoming ? [null] : [])]
+      const items = work.map((p) => (p ? basename(p) : 'Documents waiting in this investigation'))
+      setReadLog([])
+      setConfirmMode(null)
       for (let i = 0; i < work.length; i++) {
         const p = work[i]
         const label = p ? `Reading ${basename(p)}` : 'Reading documents'
-        setReadState({ i, n: work.length, job: null, label })
+        setReadState({ i, n: work.length, job: null, label, items, paths: work, incoming: pf0?.incoming ?? 0 })
         const j = await startJob('chew', { ...chewOptions, paths: p ? [p] : undefined }, label, 'chew', vault)
-        setReadState({ i, n: work.length, job: j.id, label })
+        setReadState({ i, n: work.length, job: j.id, label, items, paths: work, incoming: pf0?.incoming ?? 0 })
         const fin = await waitForJob(j.id)
+        setReadLog((prev) => [...prev, ...readEntries(useApp.getState().jobs[j.id] ?? fin, p)])
         if (fin.state === 'cancelled') {
           setPaths((prev) => [...new Set([...prev, ...laterRef.current])])
           setLater([])
@@ -246,6 +250,7 @@ export function AddDialog() {
   const run = async (pf: Preflight, dirs: string[], acknowledged = true) => {
     setBusy(true)
     setError('')
+    setConfirmMode(phaseRef.current === 'gate' ? 'asked' : 'auto')
     try {
       const { chew_workers: _a, chunk_workers: _b, ...addOpts } = options
       void _a
@@ -266,7 +271,16 @@ export function AddDialog() {
   const nothingToDo = !pfLoading && pf0 && paths.length === 0 && pf0.incoming + pf0.queued + pf0.staged + (retry ? pf0.failed : 0) === 0 && !pf0.pending_finalization
 
   // ── render ──────────────────────────────────────────────────────────────────
-  const step = STEP_OF[effective]
+  const readJob = readState?.job ? jobs[readState.job] : undefined
+  const nothingToExtract = !!gate && countFor(gate.pf, retry, folders.length) === 0
+  const track = buildTrack({
+    phase: effective,
+    read: readCounts(effective, readState, readJob, readLog),
+    confirm: confirmMode,
+    run: job?.progress ?? null,
+    runEnded: effective === 'done' && job ? (job.state === 'done' ? 'done' : 'stopped') : null,
+    nothingToExtract
+  }, STAGE_LABELS)
   // The investigation this flow's steps run in: the run's own once it has started.
   const flowPath = job?.vault ?? flowVault.current
   const flowName = investigationName(flowPath)
@@ -308,16 +322,14 @@ export function AddDialog() {
   } else if (effective === 'reading') {
     title = `Reading documents${inFlow}`
     sub = 'Extracting text and pages on this computer. Nothing is sent to a model in this step.'
-    const rj = readState?.job ? jobs[readState.job] : undefined
+    const rj = readJob
     body = (
       <>
         <ElsewhereNote vault={flowPath} what="Reading these documents" />
-        {readState && readState.n > 1 && (
-          <div className="add-readcount">
-            File {Math.min(readState.i + 1, readState.n)} of {readState.n}
-          </div>
-        )}
-        <JobPanel job={rj} idle={readState?.label ?? 'Starting'} />
+        <div className="col gap-12">
+          <ReadList state={readState} job={rj} log={readLog} />
+          {rj && <LiveOutput job={rj} />}
+        </div>
       </>
     )
     footer = (
@@ -358,7 +370,7 @@ export function AddDialog() {
     body = (
       <>
         <ElsewhereNote vault={flowPath} what={effective === 'done' ? 'This run' : 'This run, still going,'} />
-        <RunStep vault={flowPath} job={job} done={effective === 'done'} autoNote={autoNote} startAtWrite={!!gate && countFor(gate.pf, retry, folders.length) === 0} />
+        <RunStep vault={flowPath} job={job} done={effective === 'done'} autoNote={autoNote} />
       </>
     )
     footer =
@@ -383,7 +395,8 @@ export function AddDialog() {
     : `Drop to add these files. ${heldNote}`
   return (
     <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer}>
-      <Stepper current={step} />
+      <RunTrack track={track} />
+      <PublishTrack track={track} jobs={effective === 'reading' ? [readState?.job] : effective === 'running' ? [addJob] : []} />
       {dragging && effective !== 'choose' && <div className="add-hint over" style={{ marginBottom: 16 }}>{dropNote}</div>}
       {later.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -423,17 +436,42 @@ function lastError(log: { stream: string; text: string }[]): string {
   return (err?.text ?? '').replace(/^\s*Error:\s*/i, '').trim()
 }
 
-function Stepper({ current }: { current: number }) {
-  return (
-    <ol className="add-steps">
-      {STEPS.map((s, i) => (
-        <li key={s} className={i < current ? 'done' : i === current ? 'now' : ''}>
-          <span className="dot">{i < current ? <Check /> : i + 1}</span>
-          {s}
-        </li>
-      ))}
-    </ol>
-  )
+/** The files and pages the Read step has covered so far: for the track's Read section. */
+function readCounts(phase: Phase, state: { i: number; n: number; items: string[]; paths: (string | null)[]; incoming: number } | null, job: Job | undefined, log: ReadEntry[]): { done: number; total: number; inner: number } | null {
+  if (phase === 'choose') return null
+  if (phase !== 'reading') return { done: log.length, total: log.length, inner: 0 }
+  if (!state) return null
+  // The current item can be many files (the ones already waiting); its finished files are on its
+  // job until it ends, when they move to the log.
+  const cur = job?.progress
+  const curDone = job && job.state === 'running' ? cur?.files?.length ?? 0 : 0
+  // Until the job reports its own count, the files already waiting count as the preflight saw them.
+  const curTotal = Math.max(cur?.total ?? 0, curDone, state.paths[state.i] === null ? state.incoming : 1, 1)
+  const ended = job && job.state !== 'running'
+  return { done: log.length + curDone, total: log.length + (ended ? 0 : curTotal) + (state.n - state.i - 1), inner: 0 }
+}
+
+/** What one Read job finished, as log entries: each file it reported, or the item itself. */
+function readEntries(job: Job, path: string | null): ReadEntry[] {
+  const secs = job.finished ? Math.max(0, Math.round((Date.parse(job.finished) - Date.parse(job.started)) / 1000)) : null
+  const files = job.progress.files ?? []
+  if (files.length) return files.map((f) => ({ name: basename(f.name), outcome: f.outcome, pages: f.pages, secs: files.length === 1 ? secs : null }))
+  const log = useApp.getState().jobs[job.id]?.log ?? []
+  const folder = path && log.some((l) => /is a folder/i.test(l.text))
+  if (!path && job.state === 'done') return []   // nothing was waiting after all
+  return [{ name: path ? basename(path) : 'Documents waiting in this investigation', outcome: folder ? 'folder' : job.state === 'done' ? 'ok' : 'failed', pages: null, secs }]
+}
+
+/** Hands the track to the corner card, which shows it for the jobs this flow is running. */
+function PublishTrack({ track, jobs }: { track: Track; jobs: (string | null | undefined)[] }) {
+  const ids = jobs.filter((j): j is string => !!j)
+  const key = JSON.stringify([track, ids])
+  useEffect(() => {
+    useApp.getState().setAddTrack(ids.length ? { jobs: ids, track } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  useEffect(() => () => useApp.getState().setAddTrack(null), [])
+  return null
 }
 
 // ── Step 1 ───────────────────────────────────────────────────────────────────
@@ -834,47 +872,94 @@ function LanguageQuestions({ questions, busy, onReread }: { questions: LanguageQ
 
 const stageName = (s: string) => ({ classifier: 'Classify', extractor: 'Extract', finalizer: 'Finish' } as Record<string, string>)[s] ?? s.replace(/^finalizer:/, 'Finish: ')
 
-// ── Step 4 ───────────────────────────────────────────────────────────────────
-function JobPanel({ job, idle }: { job?: Job; idle: string }) {
-  const p = job ? progressText(job) : { text: idle, done: null, total: null }
-  const docs = job ? Object.entries(job.progress.docs ?? {}) : []
-  const log = useApp((s) => (job ? s.jobs[job.id]?.log : undefined)) ?? []
+// ── Read and run lists (D413) ──────────────────────────────────────────────────
+/** Seconds as "0:42" or "1:05:12". */
+function clock(secs: number): string {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const sec = String(secs % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+/** The time now, ticking each second while `on`. */
+function useNow(on: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!on) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [on])
+  return now
+}
+
+const READ_OUTCOME: Record<ReadEntry['outcome'], string> = {
+  ok: 'Read', skipped: 'No text found', failed: 'Could not be read', duplicate: 'Already added', folder: 'A folder, added with the run'
+}
+
+/** The Read step's files: each finished one with its outcome, the one being read, the rest waiting. */
+function ReadList({ state, job, log }: { state: { i: number; n: number; label: string; items: string[] } | null; job?: Job; log: ReadEntry[] }) {
+  const running = job?.state === 'running'
+  const now = useNow(running)
+  const current = job?.progress
+  const inFlight = running ? current?.files ?? [] : []
+  // A many-file item (the files already waiting) is named as itself, with its count: the job
+  // reports a file's name only once it has finished it.
+  const many = (current?.total ?? 0) > 1
+  const curName = state ? state.items[state.i] : null
+  const curNote = current?.note ?? (many ? `${inFlight.length} of ${current?.total}` : 'Reading')
+  const elapsed = running && job ? Math.max(0, Math.round((now - Date.parse(job.started)) / 1000)) : null
+  const waiting = state ? state.items.slice(state.i + 1) : []
+  const done = [...log, ...inFlight.map((f) => ({ name: basename(f.name), outcome: f.outcome, pages: f.pages, secs: null }))]
+  return (
+    <ul className="add-docs add-files-read">
+      {done.map((f, k) => (
+        <li key={`d${k}`}>
+          {f.outcome === 'ok' ? <CircleCheck className="ds ok" /> : f.outcome === 'failed' ? <CircleX className="ds bad" /> : <Circle className="ds idle" />}
+          <span className="grow truncate" title={f.name}>{f.name}</span>
+          <span className={f.outcome === 'ok' || f.outcome === 'folder' ? 'faint' : f.outcome === 'failed' ? 'add-bad' : 'faint'} style={{ flex: 'none' }}>
+            {f.outcome === 'ok' && f.pages ? plural(f.pages, 'page') : READ_OUTCOME[f.outcome]}
+          </span>
+          <span className="faint tnum add-secs">{f.secs !== null ? clock(f.secs) : ''}</span>
+        </li>
+      ))}
+      {curName && (
+        <li className="now">
+          <span className="spinner ds" style={{ width: 14, height: 14 }} />
+          <span className="grow truncate" title={curName}>{curName}</span>
+          <span className="faint truncate" style={{ flex: 'none', maxWidth: 260 }}>{curNote}</span>
+          <span className="faint tnum add-secs">{elapsed !== null ? clock(elapsed) : ''}</span>
+        </li>
+      )}
+      {waiting.map((n, k) => (
+        <li key={`w${k}`} className="waiting">
+          <Circle className="ds idle" />
+          <span className="grow truncate" title={n}>{n}</span>
+          <span className="faint" style={{ flex: 'none' }}>Waiting</span>
+          <span className="add-secs" />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** The run's own output, behind a disclosure. */
+function LiveOutput({ job }: { job: Job }) {
+  const log = useApp((s) => s.jobs[job.id]?.log) ?? []
   const logRef = useRef<HTMLDivElement>(null)
   const [showLog, setShowLog] = useState(false)
   useEffect(() => {
     if (showLog) logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
   }, [log.length, showLog])
   return (
-    <div className="col gap-12">
-      <div>
-        <div className="row" style={{ marginBottom: 8 }}>
-          {(!job || job.state === 'running') && <Spinner />}
-          <span className="grow">{p.text}</span>
+    <div>
+      <button className="add-disclose" onClick={() => setShowLog(!showLog)}>
+        {showLog ? <ChevronDown /> : <ChevronRight />}Live output
+      </button>
+      {showLog && (
+        <div className="log add-log" ref={logRef}>
+          {log.length === 0 ? <span className="faint">No output yet.</span> : log.slice(-400).map((l, i) => <div key={i} className={l.stream === 'err' ? 'err' : undefined}>{l.text}</div>)}
         </div>
-        <Progress value={p.done} max={p.total ?? 1} indeterminate={!p.total} />
-      </div>
-      {docs.length > 0 && (
-        <ul className="add-docs">
-          {docs.map(([sha, d]) => (
-            <li key={sha}>
-              <DocState state={d.state} />
-              <span className="grow truncate" title={d.filename}>{d.filename}</span>
-              {/* The state never gives way to a long name: only the name is shortened. */}
-              <span className="faint truncate" style={{ flex: 'none', maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
-            </li>
-          ))}
-        </ul>
       )}
-      <div>
-        <button className="add-disclose" onClick={() => setShowLog(!showLog)}>
-          {showLog ? <ChevronDown /> : <ChevronRight />}Live output
-        </button>
-        {showLog && (
-          <div className="log add-log" ref={logRef}>
-            {log.length === 0 ? <span className="faint">No output yet.</span> : log.slice(-400).map((l, i) => <div key={i} className={l.stream === 'err' ? 'err' : undefined}>{l.text}</div>)}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -888,29 +973,69 @@ function DocState({ state }: { state: string }) {
   return <span className="spinner ds" style={{ width: 14, height: 14 }} />
 }
 
-function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; job?: Job; done: boolean; autoNote: string | null; startAtWrite: boolean }) {
+/** What the run is doing now: its documents while extracting, then the steps of write-up or the
+ * briefing, each done, passed (nothing to do), under way or waiting. */
+function RunDetail({ job }: { job: Job }) {
+  const prog = job.progress
+  if (!prog.plan) {
+    const docs = Object.entries(prog.docs ?? {})
+    if (!docs.length) {
+      return (
+        <div className="row">
+          <Spinner />
+          <span className="grow">{progressText(job).text}</span>
+        </div>
+      )
+    }
+    return (
+      <ul className="add-docs">
+        {docs.map(([sha, d]) => (
+          <li key={sha}>
+            <DocState state={d.state} />
+            <span className="grow truncate" title={d.filename}>{d.filename}</span>
+            {/* The state never gives way to a long name: only the name is shortened. */}
+            <span className="faint truncate" style={{ flex: 'none', maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  const section = stepList(prog, 'brief', null).some((s) => s.state !== 'waiting') ? 'brief' : 'write'
+  return (
+    <ul className="add-docs">
+      {stepList(prog, section, null).map((st) => (
+        <li key={st.stage} className={st.state === 'waiting' || st.state === 'passed' ? 'waiting' : undefined}>
+          {st.state === 'done' ? <CircleCheck className="ds ok" /> : st.state === 'now' ? <span className="spinner ds" style={{ width: 14, height: 14 }} /> : <Circle className="ds idle" />}
+          <span className="grow truncate">{STAGE_LABELS[st.stage] ?? st.stage}</span>
+          <span className="faint tnum" style={{ flex: 'none' }}>
+            {st.state === 'passed' ? 'Nothing to do' : st.state === 'now' && prog.total ? `${prog.done ?? 0} of ${prog.total}` : ''}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function RunStep({ vault, job, done, autoNote }: { vault: string; job?: Job; done: boolean; autoNote: string | null }) {
   const openPath = useApp((s) => s.project?.path)
-  const stage = job?.progress.stage
   const ok = job?.state === 'done'
-  // A run that stopped short keeps its steps where it stopped: only a finished run is all done.
-  // Extraction also reports 'done' when it ends, so a failed run there stops at Extract.
-  const at = done && !ok && stage === 'done' ? 'dig' : stage
-  const active = done && ok ? 4 : at && at in STAGE_STEP ? Math.max(1, STAGE_STEP[at]) : startAtWrite ? 2 : 1
   const { data: summary } = useRpc('vault.summary', done && ok ? { vault } : null, { staleTime: 0 })
   const tail = (useApp((s) => (job ? s.jobs[job.id]?.log : undefined)) ?? []).slice(-40)
   return (
     <div className="col gap-16">
       {autoNote && <Callout tone="info">{autoNote}</Callout>}
-      <ol className="add-run">
-        {RUN_STEPS.map((s, i) => (
-          <li key={s} className={i < active ? 'done' : i === active ? 'now' : ''}>
-            <span className="bar" />
-            <span className="t">{s}</span>
-            <span className="d">{i === active && at ? (done && !ok ? 'Stopped here' : STAGE_LABELS[at] ?? at) : i < active ? 'Done' : ''}</span>
-          </li>
-        ))}
-      </ol>
-      {!done && <JobPanel job={job} idle="Starting" />}
+      {!done && !job && (
+        <div className="row">
+          <Spinner />
+          <span className="grow">Starting</span>
+        </div>
+      )}
+      {!done && job && (
+        <div className="col gap-12">
+          <RunDetail job={job} />
+          <LiveOutput job={job} />
+        </div>
+      )}
       {done && job && (
         <>
           {ok && (
