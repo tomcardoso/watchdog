@@ -7,7 +7,7 @@
 
 import { _electron as electron, expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { removeTestFolder } from './cleanup'
 import { join, resolve } from 'node:path'
@@ -36,6 +36,8 @@ const ROUTES = [
 ]
 
 test('every screen renders against the demo investigation', async () => {
+  // The longest test: on a loaded Windows runner it has taken 2.5 of the 3 minutes.
+  test.slow()
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
@@ -174,13 +176,16 @@ test('every screen renders against the demo investigation', async () => {
     await page.keyboard.press('c')
     await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
     // A quick second press is saved after the first, so the ledger ends on the clear, made over
-    // Can't verify (saved the other way round, it ended on Can't verify).
+    // Can't verify (saved the other way round, it ended on Can't verify). The row changes at once
+    // but the four saves (V, the note, C, C) are written one after another, each recording a
+    // version and refreshing notes: on a loaded Windows runner they outlasted 10 seconds, and the
+    // ledger still stood at the first C.
     const markedId = (await factRow.getAttribute('data-fact-id'))!
     const ledger = join(root, 'vault', '.watchdog', 'registry', 'verification.json')
     await expect.poll(() => {
       const entry = JSON.parse(readFileSync(ledger, 'utf8')).marks[markedId]
       return [entry?.status, entry?.history?.at(-1)?.status]
-    }, { timeout: 10_000 }).toEqual([null, 'unverifiable'])
+    }, { timeout: 45_000 }).toEqual([null, 'unverifiable'])
 
     // Briefings → Current state is written for the reporter: no instructions for Claude, no
     // command lines. What Claude is given (the session primer) is one click away.
@@ -502,16 +507,17 @@ test('the pause names its investigation after a switch', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
   const home = join(root, 'home')
   try {
-    const build = (dir: string, h: string) =>
-      execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, dir), '--home', h], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
-    build('first', join(root, 'home-first'))
-    build('second', home)
-    // One home that knows both: the second demo renamed, the first added beside it.
+    // One build, copied: a demo build has taken up to two minutes on a loaded Windows runner, and
+    // building twice ran this test out of time. The vault holds no paths of its own, and the
+    // home's folder access covers `root`, so the copy opens like a second build.
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'first'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc, PYTHONUTF8: '1' }, stdio: 'inherit' })
+    cpSync(join(root, 'first'), join(root, 'second'), { recursive: true })
+    // One home that knows both: the copy renamed, beside the first.
     const file = join(home, '.watchdog', 'projects.json')
     const projects = JSON.parse(readFileSync(file, 'utf8'))
     const [slug] = Object.keys(projects)
-    const second = { ...projects[slug], name: 'Harbour Second Look' }
-    const first = { ...projects[slug], path: join(root, 'first') }
+    const first = projects[slug]
+    const second = { ...projects[slug], name: 'Harbour Second Look', path: join(root, 'second') }
     writeFileSync(file, JSON.stringify({ 'port-calder-waterfront': first, 'harbour-second-look': second }, null, 2))
     const doc = join(root, 'new-memo.txt')
     writeFileSync(doc, 'Memo. The harbour authority approved the lease on 3 March 2024.\n')
